@@ -1,4 +1,4 @@
-use ext_core::Project;
+pub use ext_core::Project;
 use ext_error::{AppError, Result};
 use sea_orm::{Database as SeaOrmDatabase, DbConn};
 use std::path::{Path, PathBuf};

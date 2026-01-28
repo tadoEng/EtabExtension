@@ -1,8 +1,8 @@
-use ext_core::Project;
-use ext_db::Database;
-use ext_error::AppError;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+use ext_db::{Database, Project};
+use ext_error::AppError;
 
 pub struct AppState {
     pub db: Arc<Mutex<Database>>,
@@ -21,7 +21,7 @@ impl AppState {
         description: String,
     ) -> Result<Project, String> {
         let project = Project::new(name, description);
-        
+
         let db = self.db.lock().await;
         db.save_project(&project)
             .await

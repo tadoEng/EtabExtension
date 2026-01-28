@@ -1,63 +1,133 @@
-import { useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import type { Project } from '@etab-extension/shared/types';
-import './App.css';
+import { useEffect, useState } from 'react';
+import { FileCode, GitBranch, Clock, FileText, Settings } from 'lucide-react';
+import { useProjectStore } from '@/store/projectStore';
+import { mockProjectState } from '@etab-extension/shared/mocks';
+// Layout components
+import { Navbar } from '@/components/layout/Navbar';
+
+// Main feature panels
+import { WorkspacePanel } from '@/components/workspace/WorkspacePanel';
+import { BranchesPanel } from '@/components/branches/BranchesPanel';
+import { HistoryPanel } from '@/components/history/HistoryPanel';
+import { ReportsPanel } from '@/components/reports/ReportsPanel';
+import { SettingsPanel } from '@/components/settings/SettingsPanel';
+
+type MainView = 'workspace' | 'branches' | 'history' | 'reports' | 'settings';
 
 function App() {
-  const [name, setName] = useState('');
-  const [greetMsg, setGreetMsg] = useState('');
-  const [projects, setProjects] = useState<Project[]>([]);
+    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [activeView, setActiveView] = useState<MainView>('workspace');
+    const { currentProject, openProject } = useProjectStore();
 
-  async function greet() {
-    const message = await invoke<string>('greet', { name });
-    setGreetMsg(message);
-  }
+    useEffect(() => {
+        // Auto-load mock project in development
+        if (!currentProject) {
+            openProject(mockProjectState.project_path);
+        }
+    }, []);
 
-  async function createProject() {
-    const project = await invoke<Project>('create_project', {
-      name: 'My Project',
-      description: 'Test project'
-    });
-    setProjects([...projects, project]);
-  }
+    const renderMainContent = () => {
+        switch (activeView) {
+            case 'workspace':
+                return <WorkspacePanel />;
+            case 'branches':
+                return <BranchesPanel />;
+            case 'history':
+                return <HistoryPanel />;
+            case 'reports':
+                return <ReportsPanel />;
+            case 'settings':
+                return <SettingsPanel />;
+            default:
+                return <WorkspacePanel />;
+        }
+    };
 
-  async function loadProjects() {
-    const allProjects = await invoke<Project[]>('get_projects');
-    setProjects(allProjects);
-  }
+    return (
+        <div className="min-h-screen w-screen bg-background flex flex-col">
+            {/* Top Navbar */}
+            <Navbar
+                onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                currentProject={currentProject}
+                onOpenProject={() => {/* TODO: Implement project selector */}}
+            />
 
-  return (
-    <div className="container">
-      <h1>ETAB Extension</h1>
+            {/* Main Layout */}
+            <div className="flex flex-1 overflow-hidden">
+                {/* Left Sidebar - View Navigation */}
+                {sidebarOpen && (
+                    <div className="w-16 border-r border-border/40 bg-background/50 flex flex-col items-center py-4 gap-2">
+                        <button
+                            onClick={() => setActiveView('workspace')}
+                            className={`p-3 rounded-lg transition-colors ${
+                                activeView === 'workspace'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'hover:bg-accent text-muted-foreground'
+                            }`}
+                            title="Workspace"
+                        >
+                            <FileCode className="w-5 h-5" />
+                        </button>
 
-      <div className="row">
-        <input
-          placeholder="Enter a name..."
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <button onClick={greet}>Greet</button>
-      </div>
+                        <button
+                            onClick={() => setActiveView('branches')}
+                            className={`p-3 rounded-lg transition-colors ${
+                                activeView === 'branches'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'hover:bg-accent text-muted-foreground'
+                            }`}
+                            title="Branches"
+                        >
+                            <GitBranch className="w-5 h-5" />
+                        </button>
 
-      {greetMsg && <p>{greetMsg}</p>}
+                        <button
+                            onClick={() => setActiveView('history')}
+                            className={`p-3 rounded-lg transition-colors ${
+                                activeView === 'history'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'hover:bg-accent text-muted-foreground'
+                            }`}
+                            title="History"
+                        >
+                            <Clock className="w-5 h-5" />
+                        </button>
 
-      <div className="row">
-        <button onClick={createProject}>Create Project</button>
-        <button onClick={loadProjects}>Load Projects</button>
-      </div>
+                        <button
+                            onClick={() => setActiveView('reports')}
+                            className={`p-3 rounded-lg transition-colors ${
+                                activeView === 'reports'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'hover:bg-accent text-muted-foreground'
+                            }`}
+                            title="Reports"
+                        >
+                            <FileText className="w-5 h-5" />
+                        </button>
 
-      <div>
-        <h2>Projects ({projects.length})</h2>
-        {projects.map((project) => (
-          <div key={project.id} style={{ border: '1px solid #ccc', padding: '10px', margin: '10px 0' }}>
-            <h3>{project.name}</h3>
-            <p>{project.description}</p>
-            <small>Created: {new Date(project.created_at).toLocaleString()}</small>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+                        <div className="flex-1" />
+
+                        <button
+                            onClick={() => setActiveView('settings')}
+                            className={`p-3 rounded-lg transition-colors ${
+                                activeView === 'settings'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'hover:bg-accent text-muted-foreground'
+                            }`}
+                            title="Settings"
+                        >
+                            <Settings className="w-5 h-5" />
+                        </button>
+                    </div>
+                )}
+
+                {/* Main Content Area */}
+                <div className="flex-1 overflow-hidden">
+                    {renderMainContent()}
+                </div>
+            </div>
+        </div>
+    );
 }
 
 export default App;

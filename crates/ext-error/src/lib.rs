@@ -11,18 +11,24 @@ use ts_rs::TS;
 pub enum AppError {
     #[error("Database error: {0}")]
     Database(String),
-    
+
     #[error("Validation error: {0}")]
     Validation(String),
-    
+
     #[error("Not found: {0}")]
     NotFound(String),
-    
+
     #[error("Internal error: {0}")]
     Internal(String),
-    
+
     #[error("ETABS error: {0}")]
     Etabs(String),
+
+    #[error("Git error: {0}")]
+    Git(String),
+
+    #[error("File system error: {0}")]
+    FileSystem(String),
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;
