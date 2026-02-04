@@ -1,6 +1,6 @@
 mod commands;
 
-use tauri::{Manager, command};
+use tauri::{Manager};
 use tauri_plugin_log::{Target, TargetKind};
 use ext_api::AppState;
 use ext_db::Database;
@@ -36,7 +36,6 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())

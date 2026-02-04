@@ -39,6 +39,6 @@ mod tests {
 
     #[test]
     fn test_export_typescript_bindings() {
-        AppError::export().expect("Failed to export AppError");
+        AppError::export(&Default::default()).expect("Failed to export AppError");
     }
 }

@@ -1,0 +1,66 @@
+[package]
+name = "ext"
+version = "0.1.0"
+repository.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "A EtabExtension CLI tool"
+
+[[bin]]
+name = "ext"
+path = "src/main.rs"
+doctest = false
+
+[dependencies]
+ext-core = { workspace = true }
+ext-api = { workspace = true }
+ext-db = { workspace = true }
+ext-error = { workspace = true }
+
+git2.workspace = true
+schemars.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "io-std"] }
+strum = { version = "0.27.2", features = ["derive"] }
+clap = { workspace = true, features = [
+    "env",
+    "wrap_help",
+    "color",
+    "error-context",
+    "usage",
+    "suggestions",
+] }
+clap_complete = "4.5.65"
+chrono.workspace = true
+regex.workspace = true
+anyhow.workspace = true
+rmcp.workspace = true
+command-group = { version = "5.0.1", features = ["with-tokio"] }
+colored = "3.1.1"
+serde_json.workspace = true
+terminal_size = "0.4.3"
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = [
+    "env-filter",
+    "std",
+    "fmt",
+] }
+tracing-forest.workspace = true
+cli-prompts = "0.1.0"
+dirs.workspace = true
+minus = { version = "5.6.1", default-features = false, features = [
+    "static_output",
+    "search",
+] }
+unicode-width = "0.2"
+cfg-if = "1.0.4"
+sha2.workspace = true
+machine-uid = "0.5.4"
+tempfile.workspace = true
+nonempty.workspace = true
+itertools.workspace = true
+self_cell.workspace = true
+
+[dev-dependencies]
+serde_json = { workspace = true, features = ["preserve_order"] }
+snapbox = { workspace = true, features = ["term-svg"] }
+shell-words.workspace = true

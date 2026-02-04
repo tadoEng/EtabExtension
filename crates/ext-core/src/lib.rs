@@ -275,20 +275,20 @@ mod tests {
     #[test]
     fn test_export_typescript_bindings() {
         // Export all types
-        Project::export().expect("Failed to export Project");
-        ProjectState::export().expect("Failed to export ProjectState");
-        BranchData::export().expect("Failed to export BranchData");
-        VersionInfo::export().expect("Failed to export VersionInfo");
-        WorkingFileInfo::export().expect("Failed to export WorkingFileInfo");
-        EtabsStatus::export().expect("Failed to export EtabsStatus");
-        ValidationData::export().expect("Failed to export ValidationData");
-        GenerateE2KData::export().expect("Failed to export GenerateE2KData");
-        E2KDiffResult::export().expect("Failed to export E2KDiffResult");
-        E2KChange::export().expect("Failed to export E2KChange");
-        GeometryDiffResult::export().expect("Failed to export GeometryDiffResult");
-        CreateBranchRequest::export().expect("Failed to export CreateBranchRequest");
-        SaveVersionRequest::export().expect("Failed to export SaveVersionRequest");
-        CompareVersionsRequest::export().expect("Failed to export CompareVersionsRequest");
-        VersionIdentifier::export().expect("Failed to export VersionIdentifier");
+        Project::export(&Default::default()).expect("Failed to export Project");
+        ProjectState::export(&Default::default()).expect("Failed to export ProjectState");
+        BranchData::export(&Default::default()).expect("Failed to export BranchData");
+        VersionInfo::export(&Default::default()).expect("Failed to export VersionInfo");
+        WorkingFileInfo::export(&Default::default()).expect("Failed to export WorkingFileInfo");
+        EtabsStatus::export(&Default::default()).expect("Failed to export EtabsStatus");
+        ValidationData::export(&Default::default()).expect("Failed to export ValidationData");
+        GenerateE2KData::export(&Default::default()).expect("Failed to export GenerateE2KData");
+        E2KDiffResult::export(&Default::default()).expect("Failed to export E2KDiffResult");
+        E2KChange::export(&Default::default()).expect("Failed to export E2KChange");
+        GeometryDiffResult::export(&Default::default()).expect("Failed to export GeometryDiffResult");
+        CreateBranchRequest::export(&Default::default()).expect("Failed to export CreateBranchRequest");
+        SaveVersionRequest::export(&Default::default()).expect("Failed to export SaveVersionRequest");
+        CompareVersionsRequest::export(&Default::default()).expect("Failed to export CompareVersionsRequest");
+        VersionIdentifier::export(&Default::default()).expect("Failed to export VersionIdentifier");
     }
 }

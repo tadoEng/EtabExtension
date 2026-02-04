@@ -6,7 +6,7 @@ members = [
     "crates/ext-db",            # 📄Abstractions over Sqlite databases and Caches, with transaction and synchronization support.
     "crates/ext-api",           # 📄A project-based API to used by all clients (CLI, GUI, etc)
     "crates/ext-tauri"          # Should be reviewed to mostly use `ext-api`
-]
+, "crates/ext"]
 resolver = "2"
 
 [workspace.package]
