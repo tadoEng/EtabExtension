@@ -21,3 +21,6 @@ Thumbs.db
 # Env
 .env*.local
 EOF
+Cargo.lock
+pnpm-lock.yaml
+
