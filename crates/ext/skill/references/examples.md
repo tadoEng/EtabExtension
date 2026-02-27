@@ -156,7 +156,6 @@ ext checkout v2
 ext etabs open
 # ... review v2, close ...
 
-# Return to stashed work
 ext stash pop
 # ✓ Restored stash  (was based on v4)
 ```
@@ -201,14 +200,13 @@ ext commit "Recovery: pre-crash changes"
 
 ---
 
-## Example 10: Setting Up on a New Machine (ext clone)
+## Example 10: Setting Up on a New Machine
 
-John has been working on the project. Jane joins the team and needs a local copy.
+John has been working on the project. Jane joins and needs a local copy.
 
 **John pushes everything first:**
 
 ```bash
-# John's machine
 ext push --include-working
 # ✓ Pushed git history
 # ✓ Pushed main/v1.edb through main/v4.edb
@@ -272,7 +270,6 @@ ext pull --branch jane/foundation-v2
 ext report comparison --from main/v4 --to jane/foundation-v2/v1
 # review comparison PDF...
 
-# Decide to adopt Jane's work as new main
 ext switch main
 ext checkout jane/foundation-v2/v1
 # ✓ Restored jane/foundation-v2/v1 → main/working/model.edb
@@ -299,7 +296,6 @@ Two engineers pushed to OneDrive at the same time.
 
 ```bash
 ext push
-# Checking OneDrive...
 # ✗ Conflict: main/v4 already exists on OneDrive
 #   Pushed by: Jane Smith  (2h ago)
 #   Her v4:   "Updated shear walls"
@@ -325,7 +321,6 @@ ext report bom --version v1
 ext report bom --version v4
 
 # Both saved to OneDrive reports folder
-# Compare material quantities via the comparison report
 ext report comparison --from v1 --to v4
 # → shows +12.3t concrete, -0.8t rebar delta
 ```
@@ -345,4 +340,120 @@ ext remote status
 
 ext pull --branch jane/foundation
 # ✓ Pulled jane/foundation/v1 — "Alternative slab system" (Jane, 3h ago)
+```
+
+---
+
+## Example 15: Setting Up Local AI (Ollama, Private)
+
+No data leaves the machine. No API key needed.
+
+```bash
+# Step 1: Install Ollama from https://ollama.com
+# Step 2: Pull a model (run in any terminal)
+ollama pull qwen2.5-coder:14b
+
+# Step 3: Configure ext
+ext config set ai.provider ollama
+ext config set ai.model "qwen2.5-coder:14b"
+ext config set ai.baseUrl "http://localhost:11434/v1"
+
+# Step 4: Start a session
+ext chat
+
+# ETABS Agent — HighRise Tower
+# Provider: ollama / qwen2.5-coder:14b  ●  local — no data leaves your machine
+# Branch: main  ·  v3  ·  Modified  ·  ETABS not running
+#
+# You> what's the state of this project?
+#
+# Agent> You're on branch main with 3 committed versions. The working file
+#        has been modified since v3 — about 2 hours ago based on the mtime.
+#        ETABS is not running. No stash exists. OneDrive is in sync at v3.
+#        Want me to commit your changes?
+```
+
+---
+
+## Example 16: AI-Assisted Commit Workflow
+
+```bash
+ext chat
+
+# You> commit my changes, message is refined beam B45 connection details
+
+# Agent> I'll run: ext commit "Refined beam B45 connection details"
+#        Saves current working file as v4 on branch main.
+#        Confirm? [y/n] y
+
+# Agent> ✓ Version v4 saved. Working file is now CLEAN.
+#        E2K exported and materials extracted.
+#        Suggestion: v4 hasn't been analyzed yet. Run ext commit --analyze
+#        or ext analyze v4 when you're ready to capture results.
+```
+
+---
+
+## Example 17: AI-Assisted Branch Comparison
+
+```bash
+ext chat
+
+# You> what's different between the steel and concrete column alternatives?
+
+# Agent> [reads ext diff steel-columns/v1 concrete-hsc/v1 internally]
+#
+#        Comparing steel-columns/v1 vs concrete-hsc/v1 (both from main/v3):
+#
+#        Steel alternative (v1):
+#        • 12 columns changed to W-section steel: C1–C12
+#        • Section depth: 14", flange width: 14.670"
+#        • No slab or foundation changes
+#
+#        Concrete alternative (v1):
+#        • Same 12 columns remain rectangular concrete
+#        • Section increased: 30×30 cm → 40×40 cm
+#        • Concrete strength increased: fc=4000 → fc=8000 psi
+#
+#        Both versions have analysis results. Want me to generate a
+#        comparison report? (Phase 2 feature — I can give you the command now)
+
+# You> yes give me the command
+
+# Agent> Run:
+#        ext report comparison --from steel-columns/v1 --to concrete-hsc/v1
+#        The PDF will be saved to your configured reports folder on OneDrive.
+```
+
+---
+
+## Example 18: AI-Assisted Crash Recovery
+
+```bash
+ext chat
+
+# You> ETABS crashed, what do I do?
+
+# Agent> [reads ext status --json — sees ORPHANED state]
+#
+#        ETABS closed unexpectedly (PID 12345). The working file was
+#        modified about 14 minutes before the crash.
+#
+#        I'll run ext etabs recover for you. It will ask whether to:
+#        [k] Keep your changes — marks the file as MODIFIED so you can commit
+#        [r] Restore from v3 — discards the 14 minutes of work
+#
+#        Which do you prefer? (I recommend [k] unless the changes were
+#        experimental and you want a clean start.)
+
+# You> keep the changes
+
+# Agent> I'll run: ext etabs recover
+#        Confirm? [y/n] y
+#
+# [agent runs ext etabs recover and selects [k]]
+#
+# Agent> ✓ Recovery complete. State is now MODIFIED.
+#        Your pre-crash changes are preserved.
+#        Run ext commit "message" when you're ready to save them.
 ```

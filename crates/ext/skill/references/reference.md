@@ -14,6 +14,7 @@ Complete reference for all `ext` commands.
 - [Report](#report) — `report analysis/bom/comparison`
 - [Remote](#remote) — `push`, `pull`, `clone`, `remote status`
 - [Config](#config) — `config get/set/list/edit`
+- [AI Chat](#ai-chat) — `chat`
 - [Aliases](#aliases)
 - [Sidecar Reference](#sidecar-reference)
 - [Quick Reference](#quick-reference)
@@ -37,13 +38,14 @@ Complete reference for all `ext` commands.
 |---|---|
 | `ETABS_EXT_PROJECT` | Default project path |
 | `ETABS_SIDECAR_PATH` | Path to `etab-cli.exe` |
+| `ETABS_AI_API_KEY` | AI provider API key (overrides config.local.toml) |
 | `NO_COLOR` | Disable color |
 
 ---
 
 ## Project
 
-### `ext init <n> --edb <path>`
+### `ext init <name> --edb <path>`
 
 Initialize a new ETABS project with version control.
 
@@ -56,7 +58,7 @@ ext init "HighRise Tower" --edb "C:\Models\highrise.edb" --path "D:\Projects\Hig
 |---|---|
 | `--edb <path>` | Path to existing `.edb` file (required) |
 | `--path <path>` | Project directory (default: current directory) |
-| `--author <n>` | Author name — saved to `config.local.toml` |
+| `--author <name>` | Author name — saved to `config.local.toml` |
 | `--email <email>` | Author email — saved to `config.local.toml` |
 | `--onedrive <path>` | OneDrive project folder — saved to `config.local.toml` |
 | `--reports <path>` | Reports output folder — saved to `config.local.toml` |
@@ -86,6 +88,8 @@ ext init "HighRise Tower" --edb "C:\Models\highrise.edb" --path "D:\Projects\Hig
 
 ### `ext status`
 
+Show full project state.
+
 ```bash
 ext status
 ext status --verbose
@@ -113,9 +117,14 @@ Recent Versions:
   v1  Initial structural layout  2w ago
 ```
 
+**`--verbose` additions:** shows full file paths, ETABS PID if running,
+OneDrive sync details, AI provider if configured.
+
 ---
 
 ### `ext log`
+
+List committed versions on a branch.
 
 ```bash
 ext log
@@ -134,11 +143,13 @@ Branch: main
   v1  Initial structural layout               2w ago
 ```
 
-Internal `ext:` commits are hidden from this view.
+Internal `ext:` commits are always hidden from this view.
 
 ---
 
 ### `ext show <target>`
+
+Show details of a version, branch, or project.
 
 ```bash
 ext show v3
@@ -158,6 +169,7 @@ ext show v3 --json
 
 ```bash
 ext branch
+ext branch --json
 ```
 
 ```
@@ -214,7 +226,7 @@ ext switch main
   Changes are preserved in main/working/model.edb
 ```
 
-**Arrival warning:**
+**Arrival report:**
 
 ```
 ✓ Switched to: steel-columns
@@ -260,6 +272,7 @@ ext checkout main/v1         # switch to main first, then restore to v1
 
 - Cross-branch: applies `ext switch` rules first
 - If snapshot `vN/model.edb` missing: lists available versions
+- `--force` implies `[d]` discard — for CI/automation
 
 ---
 
@@ -278,6 +291,7 @@ ext stash --message "WIP: trying larger columns"
 
 ```bash
 ext stash list
+ext stash list --json
 ```
 
 ```
@@ -288,8 +302,6 @@ Stashes:
 ```
 
 ### `ext stash pop`
-
-Restore stash to current branch working file.
 
 ```bash
 ext stash pop
@@ -332,31 +344,26 @@ ext commit "Quick save" --no-e2k
 6. state: CLEAN, basedOn=vN
 ```
 
-**With `--analyze`** (after steps 1–6, on snapshot — not working file):
+**With `--analyze`** (runs on snapshot — NOT working file):
 
 ```
-7. sidecar: open vN/model.edb --hidden
-8. sidecar: run-analysis  (blocks)
-9. sidecar: extract-results → vN/results/*.parquet
-10. sidecar: close
-11. Write vN/summary.json, update manifest { isAnalyzed: true }
-12. git commit  (internal, hidden from ext log)
+7–12. sidecar: open hidden → run analysis → extract results → close
+13.   Write vN/summary.json, update manifest { isAnalyzed: true }
+14.   git commit (internal, hidden from ext log)
 
-Working file: untouched throughout steps 7–12
+Working file: untouched throughout steps 7–14
 ```
 
 ---
 
 ### `ext analyze <version>`
 
-Run analysis on an already-committed version.
+Run analysis on an already-committed version. Working file untouched.
 
 ```bash
 ext analyze v2
 ext analyze main/v2
 ```
-
-Working file untouched. Useful when committed without `--analyze`.
 
 ---
 
@@ -394,6 +401,7 @@ ext etabs close --no-save
 
 ```bash
 ext etabs status
+ext etabs status --json
 ```
 
 ```
@@ -424,7 +432,7 @@ Calls `SapModel.SetModelIsLocked(false)`. Extracted Parquet files are preserved.
 
 ### `ext etabs recover`
 
-Recover from ETABS crash (ORPHANED state).
+Recover from ETABS crash (ORPHANED state). Always prompts — never automated.
 
 ```bash
 ext etabs recover
@@ -442,7 +450,7 @@ ext etabs recover
 
 ## Report
 
-Reports default to `paths.reportsDir` from `config.local.toml` (typically OneDrive). Override with `--out`.
+Reports default to `paths.reportsDir` from `config.local.toml`. Override with `--out`.
 
 ### `ext report analysis --version <id>`
 
@@ -451,7 +459,8 @@ ext report analysis --version v3
 ext report analysis --version v3 --out "D:\Reports\analysis.pdf"
 ```
 
-Requires `isAnalyzed: true`. Contents: modal results, base reactions, story forces, story drifts, code compliance checks.
+Requires `isAnalyzed: true`. Contents: modal results, base reactions, story
+forces, story drifts, code compliance checks.
 
 ### `ext report bom --version <id>`
 
@@ -459,7 +468,8 @@ Requires `isAnalyzed: true`. Contents: modal results, base reactions, story forc
 ext report bom --version v3
 ```
 
-Does not require analysis. Contents: material quantities by type and story, weight and cost summary.
+Does not require analysis. Contents: material quantities by type and story,
+weight and cost summary.
 
 ### `ext report comparison --from <id> --to <id>`
 
@@ -467,7 +477,7 @@ Does not require analysis. Contents: material quantities by type and story, weig
 ext report comparison --from main/v3 --to steel-columns/v1
 ```
 
-Contents: E2K change summary, result deltas (if both analyzed), material quantity delta.
+Contents: E2K change summary, result deltas (if both analyzed), material delta.
 
 ---
 
@@ -475,13 +485,11 @@ Contents: E2K change summary, result deltas (if both analyzed), material quantit
 
 ### `ext push`
 
-Push git history and `.edb` files to OneDrive.
-
 ```bash
 ext push
-ext push --include-working        # also push current working file
-ext push --branch steel-columns   # push one branch only
-ext push --versions v1,v3         # push specific versions only
+ext push --include-working
+ext push --branch steel-columns
+ext push --versions v1,v3
 ```
 
 Requires `paths.oneDriveDir` in `config.local.toml`.
@@ -498,77 +506,36 @@ Requires `paths.oneDriveDir` in `config.local.toml`.
   [x] Cancel
 ```
 
-**Output:**
-
-```
-✓ Pushed git history
-✓ Pushed main/v3 (45.2 MB)
-✓ Pushed steel-columns/v1 (46.1 MB)
-✓ Updated OneDrive/project.json
-→ OneDrive: C:\Users\John\OneDrive\Structural\HighRise
-```
-
 ### `ext pull`
-
-Pull new versions from OneDrive.
 
 ```bash
 ext pull
 ext pull --branch steel-columns
 ```
 
-**Output:**
-
-```
-✓ Pulled git history
-✓ Pulled main/v4 — "Updated wall thickness" (Jane Smith, 2h ago)
-✓ Pulled steel-columns/v2 — "Revised connections"
-  2 versions pulled
-```
-
 ### `ext clone <onedrive-path> --to <local-path>`
-
-First-time project setup on a new machine.
 
 ```bash
 ext clone "C:\Users\Jane\OneDrive\Structural\HighRise" --to "C:\ETABSProjects\HighRise"
 ```
 
-Interactive wizard:
-
-```
-Setting up HighRise Tower on this machine...
-
-Author name:          [Jane Smith        ]
-Author email:         [jane@firm.com     ]
-OneDrive folder:      [C:\Users\Jane\OneDrive\Structural\HighRise]
-Reports folder:       [C:\Users\Jane\OneDrive\Structural\HighRise\reports]
-
-✓ Restored git history (3 branches, 6 versions)
-✓ Copied main/v1.edb  (45.2 MB)
-✓ Copied main/v2.edb  (46.0 MB)
-✓ Copied main/v3.edb  (47.3 MB)
-✓ Copied steel-columns/v1.edb  (46.1 MB)
-✓ Set working file: main/v3
-✓ Wrote config.local.toml
-→ Project ready. Run: ext status
-```
+Interactive wizard prompts for author, email, OneDrive folder, reports folder.
+Writes `config.local.toml`. Never overwrites an existing `config.local.toml`.
 
 ### `ext remote status`
 
-Show what's on OneDrive vs local.
-
 ```bash
 ext remote status
+ext remote status --json
 ```
 
 ```
 Remote: C:\Users\John\OneDrive\Structural\HighRise
 Last pushed by: John Doe  (2h ago)
 
-  main:           local v3  =  remote v3  ✓ in sync
-  steel-columns:  local v1  =  remote v1  ✓ in sync
-  jane/foundation: ─────────  remote v1  ↓ not pulled
+  main:              local v5  =  remote v5  ✓ in sync
+  steel-columns:     local v1  =  remote v1  ✓ in sync
+  jane/foundation:   ─────────   remote v1  ↓ not pulled
 ```
 
 ---
@@ -580,33 +547,148 @@ Last pushed by: John Doe  (2h ago)
 ```bash
 ext config get git.author
 ext config get paths.reportsDir
+ext config get ai.provider
 ```
 
 ### `ext config set <key> <value>`
 
 ```bash
+# Machine-specific — auto-routed to config.local.toml
 ext config set git.author "John Doe"
+ext config set git.email "john@firm.com"
 ext config set paths.reportsDir "C:\Users\John\OneDrive\Structural\HighRise\reports"
 ext config set paths.oneDriveDir "C:\Users\John\OneDrive\Structural\HighRise"
+
+# AI provider — always config.local.toml (never config.toml — API keys are private)
+ext config set ai.provider ollama
+ext config set ai.model "qwen2.5-coder:14b"
+ext config set ai.baseUrl "http://localhost:11434/v1"
+ext config set ai.provider claude
+ext config set ai.apiKey "sk-ant-..."
+ext config set ai.autoConfirm false
+
+# Shared project settings — routed to config.toml
 ext config set behavior.confirmDestructive true
 ```
 
-Values that belong in `config.local.toml` (author, paths) are automatically written there. Shared values go to `config.toml`.
+**Routing rules** (enforced automatically — user does not need to know):
+
+| Key prefix | File |
+|---|---|
+| `git.*` | `config.local.toml` |
+| `paths.*` | `config.local.toml` |
+| `ai.*` | `config.local.toml` — **always**, even if user specifies `--global` |
+| `onedrive.*` | `config.local.toml` |
+| `project.*` | `config.toml` |
+| `etabs.*` | `config.toml` |
+| `behavior.*` | `config.toml` |
 
 ### `ext config list`
 
 ```bash
 ext config list
-ext config list --local    # show only config.local.toml values
+ext config list --local
 ext config list --json
 ```
+
+`--local` shows only `config.local.toml` values. Useful to verify AI keys
+are set correctly without seeing shared config noise. API key values are
+always masked: `sk-ant-...●●●●●●●●`.
 
 ### `ext config edit`
 
 ```bash
-ext config edit           # opens config.toml
-ext config edit --local   # opens config.local.toml
+ext config edit           # opens config.toml in $EDITOR
+ext config edit --local   # opens config.local.toml in $EDITOR
 ```
+
+---
+
+## AI Chat
+
+### `ext chat`
+
+Start an interactive AI-assisted session for the current project.
+The agent reads current project state before every turn and can execute
+any `ext` operation on your behalf after confirmation.
+
+```bash
+ext chat
+ext chat --provider ollama
+ext chat --provider claude
+ext chat --provider openai
+ext chat --model "qwen2.5-coder:14b"
+ext chat --no-confirm              # skip [y/n] for non-destructive writes
+ext chat --non-interactive         # Phase 2: read from stdin, write to stdout
+ext chat --resume                  # Phase 2: continue last saved session
+ext chat --clear-history           # Phase 2: wipe saved session for this branch
+```
+
+| Flag | Description |
+|---|---|
+| `--provider <name>` | Override `ai.provider` for this session |
+| `--model <name>` | Override `ai.model` for this session |
+| `--no-confirm` | Skip `[y/n]` prompts for non-destructive write tools |
+| `--non-interactive` | Phase 2: stdin → stdout, no REPL (for scripting) |
+| `--resume` | Phase 2: load last saved conversation for this project/branch |
+| `--clear-history` | Phase 2: delete saved conversation history |
+
+**Session header:**
+
+```
+ETABS Agent — HighRise Tower
+Provider: ollama / qwen2.5-coder:14b  ●  local — no data leaves your machine
+Branch: main  ·  v3  ·  Modified  ·  ETABS not running
+Type your question or instruction. Ctrl+C to exit.
+
+You>
+```
+
+**Example session:**
+
+```
+You> what changed between v2 and v3?
+
+Agent> Comparing v2 → v3 on main branch:
+       • 6 column sections increased: C1–C6 from 30×30 to 36×36 cm
+       • No load case changes
+       • No geometry changes
+       Committed 2 days ago by John Doe: "Updated column sections per analysis"
+
+You> commit my current changes
+
+Agent> I'll run: ext commit
+       Message? [enter to describe your changes] Increased beam B45 to W21x93
+
+Agent> I'll run: ext commit "Increased beam B45 to W21x93"
+       Saves current working file as v4 on branch main. Confirm? [y/n] y
+
+Agent> ✓ Version v4 saved. Working file is now CLEAN.
+```
+
+**What the agent can do (Phase 1):**
+
+| Category | Operations |
+|---|---|
+| Read | status, log, show, branch list, diff, etabs status, remote status, config list |
+| Write (with confirmation) | commit, create branch, switch branch, checkout, stash save/pop, etabs open/close/recover, push, pull |
+| Deferred to Phase 2 | analyze, report generation, etabs unlock (require streaming UI) |
+
+**What the agent cannot do:**
+
+- Operate ETABS interactively (click buttons, enter values in the UI)
+- See what is displayed on screen in ETABS
+- Open multiple operations in parallel
+- Bypass the state machine (same guards as the CLI)
+- Access `.edb` binary content or raw Parquet data
+
+**Privacy:** The agent sends your text messages and project state summary
+to the configured provider. It never sends `.edb` binary data, raw Parquet,
+full E2K files, or your `config.local.toml`. With `ai.provider = "ollama"`,
+nothing leaves your machine.
+
+See `references/ai.md` for full provider setup, privacy details, and
+configuration options.
 
 ---
 
@@ -648,8 +730,7 @@ ext commit "Initial model"
 
 # Daily work
 ext etabs open
-# work in ETABS, Ctrl+S
-# close ETABS
+# work in ETABS, Ctrl+S, close ETABS
 ext commit "What changed"
 
 # Design alternative
@@ -675,15 +756,21 @@ ext checkout v1
 ext stash pop
 
 # Share / sync
-ext push                    # push to OneDrive
-ext pull                    # pull from OneDrive
-ext clone <onedrive-path>   # first time on new machine
+ext push
+ext pull
+ext clone <onedrive-path> --to <local-path>
 
-# Reports (auto-saved to OneDrive reportsDir)
+# Reports
 ext report analysis --version v3
 ext report comparison --from main/v3 --to steel/v1
 
 # Recover
 ext etabs recover
 ext etabs unlock
+
+# AI assistant
+ext chat                                      # local Ollama (default)
+ext chat --provider claude                    # cloud (requires api key)
+ext config set ai.provider ollama
+ext config set ai.model "qwen2.5-coder:14b"
 ```

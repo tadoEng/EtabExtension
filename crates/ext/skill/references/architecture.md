@@ -7,77 +7,91 @@ System architecture, crate responsibilities, data flows, and design decisions.
 ## High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      User Interfaces                        │
-│                                                             │
-│  ┌─────────────┐   ┌───────────────┐   ┌────────────────┐  │
-│  │   ext CLI   │   │  ext-tauri    │   │   ext-web      │  │
-│  │   (Rust)    │   │  (Desktop)    │   │   (Future)     │  │
-│  └──────┬──────┘   └───────┬───────┘   └───────┬────────┘  │
-└─────────┼──────────────────┼────────────────────┼───────────┘
-          └──────────────────▼────────────────────┘
-                             │
-                ┌────────────▼────────────┐
-                │         ext-api         │  ← Single source of truth
-                │   Plain async Rust fns  │    No framework types
-                └────────────┬────────────┘
-                             │
-             ┌───────────────┼───────────────┐
-             │               │               │
-       ┌─────▼──────┐  ┌─────▼─────┐  ┌─────▼──────┐
-       │  ext-core  │  │  ext-db   │  │  ext-error  │
-       │   domain   │  │  storage  │  │    types    │
-       └─────┬──────┘  └───────────┘  └────────────┘
-             │
-   ┌─────────▼──────────────────────┐
-   │         External Systems        │
-   │  ┌────────────┐  ┌───────────┐  │
-   │  │ etab-cli   │  │ git + gix │  │
-   │  │ (C# .NET10)│  │  (vcs)    │  │
-   │  └────────────┘  └───────────┘  │
-   └─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                        User Interfaces                          │
+│                                                                 │
+│  ┌─────────────┐  ┌───────────────┐  ┌───────────────────────┐  │
+│  │   ext CLI   │  │  ext-tauri    │  │   ext-web  (future)   │  │
+│  │   (Rust)    │  │  (Desktop)    │  │                       │  │
+│  └──────┬──────┘  └───────┬───────┘  └───────────┬───────────┘  │
+└─────────┼─────────────────┼──────────────────────┼──────────────┘
+          └─────────────────▼──────────────────────┘
+                            │
+               ┌────────────▼────────────┐
+               │         ext-api         │  ← Single source of truth
+               │   Plain async Rust fns  │    No framework types
+               └────────────┬────────────┘
+                            │
+            ┌───────────────┼───────────────┐
+            │               │               │
+      ┌─────▼──────┐  ┌─────▼─────┐  ┌─────▼──────┐
+      │  ext-core  │  │  ext-db   │  │  ext-error  │
+      │   domain   │  │  storage  │  │    types    │
+      └─────┬──────┘  └───────────┘  └────────────┘
+            │
+  ┌─────────▼──────────────────────┐
+  │         External Systems        │
+  │  ┌────────────┐  ┌───────────┐  │
+  │  │ etab-cli   │  │ git + gix │  │
+  │  │ (C# .NET10)│  │  (vcs)    │  │
+  │  └────────────┘  └───────────┘  │
+  └─────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│                         AI Layer                                 │
+│                                                                  │
+│  ext chat (CLI)          ext-tauri chat panel                    │
+│       ↓                          ↓                               │
+│       └──────── ext-agent ───────┘   ← conversation loop,       │
+│                     │                   tool dispatch,           │
+│                     │                   calls ext-api as tools   │
+│                     ↓                                            │
+│              ext-agent-llm               ← LlmClient trait       │
+│             /            \                                       │
+│     claude.rs          openai.rs         ← provider backends     │
+│    (reqwest)        (async-openai)                               │
+│        ↓                  ↓                                      │
+│   Anthropic API     Ollama / OpenAI /    ← Phase 1: Claude       │
+│    (cloud)          Azure / LM Studio    ← Phase 2: local + more │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Why `ext-api` is the Center
 
-All business operations are plain async Rust functions with no framework types. CLI, Tauri, and future web are thin adapters.
+All business operations are plain async Rust functions with no framework types.
+CLI, Tauri, agent, and future web are thin adapters. The agent calls the same
+functions as the CLI — the state machine and permission matrix are enforced
+regardless of caller.
 
 ```rust
 // ext-api — pure, framework-free
 pub async fn commit_version(
     ctx: &AppContext,
     message: &str,
-    options: CommitOptions,      // analyze: bool, no_e2k: bool
+    options: CommitOptions,
 ) -> Result<VersionCommitted, EtabsError>
 
-pub async fn push(
-    ctx: &AppContext,
-    options: PushOptions,        // include_working: bool, branch: Option<String>
-) -> Result<PushResult, EtabsError>
-
-pub async fn clone_project(
-    onedrive_path: &Path,
-    local_path: &Path,
-    identity: Identity,          // author, email, paths
-) -> Result<(), EtabsError>
-```
-
-```rust
-// CLI adapter — clap args → ext-api call
+// CLI adapter
 async fn handle_commit(args: &CommitArgs, ctx: &AppContext) -> Result<()> {
     let result = ext_api::commit_version(ctx, &args.message, args.into()).await?;
     out.write_result(result)
 }
 
-// Tauri adapter — IPC wrapper
+// Agent tool adapter — identical call
+async fn commit_tool(&self, input: Value) -> Result<Value> {
+    let result = ext_api::commit_version(
+        &self.ctx, input["message"].as_str().unwrap(), Default::default()
+    ).await?;
+    Ok(serde_json::to_value(result)?)
+}
+
+// Tauri adapter
 #[tauri::command]
-async fn commit_version(
-    state: tauri::State<'_, AppContext>,
-    message: String, analyze: bool,
-) -> Result<VersionCommitted, String> {
-    ext_api::commit_version(&state, &message, CommitOptions { analyze, ..Default::default() })
+async fn commit_version(state: tauri::State<'_, AppContext>, message: String)
+    -> Result<VersionCommitted, String> {
+    ext_api::commit_version(&state, &message, Default::default())
         .await.map_err(|e| e.to_string())
 }
 ```
@@ -115,7 +129,7 @@ pub enum EtabsError {
 
 ### `ext-core`
 
-Pure domain logic. No I/O frameworks, no clap, no Tauri.
+Pure domain logic. No I/O frameworks, no clap, no Tauri, no AI dependencies.
 
 ```
 ext-core/src/
@@ -179,11 +193,13 @@ Persistent storage.
 ext-db/src/
   state.rs       Read/write state.json  (serde_json)
   config.rs      Read/write config.toml + config.local.toml  (toml crate)
-                 → Handles config resolution order: local → shared → defaults
-  registry.rs    SQLite list of known projects  (rusqlite)
+                 → Handles resolution order: local → shared → defaults
+                 → AI keys always read from local, never from shared
+  registry.rs    SQLite list of known projects  (sea-orm)
+  sessions.rs    SQLite agent session history   (sea-orm, Phase 2)
 ```
 
-**Config resolution in `ext-db`:**
+**Config resolution:**
 
 ```rust
 pub struct Config {
@@ -198,13 +214,14 @@ impl Config {
             .unwrap_or("Unknown")
     }
 
-    pub fn reports_dir(&self) -> Option<&Path> {
-        self.local.paths.reports_dir.as_deref()
-            .or(self.shared.paths.reports_dir.as_deref())
+    pub fn ai_provider(&self) -> &str {
+        // Always from local — never from shared (API keys are private)
+        self.local.ai.provider.as_deref().unwrap_or("ollama")
     }
 
-    pub fn onedrive_dir(&self) -> Option<&Path> {
-        self.local.paths.onedrive_dir.as_deref()
+    pub fn ai_api_key(&self) -> Option<&str> {
+        // Always from local — never written to shared config
+        self.local.ai.api_key.as_deref()
     }
 }
 ```
@@ -230,13 +247,76 @@ ext-api/src/
   report.rs      analysis(), bom(), comparison()
   remote.rs      push(), pull(), clone_project(), remote_status()
   config.rs      get(), set(), list()
+              ↑
+              All agent tools call these functions directly.
+              The agent is just another caller — no special API needed.
+```
+
+---
+
+### `ext-agent-llm`
+
+Provider abstraction layer. No knowledge of ETABS or projects.
+
+```
+ext-agent-llm/src/
+  lib.rs       LlmClient trait, Message, ToolDefinition, LlmResponse, LlmError
+  claude.rs    Anthropic Messages API via reqwest  (feature = "claude")
+  openai.rs    OpenAI-compatible via async-openai  (feature = "openai", Phase 2)
+               Covers: Ollama, LM Studio, OpenAI, Azure OpenAI
+  config.rs    AgentConfig: provider, model, api_key, base_url, max_tokens
+```
+
+```rust
+#[async_trait]
+pub trait LlmClient: Send + Sync {
+    async fn chat(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<LlmResponse, LlmError>;
+
+    async fn chat_streaming(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        on_token: impl Fn(String) + Send + 'static,
+    ) -> Result<LlmResponse, LlmError>;
+}
+
+pub enum LlmResponse {
+    Text(String),
+    ToolCall { name: String, input: serde_json::Value },
+    ToolCallWithText { text: String, name: String, input: serde_json::Value },
+}
+```
+
+---
+
+### `ext-agent`
+
+Conversation loop and ETABS tool registry.
+
+```
+ext-agent/src/
+  lib.rs              AgentSession: new(), chat(), run_interactive()
+  tools/
+    mod.rs            ToolRegistry: definitions + dispatch table
+    read.rs           status, log, branch, show, diff, etabs_status, remote_status, config_list
+    write.rs          commit, checkout, switch, branch_create, stash_save, stash_pop,
+                      etabs_open, etabs_close, etabs_recover, push, pull
+                      (Phase 2: analyze, report, etabs_unlock)
+  context.rs          system prompt: SKILL.md (include_str!) + live status JSON
+  confirmation.rs     [y/n] gate for write tools; Tauri event gate for Phase 2
+  history.rs          Vec<Message> in-memory per session
+  suggestion.rs       post-tool next-action hints (Phase 2)
 ```
 
 ---
 
 ### `ext` (CLI binary)
 
-Thin clap layer over `ext-api`. Zero business logic.
+Thin clap layer. Zero business logic. `ext chat` delegates fully to `ext-agent`.
 
 ```
 ext/src/
@@ -253,7 +333,19 @@ ext/src/
     report.rs      report analysis/bom/comparison
     remote.rs      push, pull, clone, remote status
     config.rs      config get/set/list/edit
-  output.rs        Format: human / --json / --shell
+    chat.rs        ext chat — delegates to AgentSession::run_interactive()
+  output.rs        OutputChannel: human / --json / --shell
+```
+
+`chat.rs` handler — under 15 lines:
+
+```rust
+pub async fn execute(ctx: &AppContext, args: &ChatArgs) -> Result<()> {
+    let llm = ext_agent_llm::from_config(&ctx.config)
+        .with_context(|| "No AI provider configured. Run: ext config set ai.provider ollama")?;
+    let mut session = AgentSession::new(ctx, llm, args.auto_confirm);
+    session.run_interactive().await
+}
 ```
 
 ---
@@ -263,7 +355,7 @@ ext/src/
 ```
 ext commit "message"
   │
-  ├─ AppContext::load()           read config.toml + config.local.toml + state.json
+  ├─ AppContext::load()           read config + state.json
   ├─ StateManager::resolve()      mtime check → state
   ├─ Guard: etabs_not_running()   sidecar get-status
   │
@@ -279,10 +371,32 @@ ext commit "message"
   │
   │   with --analyze:
   ├─ SidecarClient::run_analysis(vN/model.edb)
-  │     opens hidden, runs analysis, extracts results, closes
   ├─ write vN/summary.json
   ├─ update vN/manifest.json  { isAnalyzed: true }
   └─ git commit "ext: analysis results vN"  (internal)
+```
+
+---
+
+## Data Flow: Agent `commit_version` Tool
+
+```
+AgentSession::chat("commit my changes")
+  │
+  ├─ Build system prompt: SKILL.md + ext_api::status() JSON
+  ├─ Send to LlmClient::chat() with tool list
+  ├─ LLM responds: ToolCall { name: "commit_version", input: { message: "..." } }
+  │
+  ├─ Confirmation gate:
+  │     print "I'll run: ext commit '...'" → prompt [y/n]
+  │     user confirms
+  │
+  ├─ ext_api::commit_version(&ctx, "...", Default::default()).await
+  │     ← identical to the CLI data flow above
+  │
+  ├─ Wrap result as tool_result message
+  ├─ Send back to LLM for final text response
+  └─ Print agent response to user
 ```
 
 ---
@@ -293,75 +407,53 @@ ext commit "message"
 ext push
   │
   ├─ Resolve oneDriveDir from config.local.toml
-  │     missing? → error: "Run: ext config set paths.oneDriveDir <path>"
-  │
-  ├─ Read OneDrive/project.json  (if exists)
-  ├─ Conflict check: any local vN matches remote vN with different content?
-  │     YES → prompt: rename to vN+1 / view diff / cancel
-  │
-  ├─ git bundle create OneDrive/git-bundle  (full history, all branches)
-  │
-  ├─ For each branch/version not yet on OneDrive:
-  │     atomic_copy(vN/model.edb → OneDrive/edb/<branch>-vN.edb)
-  │     show progress bar per file
-  │
-  ├─ If --include-working:
-  │     copy working/model.edb → OneDrive/edb/<branch>-working.edb
-  │
-  └─ Write OneDrive/project.json  { pushedBy, pushedAt, branches, versions }
+  ├─ Read OneDrive/project.json (if exists)
+  ├─ Conflict check → prompt if needed
+  ├─ git bundle create OneDrive/git-bundle
+  ├─ For each new version: atomic_copy(vN/model.edb → OneDrive/edb/<branch>-vN.edb)
+  ├─ If --include-working: copy working file
+  └─ Write OneDrive/project.json
 ```
 
 ---
 
-## Data Flow: `ext clone <onedrive-path> --to <local-path>`
+## Data Flow: `ext clone`
 
 ```
 ext clone OneDrive/HighRise --to C:\ETABSProjects\HighRise
   │
   ├─ Read OneDrive/project.json
   ├─ Create local .etabs-ext/ structure
-  │
-  ├─ git clone --local OneDrive/git-bundle .etabs-ext/.git/
-  │     restores all text files: e2k, manifests, summaries, config.toml
-  │
-  ├─ For each branch/version in project.json:
-  │     copy OneDrive/edb/<branch>-vN.edb → vN/model.edb
-  │
-  ├─ Interactive wizard:
-  │     prompt author, email, oneDriveDir, reportsDir
-  │     write config.local.toml
-  │
-  ├─ Set working file to latest version of main
-  └─ Write state.json  { status: CLEAN, basedOn: latest }
+  ├─ git clone --local OneDrive/git-bundle
+  ├─ For each version: copy OneDrive/edb/<branch>-vN.edb → vN/model.edb
+  ├─ Interactive wizard: author, email, oneDriveDir, reportsDir
+  ├─ Write config.local.toml
+  └─ state: CLEAN, basedOn: latest main version
 ```
 
 ---
 
-## Data Flow: `ext report analysis --version v3`
+## Data Flow: `ext chat` (AI session)
 
 ```
-ext report analysis --version v3
+ext chat
   │
-  ├─ Verify v3/manifest.json { isAnalyzed: true }
-  ├─ Load Parquet: modal, base_reactions, story_forces, story_drifts,
-  │               wall_pier_forces, shell_stresses, materials/takeoff
+  ├─ ext_agent_llm::from_config()    resolve provider from config.local.toml
+  ├─ AgentSession::new()             load AppContext, embed SKILL.md
   │
-  ├─ Polars calculations:
-  │     modal::dominant_periods()
-  │     drifts::story_drift_ratios()
-  │     reactions::base_shear_summary()
-  │     forces::overturning_moment()
-  │     dcr::shear_wall_utilization()
+  │  [loop until Ctrl+C]
+  ├─ Read user input (rustyline)
+  ├─ Build system prompt:
+  │     SKILL.md + ext_api::status() JSON  ← fresh every turn
+  ├─ LlmClient::chat(messages, tools)
   │
-  ├─ Build ReportData struct
-  ├─ generators::analysis::generate_typst_from_data(&data)  → Typst String
-  ├─ TypstWorld::compile()  → PDF bytes
+  │  If ToolCall:
+  ├─ confirmation gate → [y/n]
+  ├─ dispatch to ext-api function
+  ├─ append tool_result to messages
+  ├─ LlmClient::chat(messages, tools)  ← second call for final text
   │
-  ├─ Resolve output path:
-  │     --out flag → use that path
-  │     else → config.reports_dir() / auto_name(branch, version, type)
-  │
-  └─ fs::write(output_path, pdf_bytes)
+  └─ Print agent response
 ```
 
 ---
@@ -373,32 +465,6 @@ stdin:   nothing
 stdout:  Result<T> JSON (always, even on failure)
 stderr:  human-readable progress (forwarded to terminal)
 exit:    0 = success, 1 = failure
-```
-
-```rust
-pub struct SidecarClient { path: PathBuf }
-
-impl SidecarClient {
-    pub async fn run<T: DeserializeOwned>(
-        &self, args: &[&str],
-    ) -> Result<T, EtabsError> {
-        let output = Command::new(&self.path)
-            .args(args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .output()
-            .map_err(|_| EtabsError::SidecarNotFound(self.path.clone()))?;
-
-        let result: SidecarResult<T> = serde_json::from_slice(&output.stdout)?;
-        match result.success {
-            true  => Ok(result.data.unwrap()),
-            false => Err(EtabsError::SidecarFailed {
-                command: args.join(" "),
-                message: result.error.unwrap_or_default(),
-            })
-        }
-    }
-}
 ```
 
 **All sidecar commands:**
@@ -414,48 +480,26 @@ impl SidecarClient {
 | `run-analysis` | `--file` | `RunCompleteAnalysis()`, blocks |
 | `extract-results` | `--file --output-dir` | All result Parquet files |
 | `extract-materials` | `--file --output` | Materials Parquet |
-| `save-snapshot` | `--file --output-dir [--with-results]` | Composite: E2K + materials (+ results) in one session |
+| `save-snapshot` | `--file --output-dir [--with-results]` | Composite: E2K + materials (+ results) |
 
 ---
 
 ## OneDrive Layout
 
 ```
-OneDrive/Structural/HighRise/        ← configured in config.local.toml: paths.oneDriveDir
-  project.json                       ← manifest (who pushed what when)
-  git-bundle                         ← full git history as single portable file
+OneDrive/Structural/HighRise/
+  project.json                       ← manifest
+  git-bundle                         ← full git history
   edb/
-    main-v1.edb                      ← version snapshots
+    main-v1.edb
     main-v2.edb
     main-v3.edb
-    main-working.edb                 ← only if pushed with --include-working
+    main-working.edb                 ← only if --include-working
     steel-columns-v1.edb
-    jane/foundation-v1.edb
-  reports/                           ← configured in config.local.toml: paths.reportsDir
+  reports/
     main-v3-analysis.pdf
     main-v3-bom.pdf
     steel-columns-v1-vs-main-v3-comparison.pdf
-```
-
-**`project.json`:**
-
-```json
-{
-  "projectName": "HighRise Tower",
-  "pushedAt": "2024-02-05T14:30:00Z",
-  "pushedBy": "John Doe",
-  "branches": {
-    "main": {
-      "latestVersion": "v3",
-      "workingIncluded": false,
-      "versions": ["v1", "v2", "v3"]
-    },
-    "steel-columns": {
-      "latestVersion": "v1",
-      "versions": ["v1"]
-    }
-  }
-}
 ```
 
 ---
@@ -464,8 +508,8 @@ OneDrive/Structural/HighRise/        ← configured in config.local.toml: paths.
 
 ```
 .etabs-ext/
-  config.toml                    ← tracked (shared settings)
-  config.local.toml              ← ignored (author, paths — machine-specific)
+  config.toml                    ← tracked (shared settings — no secrets)
+  config.local.toml              ← ignored (author, paths, AI provider + key)
   state.json                     ← ignored
   .gitignore
   .git/
@@ -504,33 +548,62 @@ OneDrive/Structural/HighRise/        ← configured in config.local.toml: paths.
 | Reports | Typst (embedded crate) | Fast, programmatic PDF |
 | Parquet write (C#) | Parquet.Net | Pure C#, no native deps |
 | State/config | JSON + TOML | Human-readable, git-trackable |
-| Project registry | SQLite (rusqlite) | Lightweight, no server |
+| Project registry | SQLite (sea-orm) | Lightweight, no server |
+| AI trait layer | `ext-agent-llm` | Provider-agnostic LlmClient trait |
+| AI Claude backend | reqwest (direct HTTP) | Anthropic API, no SDK needed |
+| AI local/OpenAI backend | async-openai | Ollama, LM Studio, OpenAI, Azure |
+| AI conversation | `ext-agent` (Rust) | Tool dispatch, confirmation gate |
+| CLI readline | rustyline | History, line editing for `ext chat` |
 
 ---
 
 ## Key Design Decisions
 
-**`ext-api` as single center.** All operations as plain Rust functions. CLI, Tauri, web are adapters. Tests target `ext-api` directly.
+**`ext-api` as single center.** All operations as plain Rust functions. CLI,
+Tauri, agent, and web are adapters. Tests target `ext-api` directly.
 
-**`.edb` beside git, not in git.** Binary files would make `.git/` grow 50MB+ per version. Snapshots are stored in numbered folders and git-ignored.
+**Agent is just another `ext-api` caller.** The agent calls the same functions
+as the CLI. The state machine is enforced regardless of caller. No special
+agent API, no bypasses.
 
-**`.e2k` exists only for diff.** E2K round-trips are lossy. `.edb` is always canonical; `.e2k` is generated per commit for `ext diff` only.
+**Local AI by default.** `ai.provider` defaults to `ollama` when not configured.
+Structural engineering data is commercially sensitive — the system should be
+useful without sending any data to cloud providers.
 
-**Analysis runs on committed snapshot.** ETABS locks the model post-analysis. Running on the snapshot keeps the working file clean and permanently attaches results to the version.
+**API keys only in `config.local.toml`.** `config.toml` is git-tracked and
+pushed to OneDrive. Any secret in `config.toml` would be exposed to all team
+members and stored in git history. `ext config set` routing enforces this
+automatically for all `ai.*` keys.
 
-**`ext switch` and `ext checkout` are separate.** Switch = branch navigation (never touches file content). Checkout = version restoration. Mirrors the `git switch` / `git restore` split from 2019.
+**Two LLM backends, one trait.** `claude.rs` uses `reqwest` directly against
+the Anthropic API — simple, no SDK. `openai.rs` uses `async-openai` which
+covers Ollama, LM Studio, OpenAI, and Azure via `base_url` override.
 
-**OneDrive as transport layer, not storage.** All heavy files (`.edb`, Parquet, analysis) stay local. OneDrive stores the git bundle + `.edb` snapshots for machine-to-machine transfer, and receives PDF reports as deliverables.
+**Streaming deferred to Phase 2.** Phase 1 agent tools are all fast enough
+for synchronous response. Deferring `analyze` and `report` (2–5 min) until
+streaming UI exists prevents a bad experience where the user types a request
+and sees nothing for minutes.
 
-**`config.local.toml` for machine-specific settings.** Author name, email, OneDrive paths, and report paths differ per machine. Git-ignored. Created interactively on `ext init` and `ext clone`. Never overwritten by `ext pull`.
+**`.edb` beside git, not in git.** Binary files would make `.git/` grow 50MB+
+per version. Snapshots are stored in numbered folders and git-ignored.
 
-**`git bundle` for history transport.** Self-contained, no server, works perfectly over OneDrive file sync. One file contains full history of all branches.
+**`.e2k` exists only for diff.** E2K round-trips are lossy. `.edb` is always
+canonical; `.e2k` is generated per commit for `ext diff` only.
 
-**Conflict prevention over conflict resolution.** Phase 1 detects version ID conflicts on `ext push` and offers safe rename (v4 → v5) rather than attempting to merge binary `.edb` files.
+**Analysis runs on committed snapshot.** ETABS locks the model post-analysis.
+Running on the snapshot keeps the working file clean and permanently attaches
+results to the version.
+
+**`ext switch` and `ext checkout` are separate.** Switch = branch navigation.
+Checkout = version restoration. Mirrors the git switch/restore split from 2019.
+
+**mtime for change detection.** SHA-256 of a 50MB `.edb` on every `ext status`
+is too slow. mtime is instant and sufficient for single-user local workflow.
 
 **One stash slot per branch.** Covers the primary use case without complexity.
 
-**mtime for change detection.** SHA-256 of a 50MB `.edb` on every `ext status` is too slow. mtime is instant and sufficient for single-user local workflow.
+**`git bundle` for history transport.** Self-contained, no server, works over
+OneDrive file sync. One file contains full history of all branches.
 
 ---
 
@@ -538,40 +611,25 @@ OneDrive/Structural/HighRise/        ← configured in config.local.toml: paths.
 
 ```
 Week 1–2: Foundation
-  ├── ext-error crate (include OneDriveConflict, OneDriveNotConfigured)
-  ├── ext-db: config.toml + config.local.toml resolution
-  ├── Sidecar: fix validate --file, add get-status, open-model, close-model, unlock-model
-  ├── Rust: SidecarClient (spawn + JSON parse)
-  └── Rust: ext init (with OneDrive detection) + ext status
+  ext-error, ext-db (config + state.json), SidecarClient,
+  ext-api::init() + status(), ext init + ext status, OutputChannel
 
 Week 3–4: Version Control Core
-  ├── Rust: ext commit (e2k only)
-  ├── Rust: ext log + ext show
-  ├── Rust: ext branch + ext switch + ext switch -c
-  ├── Rust: ext checkout (single-branch + cross-branch)
-  ├── Rust: ext stash (save/pop/drop/list)
-  └── git init, gitignore, subprocess ops, gix reads
+  ext-core version/branch/switch/checkout/stash,
+  ext-api orchestration, git subprocess + gix,
+  ext commit/log/show/branch/switch/checkout/stash
 
 Week 5–6: State Machine + ETABS Commands
-  ├── Rust: full 9-state machine with mtime detection
-  ├── Rust: ext etabs open/close/status/validate/unlock/recover
-  ├── Rust: ext diff (raw git diff passthrough)
-  └── Rust: ORPHANED + MISSING recovery paths
+  Full 9-state machine, ext etabs commands, ext diff,
+  all state guards wired
 
 Week 7–8: Analysis Pipeline
-  ├── C#: Parquet.Net, extract-results (all 7 schemas), extract-materials
-  ├── C#: save-snapshot composite command
-  ├── Rust: ext commit --analyze
-  ├── Rust: ext analyze <version>
-  └── Rust: Polars reads + all 6 calculation modules
+  C# Parquet extraction (7 schemas), ext commit --analyze,
+  ext analyze, Polars + calculation modules
 
-Week 9–10: Reports + Remote
-  ├── Rust: TypstWorld + Windows font loading + Liberation Sans
-  ├── [VALIDATE EARLY Day 1]: hello-world PDF on Windows
-  ├── Rust: analysis / BOM / comparison report generators
-  ├── Rust: ext report commands (auto-path to reportsDir / OneDrive)
-  ├── Rust: ext push (git bundle + edb copy + conflict detection)
-  ├── Rust: ext pull (git fetch bundle + edb copy)
-  ├── Rust: ext clone (wizard + full restore)
-  └── Rust: ext remote status
+Week 9–10: Reports + Remote + AI (parallel tracks)
+  ├── Reports: TypstWorld (validate Day 1), generators, ext report
+  ├── Remote: ext push/pull/clone, git bundle, conflict detection
+  └── AI: ext-agent-llm (Claude backend), ext-agent (tools + loop),
+           ext chat CLI subcommand, Ollama config stubbed
 ```

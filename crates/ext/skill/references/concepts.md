@@ -114,6 +114,7 @@ reportsDir  = ""             # empty: each machine sets in config.local.toml
 **`config.local.toml`** (machine-specific — always git-ignored):
 
 ```toml
+# config.local.toml — machine-specific, always git-ignored
 [git]
 author = "John Doe"
 email  = "john@firm.com"
@@ -121,6 +122,16 @@ email  = "john@firm.com"
 [paths]
 oneDriveDir = "C:\Users\John\OneDrive\Structural\HighRise"
 reportsDir  = "C:\Users\John\OneDrive\Structural\HighRise\reports"
+
+[onedrive]
+acknowledgedSync = false   # set to true to silence the OneDrive path warning
+
+[ai]
+provider    = "ollama"              # "ollama" | "claude" | "openai"
+model       = "qwen2.5-coder:14b"  # model name for chosen provider
+apiKey      = ""                    # required for claude/openai; empty for ollama
+baseUrl     = "http://localhost:11434/v1"  # ollama default; change per provider
+autoConfirm = false                 # skip [y/n] in ext chat (use carefully)
 ```
 
 **Config resolution order:**
@@ -129,6 +140,14 @@ reportsDir  = "C:\Users\John\OneDrive\Structural\HighRise\reports"
 config.local.toml  ← highest priority (machine-specific overrides)
 config.toml        ← project defaults (shared)
 ext defaults       ← built-in fallbacks
+
+Keys that belong in config.local.toml: git.author, git.email,
+paths.oneDriveDir, paths.reportsDir, onedrive.acknowledgedSync,
+ai.provider, ai.model, ai.apiKey, ai.baseUrl, ai.autoConfirm.
+AI keys always go in config.local.toml. The ext config set command
+routes all ai.* keys there automatically — even if the user does not
+specify which file. API keys must never appear in config.toml because
+it is git-tracked and pushed to OneDrive.
 ```
 
 **`state.json`:**
@@ -657,3 +676,73 @@ Polars processes Parquet data into engineering outputs used by reports:
 - Web interface, AI-assisted analysis
 - Multiple stashes per branch
 - Real-time collaboration
+
+---
+
+## 19. AI Agent (`ext chat`)
+
+The AI agent is an optional assistant that can answer questions about the
+project and execute `ext` operations on behalf of the user after confirmation.
+
+**Architecture:** The agent calls `ext-api` functions as tools — the same
+functions used by the CLI. The state machine and permission matrix are
+enforced identically. The agent cannot bypass any guard the CLI cannot bypass.
+
+```
+ext chat (REPL)
+    ↓
+ext-agent         ← conversation loop, tool dispatch, confirmation gate
+    ↓
+ext-agent-llm     ← LlmClient trait (provider-agnostic)
+    ↓
+Claude / Ollama / OpenAI-compat
+    ↓  (tool calls only)
+ext-api           ← same functions as CLI
+```
+
+**Provider configuration** (all in `config.local.toml`):
+
+```toml
+[ai]
+provider = "ollama"                        # local, private, no API key needed
+model    = "qwen2.5-coder:14b"
+baseUrl  = "http://localhost:11434/v1"
+```
+
+```toml
+[ai]
+provider = "claude"                        # cloud, requires API key
+model    = "claude-opus-4-5"
+apiKey   = "sk-ant-..."
+```
+
+**Privacy:** The agent sends message text and project state summary (from
+`ext status`) to the configured provider. It never sends `.edb` binary data,
+raw Parquet files, or `config.local.toml` contents. With `provider = "ollama"`,
+nothing leaves the machine.
+
+**Phase 1 tools** — available at launch:
+
+| Category | Tools |
+|---|---|
+| Read | status, log, show, branch list, diff, etabs status, remote status, config list |
+| Write (confirmed) | commit, create branch, switch, checkout, stash save/pop, etabs open/close/recover, push, pull |
+
+**Phase 2 tools** — require streaming UI:
+
+| Tool | Why deferred |
+|---|---|
+| `analyze_version` | 2–5 minute runtime needs live progress |
+| `generate_report` | PDF compilation needs streaming status |
+| `etabs_unlock` | Sensitive operation, needs careful UX |
+
+**What the agent cannot do:**
+
+- Operate the ETABS user interface (click, type, read screen)
+- Access `.edb` binary content directly
+- Bypass state machine guards
+- Write to `config.toml` (agent config is always `config.local.toml`)
+- Run Phase 2 tools before Phase 2 ships
+
+See `references/ai.md` for full provider setup, privacy details, and
+implementation guide.
