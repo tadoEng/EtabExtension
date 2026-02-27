@@ -1,850 +1,659 @@
-# ETABS Extension CLI Key Concepts
+# ETABS Extension — Core Concepts
 
-Deep dive into the ETABS Extension conceptual model and philosophy.
+Deep dive into the conceptual model for the ETABS Extension project.
 
-## Version Control for ETABS Models
+---
 
-### Traditional ETABS Workflow: File-Based Versions
-
-```md
-Project Folder
-  ├─ HighRise_v1.edb
-  ├─ HighRise_v2.edb
-  ├─ HighRise_v3_steel.edb
-  ├─ HighRise_v3_concrete.edb
-  └─ HighRise_FINAL_actually_final_v2.edb
-```
-
-**Problems:**
-
-- No clear relationship between versions
-- Difficult to compare changes
-- Manual file naming and organization
-- No change history or commit messages
-- Hard to collaborate
-- Space inefficient (duplicate data)
-
-### ETABS Extension: Git-Like Version Control
-
-```md
-Project: HighRise Tower
-  └─ main branch
-      ├─ v1: Initial structural layout
-      ├─ v2: Added seismic loads
-      └─ v3: Updated column sections
-  └─ steel-columns branch (from main/v2)
-      ├─ v1: Changed to steel W-sections
-      └─ v2: Optimized member sizes
-  └─ foundation-redesign branch (from main/v3)
-      └─ v1: Deep foundations for poor soil
-```
-
-**Advantages:**
-
-- Clear version lineage and relationships
-- Descriptive commit messages
-- Easy comparison between any two versions
-- Branch-based design alternatives
-- Collaboration-ready
-- Efficient storage (Git internally)
-- E2K files for human-readable diffs
-
-## Core Concepts
-
-### 1. Projects
+## 1. Projects
 
 A **project** is the root container for an ETABS structural model with version control.
-
-**Anatomy:**
-
-```md
-HighRise Tower/
-  ├─ .etabs-ext/           # Extension metadata
-  │   ├─ config.toml       # Project configuration
-  │   ├─ state.json        # Current state
-  │   └─ .git/             # Git repository (internal)
-  ├─ main/                 # Main branch directory
-  │   ├─ working/          # Working files
-  │   │   └─ model.edb     # Active working file
-  │   └─ versions/         # Version history
-  │       ├─ v1/
-  │       │   ├─ model.edb
-  │       │   └─ model.e2k
-  │       ├─ v2/
-  │       └─ v3/
-  ├─ steel-columns/        # Branch directory
-  │   ├─ working/
-  │   └─ versions/
-  └─ foundation-redesign/
-      ├─ working/
-      └─ versions/
-```
 
 **Initialization:**
 
 ```bash
-ext init "HighRise Tower"
-# Creates directory structure
-# Initializes Git repository
-# Creates main branch
-# Configures defaults
+ext init "HighRise Tower" --edb "C:\Models\highrise.edb"
 ```
 
-### 2. Branches
+What happens:
+- Creates `.etabs-ext/` inside the project folder
+- Copies the `.edb` into `main/working/model.edb`
+- Runs `git init` inside `.etabs-ext/`
+- Writes `config.toml`, `config.local.toml`, `state.json`, `.gitignore`
+- No version created yet — user must run `ext commit` explicitly
 
-**Branches** represent design alternatives or parallel work streams.
+**Folder structure:**
 
-**Types:**
-
-**Independent Branches** (most common):
-
-```md
-main ──┬── steel-columns (different structural system)
-       └── concrete-hsc   (different concrete strength)
+```
+HighRise/                                  ← user's project folder (untouched)
+  .etabs-ext/                              ← all ext data lives here
+    config.toml                            ← git-tracked (shared project settings)
+    config.local.toml                      ← git-ignored (machine-specific: author, paths)
+    state.json                             ← git-ignored (mutable runtime)
+    .gitignore
+    .git/                                  ← internal git repo (text files only)
+    stash/                                 ← git-ignored
+      main.edb
+      main-meta.json
+    │
+    main/                                  ← one folder per branch
+      working/
+        model.edb                          ← git-ignored, active working file
+      v1/
+        model.edb                          ← git-ignored, committed snapshot
+        model.e2k                          ← GIT TRACKED ✓
+        manifest.json                      ← GIT TRACKED ✓
+        summary.json                       ← GIT TRACKED ✓ (only if analyzed)
+        results/                           ← git-ignored
+          modal.parquet
+          base_reactions.parquet
+          story_forces.parquet
+          story_drifts.parquet
+          joint_displacements.parquet
+          wall_pier_forces.parquet
+          shell_stresses.parquet
+        materials/
+          takeoff.parquet
+      v2/
+        ...
+    │
+    steel-columns/                         ← created by ext branch
+      working/
+        model.edb
+      v1/
+        ...
 ```
 
-Use for:
+**Why `.edb` is NOT in git:**
 
-- Exploring different structural systems
-- Comparing material alternatives
-- Client-requested variants
-- Value engineering studies
+Git stores every version of every file as a full binary object with no delta compression. A 50MB `.edb` × 20 versions × 3 branches = 3GB+ in `.git/`. The `.edb` snapshots are stored beside git, managed by ext, and git-ignored.
 
-**Dependent Branches** (less common):
+**What git tracks (text files only):**
 
-```md
-main ── foundation-upgrade ── superstructure-adjustment
-        (base redesign)       (depends on foundation)
+```
+✓ vN/model.e2k        text export, enables diff between versions
+✓ vN/manifest.json    version metadata
+✓ vN/summary.json     key result scalars (when analyzed)
+✓ config.toml         shared project settings
 ```
 
-Use for:
+**`.gitignore`:**
 
-- Sequential design changes
-- When work must build on previous changes
-- Incremental major redesigns
-
-**Creating Branches:**
-
-```bash
-# Independent branch (default)
-ext branch new steel-columns --from main/v3
-
-# Dependent branch (if needed in future)
-ext branch new phase2 --from phase1/v2 
+```gitignore
+*.edb
+*.parquet
+*/working/
+state.json
+config.local.toml
+stash/
+*.edb.lock
+*.$et
+*.mdb
+*.OUT
 ```
 
-### 3. Versions
-
-A **version** is a snapshot of the model at a specific point in time.
-
-**Version Anatomy:**
-
-```bash
-Version v3:
-  - ID: v3
-  - Branch: main
-  - Message: "Updated column sections per analysis"
-  - Timestamp: 2024-02-05 14:30:00
-  - Author: John Doe
-  - Files:
-    - model.edb (45.2 MB)
-    - model.e2k (2.3 MB)
-  - Analysis: Completed
-  - Parent: v2
-```
-
-**Version Identification:**
-
-```bash
-v3              # Short form (current branch)
-main/v3         # Fully qualified (any branch)
-bu              # CLI ID (from ext status)
-```
-
-**Saving Versions:**
-
-```bash
-# Basic save
-ext version commit "Updated beam sizes"
-
-# With options
-ext version commit "Final design" --analyze --no-e2k
-```
-
-### 4. Working File
-
-The **working file** is the active `.edb` file being edited.
-
-**States:**
-
-**Clean:**
-
-```md
-Working file matches latest version (v3)
-No uncommitted changes
-Ready to open in ETABS
-```
-
-**Modified:**
-
-```md
-Working file has changes since v3
-Changes detected: beam sections modified
-Ready to save as v4
-```
-
-**Open in ETABS:**
-
-```md
-Working file locked by ETABS (PID: 12345)
-Cannot save version while ETABS is open
-Must close ETABS first
-```
-
-**Checking Status:**
-
-```bash
-ext status
-
-# Output:
-# Working File: Modified
-#   Based on: v3
-#   Changes: Yes
-#   ETABS: Not running
-```
-
-### 5. E2K Files
-
-**E2K files** are text-based ETABS exports used for human-readable diffs.
-
-**Why E2K?**
-
-- `.edb` files are binary (can't diff)
-- `.e2k` files are text (can diff)
-- Shows structural elements in plain text
-- Enables version comparison
-- Git-friendly format
-
-**E2K Content Example:**
-
-```md
-$ FRAME SECTION PROPERTIES
-Frame=C1 Material=CONC Shape=Rectangular Depth=30 Width=30
-
-$ LOAD PATTERNS
-LoadPat=DEAD Type=DEAD SelfWtMult=1.0
-LoadPat=LIVE Type=LIVE SelfWtMult=0.0
-
-$ LOAD COMBINATIONS
-Combo=COMB1 Type=Linear
-  LoadCombItem=DEAD SF=1.4
-  LoadCombItem=LIVE SF=1.7
-```
-
-**Automatic Generation:**
-
-```bash
-# Generated automatically on save (unless --no-e2k)
-ext version commit "message"
-
-# Generate manually
-ext etabs generate-e2k model.edb
-```
-
-### 6. Comparison and Diffs
-
-**Three types of comparisons:**
-
-**1. E2K Diff (default):**
-Shows line-by-line changes in E2K format
-
-```bash
-ext diff v2 v3
-
-# Output:
-# Frame Section:
-#   - C1: 30x30 (fc=4000 psi)
-#   + C1: 36x36 (fc=5000 psi)
-```
-
-**2. Geometry Diff:**
-Shows 3D model changes
-
-```bash
-ext diff v2 v3 --type geometry
-
-# Output:
-# Members Modified: 12 (C1-C12)
-# Section changes: 30x30 → 36x36
-```
-
-**3. Full Comparison:**
-Comprehensive analysis including material quantities
-
-```bash
-ext compare v2 v3
-
-# Output includes:
-# - E2K differences
-# - Geometry changes
-# - Material quantities
-# - Cost impact
-# - Performance metrics
-```
-
-### 7. ETABS Integration
-
-The CLI integrates directly with ETABS application.
-
-**ETABS Operations:**
-
-**Opening Files:**
-
-```bash
-ext etabs open           # Open working file
-ext etabs open v3        # Open specific version
-```
-
-Behind the scenes:
-
-1. Check if ETABS is already running
-2. Launch ETABS if needed
-3. Open specified `.edb` file
-4. Lock file to prevent conflicts
-5. Update project state
-
-**Closing ETABS:**
-
-```bash
-ext etabs close          # Prompt to save
-ext etabs close --save   # Save and close
-```
-
-**Status Check:**
-
-```bash
-ext etabs status
-
-# Output:
-# ETABS Status:
-#   Running: Yes
-#   Version: 22.0.0
-#   File: D:\Projects\HighRise\main\working\model.edb
-#   PID: 12345
-```
-
-**File Locking:**
-
-```md
-While ETABS has file open:
-  ✓ Can view status
-  ✓ Can compare versions
-  ✓ Can create branches
-  ✗ Cannot save versions
-  ✗ Cannot switch branches
-  ✗ Cannot restore versions
-```
-
-### 8. Git Integration (Internal)
-
-ETABS Extension uses **Git internally** but hides complexity.
-
-**What Git Manages:**
-
-- Version history
-- Branch relationships
-- E2K files (for diff)
-- Project metadata
-- Configuration
-
-**What Git Doesn't Manage:**
-
-- `.edb` files (too large, stored separately)
-- Temporary files
-- ETABS lock files
-- Analysis output files
-
-**Git Storage Strategy:**
-
-```md
-Git Repository:
-  ✓ E2K files (text, diffable)
-  ✓ Project metadata (JSON)
-  ✓ Configuration files
-  ✓ Version manifests
-
-Separate Storage:
-  ✓ EDB files (binary, large)
-  ✓ Analysis results
-  ✓ Generated reports
-```
-
-**User Perspective:**
-Users **never interact with Git directly**. All Git operations are abstracted:
-
-```bash
-ext version commit "message"   # → git commit
-ext branch new name       # → git branch
-ext diff v1 v2              # → git diff
-ext version restore v1      # → git checkout
-```
-
-### 9. Configuration Hierarchy
-
-Configuration is resolved in priority order:
-
-**1. Project Config** (highest priority)
-
-```bash
-.etabs-ext/config.toml
-```
-
-**2. User Config**
-
-```bash
-~/.config/etabs-ext/config.toml
-```
-
-**3. System Config**
-
-```bash
-/etc/etabs-ext/config.toml  # Linux/macOS
-C:\ProgramData\etabs-ext\   # Windows
-```
-
-**4. Defaults** (lowest priority)
-Built-in defaults in code
-
-**Example Configuration:**
+**`config.toml`** (shared — tracked in git, synced to OneDrive):
 
 ```toml
 [project]
 name = "HighRise Tower"
-default_branch = "main"
+created = "2024-02-05T14:30:00Z"
 
 [etabs]
-executable = "C:\\Program Files\\ETABS 22\\ETABS.exe"
-auto_generate_e2k = true
-auto_analyze = false
-
-[git]
-author = "John Doe"
-email = "john@example.com"
+sidecarPath = "etab-cli.exe"
+autoGenerateE2k = true
 
 [behavior]
-auto_save_interval = 300  # seconds
-confirm_destructive = true
+confirmDestructive = true
+pushWorking = false          # whether ext push includes working file by default
+
+[paths]
+oneDriveDir = ""             # empty: each machine sets in config.local.toml
+reportsDir  = ""             # empty: each machine sets in config.local.toml
 ```
 
-### 10. CLI IDs: Short Identifiers
+**`config.local.toml`** (machine-specific — always git-ignored):
 
-Every object gets a short, memorable CLI ID:
+```toml
+[git]
+author = "John Doe"
+email  = "john@firm.com"
 
-**Why CLI IDs?**
-
-- Version IDs can be long: `main/v3`
-- Full paths are verbose: `D:\Projects\HighRise\main\versions\v3\`
-- UUIDs are unreadable: `550e8400-e29b-41d4-a716-446655440000`
-
-**CLI ID Format:**
-
-```md
-Projects:    proj-a, proj-b
-Branches:    br-m (main), br-s (steel), br-c (concrete)
-Versions:    v1, v2, v3, v4, v5
-Files:       file-a, file-b, file-c
+[paths]
+oneDriveDir = "C:\Users\John\OneDrive\Structural\HighRise"
+reportsDir  = "C:\Users\John\OneDrive\Structural\HighRise\reports"
 ```
 
-**Usage in Commands:**
+**Config resolution order:**
+
+```
+config.local.toml  ← highest priority (machine-specific overrides)
+config.toml        ← project defaults (shared)
+ext defaults       ← built-in fallbacks
+```
+
+**`state.json`:**
+
+```json
+{
+  "version": 1,
+  "currentBranch": "main",
+  "workingFile": {
+    "branch": "main",
+    "basedOnVersion": "v3",
+    "lastKnownMtime": "2024-02-05T14:30:00Z",
+    "status": "modified"
+  },
+  "etabs": {
+    "pid": null,
+    "openFile": null
+  },
+  "stash": {
+    "main": {
+      "basedOn": "v3",
+      "stashedAt": "2024-02-05T12:00:00Z",
+      "description": "auto-stash before checkout v1"
+    }
+  }
+}
+```
+
+---
+
+## 2. Branches
+
+Each branch has its **own independent `working/` directory**. Switching branches never copies or overwrites files — each branch always preserves its own working file exactly as left.
+
+**Creating a branch:**
 
 ```bash
-ext status                    # Shows CLI IDs
-ext branch switch br-s        # Use CLI ID
-ext diff v2 v3               # Use version IDs
-ext version show v3          # Use version ID
+ext branch steel-columns --from main/v3
 ```
 
-**Stability:**
-CLI IDs are **session-stable** but not permanent:
+Sequence:
+1. Check available disk space (requires model size + 10% buffer)
+2. Create `steel-columns/working/`
+3. Atomic copy: `main/v3/model.edb` → `steel-columns/working/model.edb`
+4. Record `createdFrom: main/v3` in branch metadata
+5. Does NOT auto-switch — use `ext switch -c` to create and switch in one step
 
-- Same IDs within a session
-- May change between sessions
-- Use full names for scripts
+**Default `--from` behavior:**
 
-### 11. Output Formats
+| Invocation | Source |
+|---|---|
+| `ext branch alt` | Latest committed version of current branch |
+| `ext branch alt --from main` | Latest committed version of main |
+| `ext branch alt --from main/v3` | Specific snapshot |
+| `ext branch alt --from working` | Current dirty working file (explicit opt-in) |
 
-Three output modes for different use cases:
+Default never copies a dirty working file — always a clean committed snapshot.
 
-**1. Human Format (default):**
+---
+
+## 3. Versions
+
+A **version** is a committed snapshot of the model at a specific point in time.
+
+**Version anatomy:**
+
+```
+vN/
+  model.edb       ← binary snapshot, NOT in git, opened directly by ETABS
+  model.e2k       ← text export, IN git, enables diff
+  manifest.json   ← metadata, IN git
+  summary.json    ← key result scalars, IN git (only if analyzed)
+  results/        ← parquet files, NOT in git
+  materials/      ← parquet files, NOT in git
+```
+
+**Why `.edb` must be stored (not reconstructed from `.e2k`):**
+
+E2K round-trips are lossy. Re-importing loses analysis results, display settings, some load case parameters, section designer details, auto-mesh settings. The `.edb` is always opened directly — `.e2k` exists only for diffs.
+
+**`manifest.json`:**
+
+```json
+{
+  "id": "v3",
+  "branch": "main",
+  "message": "Updated column sections per analysis",
+  "author": "John Doe",
+  "timestamp": "2024-02-05T14:30:00Z",
+  "parent": "v2",
+  "edbSizeBytes": 47382528,
+  "e2kSizeBytes": 2415620,
+  "isAnalyzed": true,
+  "gitCommitHash": "a3f8c2d..."
+}
+```
+
+**`summary.json`** (only present if analyzed):
+
+```json
+{
+  "analyzedAt": "2024-02-05T14:30:00Z",
+  "loadCases": ["DEAD", "LIVE", "EQX", "EQY"],
+  "modal": { "numModes": 12, "dominantPeriodX": 2.34, "massParticipationX": 0.95 },
+  "baseReaction": { "maxBaseShearX": 4520.5, "maxBaseShearY": 4105.2 },
+  "drift": { "maxDriftX": 0.0089, "maxDriftStory": "Story8" }
+}
+```
+
+**Version identification:**
 
 ```bash
-ext status
-
-# Output:
-# Project: HighRise Tower
-# Branch: main (3 versions)
-# 
-# Working File: Modified
-#   Based on: v3
-#   ETABS: Not running
+v3        # short form — current branch implied
+main/v3   # fully qualified
 ```
 
-Pretty-printed, colored, formatted for readability.
+---
 
-**2. Shell Format:**
+## 4. Working File & State Machine
+
+The working file is the active `.edb` in a branch's `working/` directory. Its state drives what commands are allowed.
+
+**States:**
+
+| State | Meaning |
+|---|---|
+| `UNTRACKED` | No version committed yet (fresh init) |
+| `CLEAN` | Working file matches latest committed version |
+| `MODIFIED` | Working file differs from latest committed version |
+| `OPEN_CLEAN` | ETABS has file open, no changes since open |
+| `OPEN_MODIFIED` | ETABS has file open, changes detected |
+| `ANALYZED` | ETABS closed, analysis results embedded in working file |
+| `LOCKED` | ETABS model lock set post-analysis, must unlock before editing |
+| `MISSING` | `working/model.edb` does not exist on disk |
+| `ORPHANED` | ETABS crashed or killed, lock state unknown |
+
+**State transitions:**
+
+```
+UNTRACKED      ──[ext commit]────────────────────► CLEAN
+CLEAN          ──[ext etabs open]────────────────► OPEN_CLEAN
+CLEAN          ──[external file edit]────────────► MODIFIED
+CLEAN          ──[file deleted externally]────────► MISSING
+MODIFIED       ──[ext commit]────────────────────► CLEAN
+MODIFIED       ──[ext etabs open]────────────────► OPEN_MODIFIED
+MODIFIED       ──[ext checkout vN → discard]──────► CLEAN
+MODIFIED       ──[ext checkout vN → stash]────────► CLEAN (stash saved)
+OPEN_CLEAN     ──[user edits in ETABS]───────────► OPEN_MODIFIED
+OPEN_CLEAN     ──[user runs analysis in ETABS]───► ANALYZED (still open)
+OPEN_MODIFIED  ──[user runs analysis in ETABS]───► ANALYZED (still open)
+OPEN_MODIFIED  ──[ext etabs close --no-save]─────► MODIFIED
+ANALYZED       ──[ext etabs close]───────────────► ANALYZED (closed)
+ANALYZED       ──[ext commit --analyze]──────────► CLEAN
+ANALYZED       ──[user tries to edit in ETABS]───► LOCKED
+LOCKED         ──[ext etabs unlock]──────────────► OPEN_CLEAN (results cleared)
+OPEN_*         ──[ETABS crashes]─────────────────► ORPHANED
+ORPHANED       ──[ext etabs recover]─────────────► MODIFIED or CLEAN
+MISSING        ──[ext checkout vN]───────────────► CLEAN
+```
+
+**Change detection** uses mtime — fast, zero overhead:
+
+`stat(working/model.edb).mtime > lastKnownMtime` → `MODIFIED`
+
+**Two distinct lock types:**
+- **File lock** (OS): ETABS has `.edb` open exclusively. Detected via sidecar `get-status`.
+- **Analysis lock** (ETABS): `SapModel.ModelIsLocked = true`. Cleared by `ext etabs unlock`.
+
+---
+
+## 5. `ext switch` and `ext checkout`
+
+Two commands with intentionally separate concerns — the split git introduced in 2019.
+
+### `ext switch <branch>` — navigate between branches
+
+Never changes working file content. Each branch preserves its own working file independently.
+
+```
+Decision tree:
+  1. ETABS open? → hard stop: "Close ETABS first"
+  2. Warn on departure if current branch MODIFIED (does not block)
+  3. Load target branch working/model.edb as-is
+  4. Report target state: CLEAN=silent, MODIFIED=warn, MISSING=warn, ORPHANED=warn
+```
+
+**`ext switch -c <branch>`** — create and switch in one command (mirrors `git switch -c`).
+
+### `ext checkout <version>` — restore working file to a specific version
+
+```
+Decision tree:
+  1. Cross-branch? → apply ext switch rules first
+  2. ETABS open? → hard stop
+  3. Working file MODIFIED?
+       → prompt: [c] Commit first  [s] Stash  [d] Discard  [x] Cancel
+  4. Snapshot vN/model.edb missing? → error with available versions listed
+  5. Copy vN/model.edb → working/model.edb
+  6. state: basedOn=vN, CLEAN
+```
+
+---
+
+## 6. Stash
+
+One stash slot per branch. Not a stack.
 
 ```bash
-ext status --shell
-
-# Output:
-# HighRise Tower
-# main
-# v3
-# modified
+ext stash                    # stash current working file
+ext stash list               # show all stashes across branches
+ext stash pop                # restore stash to current working file
+ext stash drop               # discard stash for current branch
 ```
 
-Minimal output for parsing in shell scripts.
+Stored in `.etabs-ext/stash/<branch>.edb` + `<branch>-meta.json`. Triggered automatically during `ext checkout` when user chooses `[s]`.
 
-**3. JSON Format:**
+---
+
+## 7. `ext commit` — Full Sequence
 
 ```bash
-ext status --json
-
-# Output:
-# {
-#   "project_name": "HighRise Tower",
-#   "current_branch": "main",
-#   "working_file": {
-#     "status": "modified",
-#     "based_on": "v3"
-#   }
-# }
+ext commit "Updated column sections"
+ext commit "Final design" --analyze
+ext commit "Quick save" --no-e2k
 ```
 
-Structured output for AI agent use.
+**Without `--analyze`:**
 
-### 12. Workspace Model
+```
+1. Verify ETABS not running
+2. Copy working/model.edb → vN/model.edb  (snapshot)
+3. sidecar save-snapshot on vN/model.edb:
+     export → vN/model.e2k
+     extract → vN/materials/takeoff.parquet
+4. Write vN/manifest.json  { isAnalyzed: false }
+5. git commit: vN/model.e2k + vN/manifest.json
+6. state: CLEAN, basedOn=vN
+```
 
-Unlike Git's checkout-based model, ETABS Extension uses a **single workspace**:
+**With `--analyze`** (after steps 1–6, on the snapshot — NOT the working file):
 
-**Git Workflow:**
+```
+7. sidecar: open vN/model.edb --hidden
+8. sidecar: run-analysis (blocks)
+9. sidecar: extract-results → vN/results/*.parquet
+10. sidecar: close
+11. Write vN/summary.json, update vN/manifest.json { isAnalyzed: true }
+12. git commit: summary.json + manifest (internal — hidden from ext log)
+
+Working file: untouched throughout steps 7–12
+```
+
+**Why analysis runs on snapshot:** ETABS locks the model post-analysis. Running on the working file would lock it and require unlocking (which clears results). Running on the snapshot keeps the working file clean and permanently attaches results to the version.
+
+---
+
+## 8. `ext analyze` — Post-Commit Analysis
 
 ```bash
-git checkout main           # Switch to main
-# All files now show main
-git checkout feature        # Switch to feature
-# All files now show feature
+ext analyze v2
+ext analyze main/v2
 ```
 
-**ETABS Extension Workflow:**
+Runs analysis on an already-committed version. Working file untouched.
+
+---
+
+## 9. E2K Files
+
+E2K is ETABS's text-based model export — the diff layer. `.edb` is binary (no diff); `.e2k` is structured text (full diff). Always generated via sidecar, never via ETABS auto-save. Requires ETABS to be closed. Duration: 15–60s.
+
+**`--no-e2k`:** Skip generation for rapid iteration.
+
+**Phase 1 diff** — raw unified git diff:
+
+```diff
+--- a/main/v2/model.e2k
++++ b/main/v3/model.e2k
+-  Frame=C1 Shape=Rectangular Depth=30 Width=30
++  Frame=C1 Shape=Rectangular Depth=36 Width=36
+```
+
+---
+
+## 10. Analysis Results & Parquet Storage
+
+**Why Parquet:** Joint displacements on a 30-story building = 360,000+ rows. Parquet is columnar, ~10x smaller than JSON, Polars-native.
+
+**Schemas:** `modal`, `base_reactions`, `story_forces`, `story_drifts`, `joint_displacements`, `wall_pier_forces`, `shell_stresses`, `materials/takeoff` — see `architecture.md` for full column definitions.
+
+---
+
+## 11. ETABS Sidecar
+
+The sidecar (`etab-cli.exe`) is a C# .NET 10 console app — the only component that can call ETABS COM APIs.
+
+**IPC:** stdin=nothing, stdout=`Result<T>` JSON, stderr=progress, exit=0/1.
+
+**`save-snapshot`** is the key composite: opens ETABS once → exports E2K → extracts materials → optionally runs analysis → closes. Minimizes startup overhead.
+
+**All operations:** `get-status`, `validate`, `open-model [--hidden]`, `close-model`, `unlock-model`, `generate-e2k`, `run-analysis`, `extract-results`, `extract-materials`, `save-snapshot [--with-results]`
+
+---
+
+## 12. OneDrive Integration
+
+All heavy work (`.edb`, Parquet, analysis) stays local. OneDrive is used only for:
+- Transporting the project to other machines (`ext push` / `ext pull` / `ext clone`)
+- Storing PDF reports (`paths.reportsDir`)
+
+**OneDrive path detection:**
+
+On `ext init`, if the project path or `--edb` is inside a OneDrive-synced folder:
+
+```
+⚠ OneDrive path detected
+
+  ETABS model files cannot be version-controlled inside OneDrive.
+  OneDrive sync interferes with ETABS file writes and would upload
+  gigabytes of binary data continuously.
+
+  Recommended: Initialize in a local folder.
+  Example: C:\ETABSProjects\HighRise
+
+  Reports will save to OneDrive automatically via paths.reportsDir.
+
+  [c] Continue anyway (not recommended)
+  [x] Cancel
+```
+
+If `ext status` detects the project is inside a synced OneDrive path, it warns persistently until acknowledged:
+
+```toml
+# config.local.toml
+[onedrive]
+acknowledgedSync = true   # silence the warning after user reads it
+```
+
+**OneDrive layout (set by `ext push`):**
+
+```
+OneDrive/Structural/HighRise/        ← shared project folder
+  project.json                       ← manifest: branches, versions, who pushed when
+  git-bundle                         ← full git history as single portable file
+  edb/
+    main-v1.edb
+    main-v2.edb
+    main-v3.edb
+    steel-columns-v1.edb
+  reports/                           ← PDF reports saved here by ext report
+    main-v3-analysis.pdf
+    main-v3-bom.pdf
+```
+
+---
+
+## 13. `ext push` / `ext pull` / `ext clone`
+
+These commands move the project between machines via OneDrive. No merge logic — just transport.
+
+### `ext push`
 
 ```bash
-ext branch switch main      # Load main's working file
-# Working file: main/working/model.edb
-
-ext branch switch steel     # Load steel's working file
-# Working file: steel/working/model.edb
+ext push                          # push all new versions to OneDrive
+ext push --include-working        # also push current working file
+ext push --branch steel-columns   # push one branch only
 ```
 
-**Key Differences:**
+Sequence:
+1. Resolve `oneDriveDir` from `config.local.toml`
+2. Read `OneDrive/project.json` — check what's already there
+3. **Conflict check:** if remote has a version with same ID but different content → prompt (see below)
+4. Bundle git history: `git bundle create → OneDrive/git-bundle`
+5. Copy new `.edb` files: `vN/model.edb → OneDrive/edb/<branch>-vN.edb` (only new ones)
+6. Copy working file if `--include-working`
+7. Update `OneDrive/project.json`
 
-- Each branch has its own `working/` directory
-- No file deletion/recreation on switch
-- Working files persist independently
-- ETABS must be closed before switching
+**Conflict prompt:**
 
-### 13. Analysis Integration
+```
+✗ Conflict: main/v4 already exists on OneDrive (pushed by Jane Smith, 2h ago)
+  Your v4: "Increased column size"
+  Remote:  "Updated foundation"
 
-ETABS Extension tracks analysis status:
-
-**Analysis States:**
-
-**Not Analyzed:**
-
-```md
-Version v3:
-  Status: Not analyzed
-  Can run analysis in ETABS
+  [r] Rename yours to v5 and push  (recommended)
+  [v] View diff between versions
+  [x] Cancel
 ```
 
-**Analyzed:**
-
-```md
-Version v3:
-  Status: Analyzed ✓
-  Results: Available
-  Timestamp: 2024-02-05 14:30:00
-```
-
-**Outdated:**
-
-```md
-Version v3:
-  Status: Analyzed (outdated)
-  Reason: Model modified since analysis
-  Need: Re-analyze
-```
-
-**Commands:**
+### `ext pull`
 
 ```bash
-# Check analysis status
-ext version show v3
-
-# Analyze version
-ext analyze v3
-
-# Save with analysis
-ext version save "message" --analyze
+ext pull                          # pull all new versions from OneDrive
+ext pull --branch steel-columns   # pull one branch only
 ```
 
-### 14. File Validation
+Sequence:
+1. Read `OneDrive/project.json` — find versions not in local
+2. `git fetch` from `OneDrive/git-bundle` → restores text files
+3. Copy new `.edb` files: `OneDrive/edb/<branch>-vN.edb → vN/model.edb`
+4. Report what was pulled
 
-Before operations, the CLI validates ETABS files:
+### `ext clone`
 
-**Validation Checks:**
-
-- File exists
-- File extension is `.edb`
-- File is readable
-- File format is valid ETABS
-- ETABS version compatibility
-- File not corrupted
-
-**Validation Command:**
+First-time setup on a new machine. Interactive wizard.
 
 ```bash
-ext etabs validate model.edb
-
-# Output:
-# ✓ File exists
-# ✓ Extension: .edb
-# ✓ Format: Valid ETABS 22
-# ✓ Readable: Yes
-# ✓ Size: 45.2 MB
-# ✓ Analysis: Complete
+ext clone "C:\Users\Jane\OneDrive\Structural\HighRise" --to "C:\ETABSProjects\HighRise"
 ```
 
-**Error Handling:**
+Sequence:
+1. Read `OneDrive/project.json`
+2. Create local `.etabs-ext/` structure
+3. `git clone --local OneDrive/git-bundle` → restores all text files
+4. Copy all `.edb` files from `OneDrive/edb/`
+5. Interactive prompts:
+   ```
+   Author name:          [Jane Smith        ]
+   Author email:         [jane@firm.com     ]
+   OneDrive reports dir: [C:\Users\Jane\OneDrive\Structural\HighRise\reports]
+   ```
+6. Write `config.local.toml` with machine-specific settings
+7. Set working file to latest version of main
+8. Write `state.json`
+
+---
+
+## 14. Reports
+
+Reports generated in Rust using Typst as an embedded crate. No `.typ` template files on disk.
+
+**Pipeline:** Polars calculations on Parquet → Rust structs → Typst markup string → `TypstWorld::compile()` → PDF bytes → write to `reportsDir`.
+
+**Output path:** If `paths.reportsDir` is set in `config.local.toml`, all reports default to that location (typically OneDrive). `--out` flag overrides for one-off outputs.
+
+**Auto-naming** (optional):
+
+```toml
+[paths]
+reportNaming = "{branch}-{version}-{type}"  # → main-v3-analysis.pdf
+```
+
+**Phase 1 reports:**
 
 ```bash
-ext etabs validate broken.edb
-
-# Output:
-# ✓ File exists
-# ✓ Extension: .edb
-# ✗ Format: Corrupted or invalid
-# → Cannot open file
-# → Try recovering from backup
+ext report analysis --version v3               # → reportsDir/main-v3-analysis.pdf
+ext report bom --version v3                    # → reportsDir/main-v3-bom.pdf
+ext report comparison --from main/v3 --to steel/v1   # → reportsDir/...
 ```
 
-### 15. Reports
+---
 
-The CLI can generate various reports:
+## 15. Recommended Team Workflow (Phase 1)
 
-**Report Types:**
+Since Phase 1 has no merge — prevent conflicts by convention:
 
-**1. Comparison Report:**
+```
+main           → shared milestone versions only (pushed after major decisions)
+john/          → John's working branch
+jane/          → Jane's working branch
+```
 
+Jane finishes a design iteration:
 ```bash
-ext report generate comparison --v1 v2 --v2 v3 --pdf --excel
+ext switch -c jane/foundation-v2 --from main/v3
+# ... work, commit, analyze ...
+ext push --branch jane/foundation-v2
 ```
 
-Detailed comparison with charts and tables in both pdf and excel file.
-
-**2. Analysis Report:**
-
+John reviews and adopts:
 ```bash
-ext report generate analysis --version v3
+ext pull --branch jane/foundation-v2
+ext report comparison --from main/v3 --to jane/foundation-v2/v1
+ext switch main
+ext checkout jane/foundation-v2/v1   # copies her edb to main/working
+ext commit "Adopt Jane's foundation redesign" --analyze
+ext push
 ```
 
-Structural analysis postprocessing results summary.
+---
 
-**3. Bill of Materials:**
+## 16. Version Control Internals
 
-```bash
-ext report generate bom --version v3
-```
+**Writes → git subprocess:** `git add`, `git commit`, `git checkout -b` — simple, correct.
 
-Material quantities and costs.
+**Reads → gix crate:** fast, pure Rust, no C dependency. Used for `ext log`, `ext diff`, blob reads.
 
-**4. Progress Report:**
+**Internal vs user-visible commits:** Internal git commits (analysis results, init) are prefixed `ext:` and filtered from `ext log`.
 
-```bash
-ext report generate progress --branch main
-```
+---
 
-Timeline of design development.
+## 17. Calculation Layer
 
-**Report Outputs:**
+Polars processes Parquet data into engineering outputs used by reports:
 
-- PDF (default)
-- Excel (for BOM)
-- HTML (for web viewing)
-- Markdown (for documentation)
+| Raw Parquet | Calculated output |
+|---|---|
+| `joint_displacements` | Story drift ratios, max displacement envelope |
+| `story_forces` | Overturning moment, cumulative shear |
+| `base_reactions` | Base shear vs code minimum check |
+| `modal` | Effective mass check, torsional irregularity |
+| `wall_pier_forces` | Shear stress ratio V/Ag, DCR |
+| `shell_stresses` | Principal stress, utilization ratio |
+| `takeoff` | Total weight by material, cost estimate |
 
-### 16. Collaboration Model
+---
 
-ETABS Extension enables team collaboration:
+## 18. Phase 1 Scope
 
-**Workflow:**
+**In scope:**
+- Local single-user workflow
+- `init`, `status`, `log`, `show`, `diff`
+- `branch`, `switch`, `switch -c`, `checkout`, `stash`
+- `commit`, `analyze`
+- `etabs open/close/status/validate/unlock/recover`
+- `push`, `pull`, `clone` (OneDrive transport)
+- E2K generation, Parquet results extraction
+- Polars calculations, Typst PDF reports
+- OneDrive detection and warning
+- `config.local.toml` per-machine settings
 
-**Designer A:**
-
-```bash
-ext branch new steel-frame
-ext commit "Initial steel design"
-```
-
-**Designer B:**
-
-```bash
-ext branch switch steel-frame
-# Review and make changes
-ext commit  "Refine steel connections"
-```
-
-**Lead Engineer:**
-
-```bash
-ext compare main/v3 steel-frame/v2 --forces --materials
-ext branch merge steel-frame --confirm   # If approved
-```
-
-**Behind the Scenes:**
-
-- Git handles synchronization
-- `.edb` files synced via LFS or cloud
-- E2K files show clear diffs
-- Conflict resolution when needed
-
-### 17. Recovery and Undo
-
-Multiple safety mechanisms:
-
-**Version History:**
-Every version is preserved:
-
-```bash
-ext log
-ext restore v2        # Restore working file to commit v2
-```
-
-**Snapshots:**
-Automatic snapshots before operations:
-
-```bash
-#Branch switches
-#Restores
-#Merges
-#ETABS-close with unsaved changes
-```
-
-**Manual Backup:**
-
-```bash
-ext backup
-# Creates timestamped backup
-```
-
-**Undo Last Operation:**
-
-```bash
-ext undo
-# Reverts last change
-```
-
-### 18. Performance Considerations
-
-**Large Files:**
-
-- `.edb` files can be 100MB+
-- Streaming for large operations
-- Progress indicators
-- Cancellable operations
-
-**E2K Generation:**
-
-- Can take 30-120 seconds
-- Runs in background when possible
-- Cached results
-- Skip with `--no-e2k` if needed
-
-**Storage:**
-
-- E2K files tracked in Git (~10% of .edb size)
-- `.edb` files in separate storage
-- Automatic compression
-- Cleanup old versions
-
-## Philosophy
-
-### Version Control Is Essential
-
-Structural engineering projects are:
-
-- **Iterative**: Multiple design cycles
-- **Collaborative**: Teams working together
-- **Complex**: Many interdependent decisions
-- **Regulated**: Audit trail required
-- **Long-lived**: Projects span months/years
-
-Traditional file-based versioning fails at scale. ETABS Extension brings software engineering practices to structural engineering.
-
-### Transparency and Trust
-
-The CLI is transparent about what it does:
-
-- Clear status messages
-- Verbose mode available
-- Dry-run options
-- Confirmation prompts for destructive operations
-
-Engineers can trust the tool because they can see exactly what's happening.
-
-### Integration, Not Replacement
-
-ETABS Extension **integrates with** ETABS, not replaces it:
-
-- ETABS remains the modeling environment
-- Extension adds version control layer
-- Engineers work in familiar tools
-- Minimal workflow disruption
-
-### CLI-First Design
-
-The CLI is not an afterthought—it's the **primary interface**:
-
-- Desktop app is built on CLI
-- API calls CLI commands
-- Scripts use CLI
-- Documentation focuses on CLI
-
-This ensures:
-
-- Testability
-- Scriptability
-- Consistency
-- Reliability
-
-## Summary
-
-ETABS Extension CLI provides Git-like version control for structural engineering:
-
-**Core Value:**
-
-- Track every design decision
-- Compare alternatives easily
-- Collaborate effectively
-- Maintain complete history
-- Audit trail for regulations
-
-**Key Innovations:**
-
-- E2K files for human-readable diffs
-- Branch-based design alternatives
-- ETABS integration
-- Git benefits without Git complexity
-
-**Result:**
-Engineers can focus on **design** instead of **file management**.
+**Out of scope:**
+- Branch merge / conflict resolution
+- Structured E2K section parser (raw diff only)
+- Geometry diff, 3D visualization, mode shape diagrams
+- Web interface, AI-assisted analysis
+- Multiple stashes per branch
+- Real-time collaboration
