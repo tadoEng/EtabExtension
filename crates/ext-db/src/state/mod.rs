@@ -6,6 +6,7 @@
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use ext_core::state::WorkingFileStatus;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -63,7 +64,6 @@ impl std::fmt::Display for WorkingFileStatus {
         write!(f, "{s}")
     }
 }
-
 /// Persisted state for the tracked working file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -134,8 +134,7 @@ impl StateFile {
                 .with_context(|| format!("Failed to create config dir: {}", parent.display()))?;
         }
 
-        let text = serde_json::to_string_pretty(self)
-            .context("Failed to serialise state")?;
+        let text = serde_json::to_string_pretty(self).context("Failed to serialise state")?;
         std::fs::write(&tmp, text)
             .with_context(|| format!("Failed to write tmp state: {}", tmp.display()))?;
         std::fs::rename(&tmp, &path)

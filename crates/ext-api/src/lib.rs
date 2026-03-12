@@ -15,19 +15,19 @@
 // resolution requires ext-db::Config, and ext-db depends on ext-core.
 // Putting it here keeps the dependency graph acyclic.
 
-pub mod context;
-pub mod init;
-pub mod status;
-pub mod commit;
-pub mod branch;
-pub mod switch;
-pub mod checkout;
-pub mod stash;
-pub mod etabs;
-pub mod diff;
 pub mod analyze;
-pub mod report;
-pub mod remote;
+pub mod branch;
+pub mod checkout;
+pub mod commit;
 pub mod config_cmd;
+pub mod context;
+pub mod diff;
+pub mod etabs;
+pub mod init;
+pub mod remote;
+pub mod report;
+pub mod stash;
+pub mod status;
+pub mod switch;
 
 pub use context::AppContext;

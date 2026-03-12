@@ -10,8 +10,7 @@ pub fn run() {
         .join("etab-extension")
         .join("logs");
 
-    std::fs::create_dir_all(&app_log_dir)
-        .expect("failed to create app log dir");
+    std::fs::create_dir_all(&app_log_dir).expect("failed to create app log dir");
 
     // ─── Log plugin ────────────────────────────────────────────────────
     let log_plugin = tauri_plugin_log::Builder::default()
@@ -38,15 +37,10 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(log_plugin)
-
         // ─── Setup ────────────────────────────────────────────────────
         .setup(|_| Ok(()))
-
         // ─── Commands ─────────────────────────────────────────────────
-        .invoke_handler(tauri::generate_handler![
-            commands::greet,
-        ])
-
+        .invoke_handler(tauri::generate_handler![commands::greet,])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -43,11 +43,7 @@ impl SidecarClient {
             });
         }
 
-        tracing::debug!(
-            "sidecar: {} {}",
-            self.path.display(),
-            args.join(" ")
-        );
+        tracing::debug!("sidecar: {} {}", self.path.display(), args.join(" "));
 
         let mut child = Command::new(&self.path)
             .args(args)

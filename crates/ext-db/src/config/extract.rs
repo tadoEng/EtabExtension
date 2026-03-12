@@ -51,7 +51,9 @@ impl TableSelections {
     pub fn merge(self, other: Self) -> Self {
         Self {
             story_definitions: other.story_definitions.or(self.story_definitions),
-            pier_section_properties: other.pier_section_properties.or(self.pier_section_properties),
+            pier_section_properties: other
+                .pier_section_properties
+                .or(self.pier_section_properties),
             base_reactions: other.base_reactions.or(self.base_reactions),
             story_forces: other.story_forces.or(self.story_forces),
             joint_drifts: other.joint_drifts.or(self.joint_drifts),

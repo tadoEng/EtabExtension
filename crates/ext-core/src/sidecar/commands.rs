@@ -173,18 +173,16 @@ impl SidecarClient {
             args.push(instance_flag);
         }
         let resp = self.run::<OpenModelData>(&args).await?;
-        resp.data.ok_or_else(|| ext_error::ExtError::SidecarParse(
-            "open-model returned no data".into(),
-        ))
+        resp.data
+            .ok_or_else(|| ext_error::ExtError::SidecarParse("open-model returned no data".into()))
     }
 
     /// Close the currently open ETABS model.
     pub async fn close_model(&self, save: bool) -> ExtResult<CloseModelData> {
         let flag = if save { "--save" } else { "--no-save" };
         let resp = self.run::<CloseModelData>(&["close-model", flag]).await?;
-        resp.data.ok_or_else(|| ext_error::ExtError::SidecarParse(
-            "close-model returned no data".into(),
-        ))
+        resp.data
+            .ok_or_else(|| ext_error::ExtError::SidecarParse("close-model returned no data".into()))
     }
 
     /// Unlock an ETABS model file that was left in a locked state.
@@ -193,9 +191,9 @@ impl SidecarClient {
         let resp = self
             .run::<UnlockModelData>(&["unlock-model", "--file", &file_str])
             .await?;
-        resp.data.ok_or_else(|| ext_error::ExtError::SidecarParse(
-            "unlock-model returned no data".into(),
-        ))
+        resp.data.ok_or_else(|| {
+            ext_error::ExtError::SidecarParse("unlock-model returned no data".into())
+        })
     }
 }
 
@@ -211,22 +209,16 @@ impl SidecarClient {
     ) -> ExtResult<GenerateE2kData> {
         let file_str = file.display().to_string();
         let output_str = output.display().to_string();
-        let mut args = vec![
-            "generate-e2k",
-            "--file",
-            &file_str,
-            "--output",
-            &output_str,
-        ];
+        let mut args = vec!["generate-e2k", "--file", &file_str, "--output", &output_str];
         let overwrite_flag;
         if overwrite {
             overwrite_flag = "--overwrite";
             args.push(overwrite_flag);
         }
         let resp = self.run::<GenerateE2kData>(&args).await?;
-        resp.data.ok_or_else(|| ext_error::ExtError::SidecarParse(
-            "generate-e2k returned no data".into(),
-        ))
+        resp.data.ok_or_else(|| {
+            ext_error::ExtError::SidecarParse("generate-e2k returned no data".into())
+        })
     }
 
     /// Run analysis on a committed snapshot. Never called on working/model.edb.
@@ -245,9 +237,9 @@ impl SidecarClient {
             args.push(&cases_str);
         }
         let resp = self.run::<RunAnalysisData>(&args).await?;
-        resp.data.ok_or_else(|| ext_error::ExtError::SidecarParse(
-            "run-analysis returned no data".into(),
-        ))
+        resp.data.ok_or_else(|| {
+            ext_error::ExtError::SidecarParse("run-analysis returned no data".into())
+        })
     }
 
     /// Extract material takeoff to a Parquet file.
@@ -283,9 +275,9 @@ impl SidecarClient {
             args.push(&field_keys_str);
         }
         let resp = self.run::<ExtractMaterialsData>(&args).await?;
-        resp.data.ok_or_else(|| ext_error::ExtError::SidecarParse(
-            "extract-materials returned no data".into(),
-        ))
+        resp.data.ok_or_else(|| {
+            ext_error::ExtError::SidecarParse("extract-materials returned no data".into())
+        })
     }
 
     /// Extract analysis results to Parquet files.
@@ -321,8 +313,8 @@ impl SidecarClient {
                 &request_json,
             ])
             .await?;
-        resp.data.ok_or_else(|| ext_error::ExtError::SidecarParse(
-            "extract-results returned no data".into(),
-        ))
+        resp.data.ok_or_else(|| {
+            ext_error::ExtError::SidecarParse("extract-results returned no data".into())
+        })
     }
 }

@@ -14,4 +14,3 @@ pub struct Prompt {
 pub struct Completion {
     pub content: String,
 }
-

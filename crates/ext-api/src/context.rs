@@ -15,9 +15,9 @@
 // Solution: ext-api resolves the path, constructs SidecarClient(path),
 // and passes it down. ext-core::SidecarClient stays dep-free.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use ext_core::sidecar::SidecarClient;
-use ext_db::{config::Config, StateFile};
+use ext_db::{StateFile, config::Config};
 use std::path::{Path, PathBuf};
 
 pub struct AppContext {
@@ -27,9 +27,9 @@ pub struct AppContext {
     /// Fully resolved config — config.local.toml merged over config.toml
     pub config: Config,
 
-    /// Ready-to-use sidecar client. Path was resolved from:
+    /// Sidecar client if path was resolved from:
     ///   config.toml etabs.sidecar-path → ETABS_SIDECAR_PATH env → PATH
-    pub sidecar: SidecarClient,
+    pub sidecar: Option<SidecarClient>,
 }
 
 impl AppContext {
@@ -48,17 +48,14 @@ impl AppContext {
 
         let config = Config::load(&project_root)
             .with_context(|| format!("Failed to load config from {}", project_root.display()))?;
-
-        let sidecar_path = config.resolve_sidecar_path(&project_root).with_context(|| {
-            "etab-cli sidecar not found.\n  \
-             Set project.sidecar-path in .etabs-ext/config.local.toml or config.toml\n  \
-             or set ETABS_SIDECAR_PATH environment variable"
-        })?;
+        let sidecar = config
+            .resolve_sidecar_path(&project_root)
+            .map(SidecarClient::new);
 
         Ok(Self {
             project_root,
             config,
-            sidecar: SidecarClient::new(sidecar_path),
+            sidecar,
         })
     }
 
@@ -109,12 +106,20 @@ impl AppContext {
         state.save(&self.project_root)
     }
 
+    pub fn require_sidecar(&self) -> Result<&SidecarClient> {
+        self.sidecar.as_ref().with_context(|| {
+            "etab-cli sidecar not found.\n  \
+             Set project.sidecar-path in .etabs-ext/config.local.toml or config.toml\n  \
+             or set ETABS_SIDECAR_PATH environment variable"
+        })
+    }
+
     /// For use in tests — create with a known project root without validation.
     #[cfg(test)]
     pub fn for_test(project_root: PathBuf, config: Config) -> Self {
-        // In tests the sidecar won't be called; use a dummy path.
+        // In tests the sidecar is optional and can stay unavailable.
         Self {
-            sidecar: SidecarClient::new(project_root.join("etab-cli-test-stub")),
+            sidecar: None,
             project_root,
             config,
         }

@@ -22,7 +22,11 @@ pub enum ExtError {
 
     // ── State machine ──────────────────────────────────────────────────────
     #[error("Working file is in state {state}, which does not allow '{command}'\n  Run: {remedy}")]
-    CommandGuard { state: String, command: String, remedy: String },
+    CommandGuard {
+        state: String,
+        command: String,
+        remedy: String,
+    },
 
     #[error("State file corrupted: {0}")]
     StateCorrupted(String),
@@ -53,7 +57,9 @@ pub enum ExtError {
     GitError(String),
 
     // ── Sidecar (C# etab-cli) ──────────────────────────────────────────────
-    #[error("Sidecar binary not found at {path}\n  Check: etabs.sidecarPath in .etabs-ext/config.toml")]
+    #[error(
+        "Sidecar binary not found at {path}\n  Check: etabs.sidecarPath in .etabs-ext/config.toml"
+    )]
     SidecarNotFound { path: String },
 
     #[error("Sidecar process failed (exit {code}): {stderr}")]
@@ -68,7 +74,9 @@ pub enum ExtError {
     #[error("ETABS is not running\n  Open ETABS and try again")]
     EtabsNotRunning,
 
-    #[error("ETABS file is currently open\n  Close ETABS before continuing\n  Run: ext etabs close")]
+    #[error(
+        "ETABS file is currently open\n  Close ETABS before continuing\n  Run: ext etabs close"
+    )]
     EtabsFileOpen { pid: u32 },
 
     #[error("ETABS file mismatch: expected {expected}, got {actual}")]
@@ -78,7 +86,9 @@ pub enum ExtError {
     WorkingFileOrphaned,
 
     // ── OneDrive ───────────────────────────────────────────────────────────
-    #[error("Project is inside a OneDrive-synced folder\n  This can corrupt .edb files during sync")]
+    #[error(
+        "Project is inside a OneDrive-synced folder\n  This can corrupt .edb files during sync"
+    )]
     OneDriveConflict,
 
     #[error("OneDrive folder not configured\n  Run: ext config set paths.oneDriveDir \"<path>\"")]
