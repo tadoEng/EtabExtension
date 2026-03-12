@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use sysinfo::System;
 
+use crate::path_utils::normalize_path;
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct StatusOptions {
@@ -57,20 +59,20 @@ pub async fn project_status(ctx: &AppContext, options: StatusOptions) -> Result<
         .with_context(|| "Failed to load state.json".to_string())?;
     let working_file = state.working_file.as_ref();
 
-    let working_model_path = working_file.map(|w| w.path.clone()).unwrap_or_else(|| {
+    let working_model_path_raw = working_file.map(|w| w.path.clone()).unwrap_or_else(|| {
         ctx.project_root
             .join(".etabs-ext")
             .join("main")
             .join("working")
             .join("model.edb")
     });
-    let current_mtime = mtime(&working_model_path);
+    let current_mtime = mtime(&working_model_path_raw);
     let last_known_mtime = working_file.and_then(|w| w.last_known_mtime.as_ref().cloned());
     let etabs_pid = working_file.and_then(|w| w.etabs_pid);
     let based_on_version = working_file.and_then(|w| w.based_on_version.clone());
 
     let status = state::resolve(ResolveInput {
-        file_exists: working_model_path.exists(),
+        file_exists: working_model_path_raw.exists(),
         etabs_pid,
         pid_alive: etabs_pid.map(is_pid_alive).unwrap_or(false),
         based_on_version: based_on_version.clone(),
@@ -88,7 +90,9 @@ pub async fn project_status(ctx: &AppContext, options: StatusOptions) -> Result<
                         is_running: data.is_running,
                         pid: data.pid,
                         etabs_version: data.etabs_version,
-                        open_file_path: data.open_file_path,
+                        open_file_path: data
+                            .open_file_path
+                            .map(|p| normalize_path(Path::new(&p)).display().to_string()),
                         is_locked: data.is_locked,
                         is_analyzed: data.is_analyzed,
                         unit_system: data.unit_system,
@@ -119,8 +123,8 @@ pub async fn project_status(ctx: &AppContext, options: StatusOptions) -> Result<
 
     Ok(StatusReport {
         project_name: ctx.config.project.name.clone(),
-        project_root: ctx.project_root.clone(),
-        working_model_path,
+        project_root: normalize_path(&ctx.project_root),
+        working_model_path: normalize_path(&working_model_path_raw),
         working_status: status,
         based_on_version,
         etabs_pid,

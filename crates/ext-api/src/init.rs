@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::path_utils::normalize_path;
+
 const GITIGNORE_CONTENT: &str = r#"*.edb
 *.parquet
 */working/
@@ -60,13 +62,18 @@ fn file_mtime_utc(path: &Path) -> Result<DateTime<Utc>> {
 }
 
 fn run_git(repo: &Path, args: &[&str]) -> Result<()> {
-    let status = Command::new("git")
+    let output = Command::new("git")
         .current_dir(repo)
         .args(args)
-        .status()
+        .output()
         .with_context(|| format!("Failed to run git {}", args.join(" ")))?;
-    if !status.success() {
-        bail!("git command failed: git {}", args.join(" "));
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let detail = stderr.trim();
+        if detail.is_empty() {
+            bail!("git command failed: git {}", args.join(" "));
+        }
+        bail!("git command failed: git {}\n  {}", args.join(" "), detail);
     }
     Ok(())
 }
@@ -75,10 +82,10 @@ fn git_init(repo: &Path) -> Result<()> {
     let preferred = Command::new("git")
         .current_dir(repo)
         .args(["init", "--initial-branch=main"])
-        .status();
+        .output();
 
     match preferred {
-        Ok(status) if status.success() => Ok(()),
+        Ok(output) if output.status.success() => Ok(()),
         Ok(_) | Err(_) => run_git(repo, &["init"]),
     }
 }
@@ -166,9 +173,11 @@ pub async fn init_project(req: InitRequest) -> Result<InitResult> {
 
     let now = Utc::now();
     let working_state = WorkingFileState {
-        path: working_model_path
-            .canonicalize()
-            .unwrap_or_else(|_| working_model_path.clone()),
+        path: normalize_path(
+            &working_model_path
+                .canonicalize()
+                .unwrap_or_else(|_| working_model_path.clone()),
+        ),
         status: WorkingFileStatus::Untracked,
         etabs_pid: None,
         last_commit_hash: None,
@@ -199,9 +208,9 @@ pub async fn init_project(req: InitRequest) -> Result<InitResult> {
     run_git(&ext_dir, &["commit", "-m", "ext: init project"])?;
 
     Ok(InitResult {
-        project_root,
-        ext_dir,
-        working_model_path,
+        project_root: normalize_path(&project_root),
+        ext_dir: normalize_path(&ext_dir),
+        working_model_path: normalize_path(&working_model_path),
         onedrive_detected,
     })
 }

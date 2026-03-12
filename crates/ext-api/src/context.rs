@@ -20,6 +20,8 @@ use ext_core::sidecar::SidecarClient;
 use ext_db::{StateFile, config::Config};
 use std::path::{Path, PathBuf};
 
+use crate::path_utils::normalize_path;
+
 pub struct AppContext {
     /// Absolute path to the project root (parent of .etabs-ext/)
     pub project_root: PathBuf,
@@ -35,9 +37,11 @@ pub struct AppContext {
 impl AppContext {
     /// Build a context from a project root directory.
     pub fn new(project_root: &Path) -> Result<Self> {
-        let project_root = project_root
-            .canonicalize()
-            .with_context(|| format!("Project root not found: {}", project_root.display()))?;
+        let project_root = normalize_path(
+            &project_root
+                .canonicalize()
+                .with_context(|| format!("Project root not found: {}", project_root.display()))?,
+        );
 
         if !Config::config_dir(&project_root).is_dir() {
             bail!(

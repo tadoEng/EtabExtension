@@ -24,6 +24,7 @@ pub mod context;
 pub mod diff;
 pub mod etabs;
 pub mod init;
+mod path_utils;
 pub mod remote;
 pub mod report;
 pub mod stash;
