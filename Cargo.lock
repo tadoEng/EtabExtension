@@ -1716,6 +1716,7 @@ dependencies = [
 name = "ext-api"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "ext-core",
  "ext-db",
  "ext-error",
@@ -1732,6 +1733,8 @@ dependencies = [
  "ext-error",
  "serde",
  "serde_json",
+ "tokio",
+ "tracing",
  "ts-rs",
  "uuid",
 ]
@@ -1749,6 +1752,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "toml 0.9.11+spec-1.1.0",
  "uuid",
 ]
 

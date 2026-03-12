@@ -45,7 +45,7 @@ resolver = "2"
 repository = "https://github.com/tadodev/EtabExtension"
 edition = "2024"
 authors = ["EtabExtension Contributors"]
-rust-version = "1.86"
+rust-version = "1.94"
 
 [workspace.dependencies]
 # ── Internal crates ────────────────────────────────────────────────────────────

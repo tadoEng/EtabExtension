@@ -10,3 +10,5 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 ts-rs = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

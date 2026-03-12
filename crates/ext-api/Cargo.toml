@@ -7,6 +7,7 @@ edition.workspace = true
 ext-core = { workspace = true }
 ext-error = { workspace = true }
 ext-db = { workspace = true }
+anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
