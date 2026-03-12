@@ -2,8 +2,6 @@ mod commands;
 
 use tauri::{Manager};
 use tauri_plugin_log::{Target, TargetKind};
-use ext_api::AppState;
-use ext_db::Database;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -45,47 +43,14 @@ pub fn run() {
         // ─── Setup ────────────────────────────────────────────────────
         .setup(|app| {
             let app_handle = app.handle().clone();
-
-            let db = tauri::async_runtime::block_on(async {
-                initialize_database().await
-            })
-            .expect("Failed to initialize database");
-
-            app_handle.manage(AppState::new(db));
             Ok(())
         })
 
         // ─── Commands ─────────────────────────────────────────────────
         .invoke_handler(tauri::generate_handler![
             commands::greet,
-            commands::create_project,
-            commands::get_projects,
         ])
 
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-
-
-async fn initialize_database() -> Result<Database, Box<dyn std::error::Error>> {
-    let app_dir = dirs::data_local_dir()
-        .ok_or("Failed to get app data directory")?
-        .join("etab-extension");
-
-    let db_dir = app_dir.join("db");
-    let projects_dir = app_dir.join("projects");
-
-    std::fs::create_dir_all(&db_dir)?;
-    std::fs::create_dir_all(&projects_dir)?;
-
-    let db_path = db_dir.join("app.db");
-
-    let db_url = format!(
-        "sqlite://{}?mode=rwc",
-        db_path.to_string_lossy().replace('\\', "/")
-    );
-
-    let db = Database::new(&db_url, projects_dir.to_str().unwrap()).await?;
-    Ok(db)
 }

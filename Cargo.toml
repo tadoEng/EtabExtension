@@ -3,41 +3,41 @@ members = [
     ##
     ### ✅ Foundation layer — no business logic, no I/O frameworks
     ##
-    "crates/ext-error",         # 📄 All EtabsError variants. Depends on nothing.
-    "crates/ext-core",          # 📄 Pure domain logic: state machine, branch, version,
-                                #    stash, sidecar client, vcs ops (gix reads + git
-                                #    subprocess writes), atomic file ops, OneDrive
-                                #    detection, Polars calculations, Typst generators.
-    "crates/ext-db",            # 📄 config.toml + config.local.toml resolution,
-                                #    state.json, SQLite project registry + agent
-                                #    session history (Phase 2) via sea-orm.
+    "crates/ext-error",         # All EtabsError variants. Depends on nothing.
+    "crates/ext-core",          # Pure domain logic: state machine, branch, version,
+                                #   stash, sidecar client, vcs ops (gix reads + git
+                                #   subprocess writes), atomic file ops, OneDrive
+                                #   detection, Polars calculations, Typst generators.
+    "crates/ext-db",            # config.toml + config.local.toml resolution,
+                                #   state.json, SQLite project registry + agent
+                                #   session history (Phase 2) via sea-orm.
 
     ##
     ### ✅ API layer — single source of truth
     ##
-    "crates/ext-api",           # 📄 All application workflows as plain async Rust fns.
-                                #    init, status, commit, analyze, branch, switch,
-                                #    checkout, stash, etabs open/close/unlock/recover,
-                                #    diff, report, push, pull, clone, config.
+    "crates/ext-api",           # All application workflows as plain async Rust fns.
+                                #   init, status, commit, analyze, branch, switch,
+                                #   checkout, stash, etabs open/close/unlock/recover,
+                                #   diff, report, push, pull, clone, config.
 
     ##
     ### ✅ AI layer — provider-agnostic, privacy-first
     ##
-    "crates/ext-agent-llm",     # 📄 LlmClient trait + backends.
-                                #    Phase 1: Claude (reqwest). Phase 2: OpenAI-compat
-                                #    (async-openai) covers Ollama, LM Studio, OpenAI,
-                                #    Azure. Local-first: Ollama is the default provider.
-    "crates/ext-agent",         # 📄 Conversation loop, tool registry, confirmation gate,
-                                #    system prompt builder (SKILL.md + live status),
-                                #    in-memory history. Used by CLI and Tauri identically.
+    "crates/ext-agent-llm",     # LlmClient trait + backends.
+                                #   Phase 1: Claude (reqwest). Phase 2: OpenAI-compat
+                                #   (async-openai) covers Ollama, LM Studio, OpenAI,
+                                #   Azure. Local-first: Ollama is the default provider.
+    "crates/ext-agent",         # Conversation loop, tool registry, confirmation gate,
+                                #   system prompt builder (SKILL.md + live status),
+                                #   in-memory history. Used by CLI and Tauri identically.
 
     ##
     ### Binaries
     ##
-    "crates/ext",               # 📄 CLI binary. Thin clap layer. Zero business logic.
-                                #    Includes `ext chat` subcommand (Phase 1).
-    "crates/ext-tauri",         # 📄 Desktop app. Tauri IPC wrappers over ext-api
-                                #    and ext-agent. Chat panel added Phase 2.
+    "crates/ext",               # CLI binary. Thin clap layer. Zero business logic.
+                                #   Includes `ext chat` subcommand (Phase 1).
+    "crates/ext-tauri",         # Desktop app. Tauri IPC wrappers over ext-api
+                                #   and ext-agent. Chat panel added Phase 2.
 ]
 resolver = "2"
 
@@ -45,7 +45,7 @@ resolver = "2"
 repository = "https://github.com/tadodev/EtabExtension"
 edition = "2024"
 authors = ["EtabExtension Contributors"]
-rust-version = "1.89"
+rust-version = "1.86"
 
 [workspace.dependencies]
 # ── Internal crates ────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ ext-agent-llm = { path = "crates/ext-agent-llm" }
 ext-agent     = { path = "crates/ext-agent" }
 
 # ── Async runtime ──────────────────────────────────────────────────────────────
-tokio   = { version = "1.49", features = ["full"] }
+tokio   = { version = "1.50.0", features = ["full"] }
 futures = "0.3.32"
 
 # ── Error handling ─────────────────────────────────────────────────────────────
@@ -68,6 +68,8 @@ anyhow    = "1.0.102"
 serde      = { version = "1.0", features = ["derive", "std"] }
 serde_json = "1.0.148"
 toml       = "0.9.8"
+regex      = "1.12.3"
+schemars   = "1.2.1"
 
 # ── VCS reads (pure Rust, no C dependency) ────────────────────────────────────
 # Writes go through `git` subprocess — no git2 needed.
@@ -91,24 +93,24 @@ polars = { version = "0.53.0", default-features = false, features = [
 ] }
 
 # ── PDF reports ────────────────────────────────────────────────────────────────
-typst = "0.14.2"
+# typst      — compilation engine (builds the document model)
+# typst-pdf  — renders compiled document to PDF bytes
+# Both required; typst alone does not produce PDF output.
+typst     = "0.14.2"
+typst-pdf = "0.14.2"
 
 # ── AI — Phase 1: Claude backend (direct HTTP, no SDK needed) ─────────────────
 # Used in ext-agent-llm/src/claude.rs only.
 reqwest = { version = "0.13.2", default-features = false, features = [
     "rustls-tls",
     "json",
-    "stream",      # needed for streaming token responses in Phase 2
+    "stream",
 ] }
 
 # ── AI — Phase 2: OpenAI-compatible backend ───────────────────────────────────
 # Covers Ollama (local/private), LM Studio, OpenAI, Azure OpenAI.
-# One crate, many providers via base_url override in config.local.toml.
-# Not used in Phase 1 — added to workspace.dependencies now so the
-# feature flag in ext-agent-llm compiles cleanly from day one.
 async-openai = { version = "0.33.0", default-features = false, features = [
     "rustls",
-    "chat-completion",
 ] }
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
@@ -116,28 +118,37 @@ clap = { version = "4.5.60", default-features = false, features = [
     "derive",
     "std",
     "help",
-    "unstable-markdown",
+    # NOTE: "unstable-markdown" removed — requires nightly.
+    # Re-add if/when stabilized or if you pin to a nightly toolchain.
 ] }
-# Progress bars for .edb copies and long-running agent tools (analyze, report).
+rmcp = "1.2.0"
+# Progress bars for .edb copies and long-running agent tools.
 indicatif = "0.18.4"
 # readline with history + line editing for `ext chat` REPL.
 rustyline = "17.0.2"
+shell-words = "1.1.1"
 
 # ── System / process ──────────────────────────────────────────────────────────
-sysinfo = { version = "0.38.2", default-features = false }
+sysinfo = { version = "0.38.4", default-features = false }
 dirs    = "6.0.0"
+open    = "5.3.3"
+git2    = "0.20.4"
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
-uuid        = { version = "1.21.0", features = ["v4", "serde"] }
-chrono      = { version = "0.4.44", default-features = false, features = ["std"] }
-parking_lot = "0.12.4"
-itertools   = "0.14.0"
-tracing     = "0.1.44"
-tracing-subscriber = "0.3.22"
+uuid        = { version = "1.22.0", features = ["v4", "serde"] }
+chrono      = { version = "0.4.44", default-features = false, features = ["std", "serde"] }
+parking_lot = "0.12"
+itertools   = "0.14"
+nonempty    = "0.12.0"
+self_cell   = "1.2.2"
+sha2        = "0.10.9"
+tracing     = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-forest = "0.3.1"
 
 # ── Testing ────────────────────────────────────────────────────────────────────
-tempfile = "3.26.0"
-snapbox  = "1.0.0"
+tempfile = "3.27.0"
+snapbox  = "1.1.0"
 
 # ── TypeScript type generation ─────────────────────────────────────────────────
 ts-rs = { version = "12.0.1", features = ["serde-compat", "no-serde-warnings"] }
@@ -145,10 +156,8 @@ ts-rs = { version = "12.0.1", features = ["serde-compat", "no-serde-warnings"] }
 # ── Explicitly excluded — do not add ──────────────────────────────────────────
 # notify        — no file watching; mtime checked on-demand
 # notify-rust   — no OS toast notifications in Phase 1
-# md5 / sha2    — architecture forbids hashing for state; git owns commit hashes
+# md5           — architecture forbids hashing for state; git owns commit hashes
 # walkdir       — std::fs::read_dir sufficient for flat vN/ structure
-# rmcp          — no MCP; agent exposed via ext chat and Tauri panel directly
-# git2          — writes go through git subprocess; gix handles all reads
 # acp (rust-sdk)— no agent-to-agent protocol needed until Phase 3
 
 # ── Lints ─────────────────────────────────────────────────────────────────────
