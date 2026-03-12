@@ -13,57 +13,6 @@ use std::path::{Path, PathBuf};
 pub const STATE_FILE: &str = ".etabs-ext/state.json";
 pub const STATE_SCHEMA_VERSION: u32 = 1;
 
-/// The 9 working file states from agents.md §State Machine.
-///
-/// Resolution priority (decide from top to bottom):
-///   1. Missing   — working/model.edb doesn't exist
-///   2. Orphaned  — ETABS PID alive but file not open in it
-///   3. OpenModified / OpenClean — ETABS PID alive and file is open
-///   4. Analyzed  — .etabs-ext/analysis/ results exist for current commit
-///   5. Modified  — mtime > lastKnownMtime
-///   6. Clean     — mtime == lastKnownMtime, basedOnVersion is set
-///   7. Untracked — basedOnVersion is not set (never been committed)
-///
-/// Locked is a sub-state of Clean/Analyzed — the .edb has a lock file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum WorkingFileStatus {
-    /// working/model.edb does not exist on disk
-    Missing,
-    /// ETABS is running with this file open, no unsaved changes detected
-    OpenClean,
-    /// ETABS is running with this file open, unsaved changes detected
-    OpenModified,
-    /// ETABS PID is alive but this file is not its open file — state unknown
-    Orphaned,
-    /// File exists, tracked, no changes since last commit, analysis results present
-    Analyzed,
-    /// File exists, tracked, no changes since last commit, no analysis results
-    Clean,
-    /// File exists, tracked, mtime changed since last commit
-    Modified,
-    /// File exists but has never been committed (basedOnVersion is None)
-    Untracked,
-    /// .edb has an ETABS lock file (sub-state of Clean/Analyzed)
-    Locked,
-}
-
-impl std::fmt::Display for WorkingFileStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            WorkingFileStatus::Missing => "Missing",
-            WorkingFileStatus::OpenClean => "OpenClean",
-            WorkingFileStatus::OpenModified => "OpenModified",
-            WorkingFileStatus::Orphaned => "Orphaned",
-            WorkingFileStatus::Analyzed => "Analyzed",
-            WorkingFileStatus::Clean => "Clean",
-            WorkingFileStatus::Modified => "Modified",
-            WorkingFileStatus::Untracked => "Untracked",
-            WorkingFileStatus::Locked => "Locked",
-        };
-        write!(f, "{s}")
-    }
-}
 /// Persisted state for the tracked working file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
