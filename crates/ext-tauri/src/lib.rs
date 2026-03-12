@@ -1,6 +1,5 @@
 mod commands;
 
-use tauri::{Manager};
 use tauri_plugin_log::{Target, TargetKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -14,7 +13,7 @@ pub fn run() {
     std::fs::create_dir_all(&app_log_dir)
         .expect("failed to create app log dir");
 
-    // ─── Log plugin (GitButler-style) ─────────────────────────────────
+    // ─── Log plugin ────────────────────────────────────────────────────
     let log_plugin = tauri_plugin_log::Builder::default()
         .target(Target::new(TargetKind::LogDir {
             file_name: Some("ui-logs".to_string()),
@@ -41,10 +40,7 @@ pub fn run() {
         .plugin(log_plugin)
 
         // ─── Setup ────────────────────────────────────────────────────
-        .setup(|app| {
-            let app_handle = app.handle().clone();
-            Ok(())
-        })
+        .setup(|_| Ok(()))
 
         // ─── Commands ─────────────────────────────────────────────────
         .invoke_handler(tauri::generate_handler![

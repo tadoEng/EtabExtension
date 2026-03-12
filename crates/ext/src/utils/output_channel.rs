@@ -325,7 +325,7 @@ impl OutputChannel {
                 let pager = minus::Pager::new();
                 let msg = "can talk to newly created pager";
                 pager.set_exit_strategy(ExitStrategy::PagerQuit).expect(msg);
-                pager.set_prompt("GitButler").expect(msg);
+                pager.set_prompt("ext").expect(msg);
                 Some(pager)
             },
         }
