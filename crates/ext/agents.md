@@ -289,7 +289,7 @@ Before executing any command — including agent tool calls — check the **perm
 
 ```rust
 // Example: guard for ext commit (same guard used by agent commit tool)
-match state {
+    match state {
     WorkingFileState::OpenClean | WorkingFileState::OpenModified =>
         bail!("✗ Close ETABS before committing\n  Run: ext etabs close"),
     WorkingFileState::Orphaned =>
@@ -306,9 +306,30 @@ match state {
 
 The sidecar (`etab-cli.exe`) is the **only** component that can call ETABS COM APIs. The Rust CLI — **and the agent** — never call COM directly.
 
-**Always find the sidecar via `SidecarClient::locate(ctx)`** — it checks:
+**Always access the sidecar via `ctx.require_sidecar()`** — never via `ctx.sidecar.as_ref()` directly.
 
-1. `config.toml`
+```rust
+// ✅ Correct — require_sidecar() gives a clear error if not configured
+pub async fn etabs_open(ctx: &AppContext, file: &Path) -> Result<OpenModelData> {
+    let sidecar = ctx.require_sidecar()?;
+    sidecar.open_model(file, false, false).await.map_err(Into::into)
+}
+
+// ❌ Wrong — silent Option handling, no user-facing error
+pub async fn etabs_open(ctx: &AppContext, file: &Path) -> Result<OpenModelData> {
+    if let Some(sidecar) = ctx.sidecar.as_ref() {   // NEVER do this
+        sidecar.open_model(file, false, false).await.map_err(Into::into)
+    } else {
+        Ok(...)  // silently does nothing — user gets no error
+    }
+}
+```
+
+**The one permitted exception** is `ext status --verbose`, which degrades gracefully with a warning instead of failing hard when the sidecar is not configured. That call site carries an explicit comment. No other call site may access `ctx.sidecar` directly.
+
+**Always find the sidecar via `AppContext::new(root)`** — it checks:
+
+1. `config.toml` / `config.local.toml` → `project.sidecar-path`
 2. `ETABS_SIDECAR_PATH` env var
 3. `PATH`
 
@@ -320,8 +341,9 @@ Never hardcode the path.
 
 - `stdin`: nothing
 - `stdout`: `Result<T>` JSON (always, even on failure)
-- `stderr`: human-readable progress — forward directly to terminal
+- `stderr`: human-readable progress — forwarded live to terminal via `tracing::info!`
 - `exit`: `0` = success, `1` = failure
+
 
 ---
 

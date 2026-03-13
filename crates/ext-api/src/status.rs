@@ -83,6 +83,10 @@ pub async fn project_status(ctx: &AppContext, options: StatusOptions) -> Result<
     let mut sidecar_status = None;
     let mut sidecar_warning = None;
     if options.verbose {
+        // EXCEPTION: direct sidecar access is permitted here.
+        // `ext status --verbose` degrades gracefully — missing sidecar is a
+        // warning, not a hard failure. All other callers must use require_sidecar().
+        // See agents.md §Sidecar Integration for the rule and its rationale.
         if let Some(sidecar) = ctx.sidecar.as_ref() {
             match sidecar.get_status().await {
                 Ok(data) => {

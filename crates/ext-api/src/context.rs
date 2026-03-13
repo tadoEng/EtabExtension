@@ -29,9 +29,17 @@ pub struct AppContext {
     /// Fully resolved config — config.local.toml merged over config.toml
     pub config: Config,
 
-    /// Sidecar client if path was resolved from:
-    ///   config.toml etabs.sidecar-path → ETABS_SIDECAR_PATH env → PATH
-    pub sidecar: Option<SidecarClient>,
+    /// Sidecar client, present only when the binary was located at context
+    /// construction time via:
+    ///   config.toml project.sidecar-path → ETABS_SIDECAR_PATH env → PATH
+    ///
+    /// RULE: never access this field directly. Always call `require_sidecar()`
+    /// which returns a clear error when the sidecar is not configured.
+    ///
+    /// The ONE permitted exception is `ext status --verbose`, which degrades
+    /// gracefully by reporting a warning instead of failing. That exception must
+    /// be explicitly documented at the call site with a comment explaining why.
+    pub(crate) sidecar: Option<SidecarClient>,
 }
 
 impl AppContext {
@@ -110,6 +118,25 @@ impl AppContext {
         state.save(&self.project_root)
     }
 
+    /// THE MANDATED CALL SITE for all sidecar access.
+    ///
+    /// Every ext-api function that needs to talk to ETABS must call this.
+    /// It returns a clear, user-facing error when the sidecar is not configured,
+    /// instead of silently doing nothing or panicking.
+    ///
+    /// ## Correct usage
+    /// ```ignore
+    /// pub async fn etabs_open(ctx: &AppContext, file: &Path) -> Result<OpenModelData> {
+    ///     let sidecar = ctx.require_sidecar()?;
+    ///     sidecar.open_model(file, false, false).await.map_err(Into::into)
+    /// }
+    /// ```
+    ///
+    /// ## The only permitted exception
+    /// `ext status --verbose` may call `ctx.sidecar.as_ref()` directly and
+    /// degrade gracefully with a warning instead of failing. That call site
+    /// must carry a comment explaining the exception. All other callers must
+    /// use `require_sidecar()`.
     pub fn require_sidecar(&self) -> Result<&SidecarClient> {
         self.sidecar.as_ref().with_context(|| {
             "etab-cli sidecar not found.\n  \
@@ -121,7 +148,6 @@ impl AppContext {
     /// For use in tests — create with a known project root without validation.
     #[cfg(test)]
     pub fn for_test(project_root: PathBuf, config: Config) -> Self {
-        // In tests the sidecar is optional and can stay unavailable.
         Self {
             sidecar: None,
             project_root,
