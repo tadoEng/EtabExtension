@@ -23,7 +23,7 @@ pub mod types;
 pub use client::SidecarClient;
 pub use commands::{
     CloseModelData, ExtractMaterialsData, ExtractResultsData, ExtractResultsRequest,
-    GenerateE2kData, GetStatusData, OpenModelData, RunAnalysisData, TableResult, TableSelection,
-    TableSelections, UnitPreset, UnlockModelData,
+    GenerateE2kData, GetStatusData, GetStatusUnitSystem, OpenModelData, RunAnalysisData,
+    TableResult, TableSelection, TableSelections, UnitPreset, UnlockModelData,
 };
 pub use types::{SidecarResponse, UnitInfo};

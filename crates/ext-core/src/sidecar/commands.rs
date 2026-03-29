@@ -28,34 +28,48 @@ pub type UnitPreset = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GetStatusUnitSystem {
+    pub force: String,
+    pub length: String,
+    pub temperature: String,
+    pub is_us: bool,
+    pub is_metric: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GetStatusData {
     pub is_running: bool,
     pub pid: Option<u32>,
     pub etabs_version: Option<String>,
     pub open_file_path: Option<String>,
+    pub is_model_open: bool,
     pub is_locked: Option<bool>,
     pub is_analyzed: Option<bool>,
-    pub unit_system: Option<String>,
+    pub unit_system: Option<GetStatusUnitSystem>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenModelData {
-    pub opened_file: String,
+    pub file_path: String,
+    pub previous_file_path: Option<String>,
     pub pid: u32,
+    pub opened_in_new_instance: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CloseModelData {
-    pub closed_file: Option<String>,
-    pub saved: bool,
+    pub closed_file_path: Option<String>,
+    pub was_saved: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnlockModelData {
-    pub unlocked_file: String,
+    pub file_path: String,
+    pub was_locked: bool,
 }
 
 // ── Mode B types ──────────────────────────────────────────────────────────
@@ -158,6 +172,7 @@ impl SidecarClient {
             pid: None,
             etabs_version: None,
             open_file_path: None,
+            is_model_open: false,
             is_locked: None,
             is_analyzed: None,
             unit_system: None,

@@ -1,3 +1,6 @@
+#[path = "../../test-support/fake_sidecar.rs"]
+mod fake_sidecar;
+
 use chrono::{DateTime, Duration, Utc};
 use ext_api::AppContext;
 use ext_api::init::{InitRequest, init_project};
@@ -148,4 +151,39 @@ async fn status_verbose_succeeds_without_sidecar() {
         .await
         .unwrap();
     assert!(report.sidecar_warning.is_some() || report.sidecar_status.is_some());
+}
+
+#[tokio::test]
+async fn status_verbose_upgrades_clean_to_analyzed_with_sidecar() {
+    let temp = TempDir::new().unwrap();
+    let (project_root, _) = init_fixture(&temp).await;
+    let sidecar = fake_sidecar::write_fake_sidecar(&temp, fake_sidecar::FakeSidecarMode::Success);
+    fake_sidecar::configure_fake_sidecar(&project_root, &sidecar);
+    let ctx = AppContext::new(&project_root).unwrap();
+
+    let mut state = ctx.load_state().unwrap();
+    let working = state.working_file.as_mut().unwrap();
+    working.based_on_version = Some("v1".to_string());
+    working.last_known_mtime = Some(file_mtime(&working.path));
+    let working_path = working.path.clone();
+    ctx.save_state(&state).unwrap();
+
+    fake_sidecar::set_fake_sidecar_state(
+        &sidecar,
+        &fake_sidecar::FakeSidecarState {
+            is_running: true,
+            pid: Some(std::process::id()),
+            open_file_path: Some(working_path.clone()),
+            is_model_open: true,
+            is_locked: Some(false),
+            is_analyzed: Some(true),
+            ..Default::default()
+        },
+    );
+
+    let report = project_status(&ctx, StatusOptions { verbose: true })
+        .await
+        .unwrap();
+    assert_eq!(report.working_status, WorkingFileStatus::Analyzed);
+    assert!(report.sidecar_status.is_some());
 }

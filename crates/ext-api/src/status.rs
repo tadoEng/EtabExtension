@@ -1,7 +1,10 @@
 use crate::context::AppContext;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use ext_core::state::{self, ResolveInput, WorkingFileStatus};
+use ext_core::{
+    sidecar::{GetStatusData, GetStatusUnitSystem, SidecarClient},
+    state::{self, ResolveInput, WorkingFileStatus},
+};
 use ext_db::StateFile;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -15,30 +18,9 @@ pub fn resolve_working_file_status(
     state: &StateFile,
     project_root: &std::path::Path,
 ) -> WorkingFileStatus {
-    let wf = state.working_file.as_ref();
-    let working_path = wf.map(|w| w.path.clone()).unwrap_or_else(|| {
-        project_root
-            .join(".etabs-ext")
-            .join("main")
-            .join("working")
-            .join("model.edb")
-    });
-    let current_mtime: Option<chrono::DateTime<Utc>> = std::fs::metadata(&working_path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .map(Into::into);
-
-    state::resolve(ext_core::state::ResolveInput {
-        file_exists: working_path.exists(),
-        etabs_pid: wf.and_then(|w| w.etabs_pid),
-        pid_alive: wf
-            .and_then(|w| w.etabs_pid)
-            .map(is_pid_alive)
-            .unwrap_or(false),
-        based_on_version: wf.and_then(|w| w.based_on_version.clone()),
-        last_known_mtime: wf.and_then(|w| w.last_known_mtime),
-        current_mtime,
-    })
+    let working_path = working_model_path(state, project_root);
+    let fast_status = resolve_fast_status(state, &working_path);
+    apply_persisted_closed_status(fast_status, state)
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
@@ -54,9 +36,10 @@ pub struct SidecarStatusReport {
     pub pid: Option<u32>,
     pub etabs_version: Option<String>,
     pub open_file_path: Option<String>,
+    pub is_model_open: bool,
     pub is_locked: Option<bool>,
     pub is_analyzed: Option<bool>,
-    pub unit_system: Option<String>,
+    pub unit_system: Option<GetStatusUnitSystem>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,32 +69,133 @@ fn is_pid_alive(pid: u32) -> bool {
     system.process(sysinfo::Pid::from_u32(pid)).is_some()
 }
 
+fn working_model_path(state: &StateFile, project_root: &Path) -> PathBuf {
+    state
+        .working_file
+        .as_ref()
+        .map(|w| w.path.clone())
+        .unwrap_or_else(|| {
+            project_root
+                .join(".etabs-ext")
+                .join("main")
+                .join("working")
+                .join("model.edb")
+        })
+}
+
+fn resolve_fast_status(state: &StateFile, working_path: &Path) -> WorkingFileStatus {
+    let wf = state.working_file.as_ref();
+    let current_mtime = mtime(working_path);
+
+    state::resolve(ResolveInput {
+        file_exists: working_path.exists(),
+        etabs_pid: wf.and_then(|w| w.etabs_pid),
+        pid_alive: wf
+            .and_then(|w| w.etabs_pid)
+            .map(is_pid_alive)
+            .unwrap_or(false),
+        based_on_version: wf.and_then(|w| w.based_on_version.clone()),
+        last_known_mtime: wf.and_then(|w| w.last_known_mtime),
+        current_mtime,
+    })
+}
+
+fn apply_persisted_closed_status(
+    fast_status: WorkingFileStatus,
+    state: &StateFile,
+) -> WorkingFileStatus {
+    if fast_status != WorkingFileStatus::Clean {
+        return fast_status;
+    }
+
+    match state.working_file.as_ref().map(|wf| wf.status) {
+        Some(WorkingFileStatus::Analyzed) => WorkingFileStatus::Analyzed,
+        Some(WorkingFileStatus::Locked) => WorkingFileStatus::Locked,
+        _ => fast_status,
+    }
+}
+
+fn normalize_path_string(path: &Path) -> String {
+    normalize_path(path).display().to_string()
+}
+
+fn paths_match(left: &Path, right: &Path) -> bool {
+    normalize_path_string(left).eq_ignore_ascii_case(&normalize_path_string(right))
+}
+
+fn sidecar_status_report(data: GetStatusData) -> SidecarStatusReport {
+    SidecarStatusReport {
+        is_running: data.is_running,
+        pid: data.pid,
+        etabs_version: data.etabs_version,
+        open_file_path: data
+            .open_file_path
+            .map(|p| normalize_path_string(Path::new(&p))),
+        is_model_open: data.is_model_open,
+        is_locked: data.is_locked,
+        is_analyzed: data.is_analyzed,
+        unit_system: data.unit_system,
+    }
+}
+
+fn apply_sidecar_resolution(
+    status: WorkingFileStatus,
+    working_file: &Path,
+    data: &GetStatusData,
+) -> WorkingFileStatus {
+    if status != WorkingFileStatus::Clean || !data.is_running || !data.is_model_open {
+        return status;
+    }
+
+    let Some(open_file) = data.open_file_path.as_deref() else {
+        return status;
+    };
+
+    if !paths_match(Path::new(open_file), working_file) {
+        return status;
+    }
+
+    if data.is_locked == Some(true) {
+        WorkingFileStatus::Locked
+    } else if data.is_analyzed == Some(true) {
+        WorkingFileStatus::Analyzed
+    } else {
+        status
+    }
+}
+
+pub async fn resolve_with_sidecar(
+    fast_status: WorkingFileStatus,
+    sidecar: Option<&SidecarClient>,
+    working_file: &Path,
+) -> WorkingFileStatus {
+    if fast_status != WorkingFileStatus::Clean {
+        return fast_status;
+    }
+
+    let Some(sidecar) = sidecar else {
+        return fast_status;
+    };
+
+    match sidecar.get_status().await {
+        Ok(data) => apply_sidecar_resolution(fast_status, working_file, &data),
+        Err(_) => fast_status,
+    }
+}
+
 pub async fn project_status(ctx: &AppContext, options: StatusOptions) -> Result<StatusReport> {
     let state = ctx
         .load_state()
         .with_context(|| "Failed to load state.json".to_string())?;
     let working_file = state.working_file.as_ref();
 
-    let working_model_path_raw = working_file.map(|w| w.path.clone()).unwrap_or_else(|| {
-        ctx.project_root
-            .join(".etabs-ext")
-            .join("main")
-            .join("working")
-            .join("model.edb")
-    });
+    let working_model_path_raw = working_model_path(&state, &ctx.project_root);
     let current_mtime = mtime(&working_model_path_raw);
-    let last_known_mtime = working_file.and_then(|w| w.last_known_mtime.as_ref().cloned());
+    let last_known_mtime = working_file.and_then(|w| w.last_known_mtime);
     let etabs_pid = working_file.and_then(|w| w.etabs_pid);
     let based_on_version = working_file.and_then(|w| w.based_on_version.clone());
-
-    let status = state::resolve(ResolveInput {
-        file_exists: working_model_path_raw.exists(),
-        etabs_pid,
-        pid_alive: etabs_pid.map(is_pid_alive).unwrap_or(false),
-        based_on_version: based_on_version.clone(),
-        last_known_mtime,
-        current_mtime,
-    });
+    let fast_status = resolve_fast_status(&state, &working_model_path_raw);
+    let mut status = apply_persisted_closed_status(fast_status, &state);
 
     let mut sidecar_status = None;
     let mut sidecar_warning = None;
@@ -123,17 +207,8 @@ pub async fn project_status(ctx: &AppContext, options: StatusOptions) -> Result<
         if let Some(sidecar) = ctx.sidecar.as_ref() {
             match sidecar.get_status().await {
                 Ok(data) => {
-                    sidecar_status = Some(SidecarStatusReport {
-                        is_running: data.is_running,
-                        pid: data.pid,
-                        etabs_version: data.etabs_version,
-                        open_file_path: data
-                            .open_file_path
-                            .map(|p| normalize_path(Path::new(&p)).display().to_string()),
-                        is_locked: data.is_locked,
-                        is_analyzed: data.is_analyzed,
-                        unit_system: data.unit_system,
-                    });
+                    status = apply_sidecar_resolution(status, &working_model_path_raw, &data);
+                    sidecar_status = Some(sidecar_status_report(data));
                 }
                 Err(err) => {
                     sidecar_warning = Some(format!("Failed to query sidecar: {err}"));

@@ -22,6 +22,9 @@ pub enum Command {
     StashPop,
     Analyze,
     EtabsOpen,
+    EtabsClose,
+    EtabsUnlock,
+    EtabsRecover,
     // Always-allowed read-only commands.
     Status,
     Log,
@@ -122,6 +125,7 @@ pub fn check_state_guard(command: Command, status: &WorkingFileStatus) -> GuardO
             Block("✗ Commit or discard analysis results before restoring stash".into())
         }
         (StashPop, Untracked) => Block("✗ Cannot pop stash onto an untracked working file".into()),
+        (StashPop, Modified) => Warn("⚠ Stash pop will overwrite uncommitted changes".into()),
         (StashPop, _) => Allow,
 
         // ── Analyze ───────────────────────────────────────────────────────
@@ -140,6 +144,25 @@ pub fn check_state_guard(command: Command, status: &WorkingFileStatus) -> GuardO
             Block("✗ ETABS crashed previously\n  Run: ext etabs recover".into())
         }
         (EtabsOpen, _) => Allow,
+
+        // ── EtabsClose ───────────────────────────────────────────────────
+        (EtabsClose, OpenClean | OpenModified | Analyzed | Locked) => Allow,
+        (EtabsClose, _) => Block("✗ ETABS is not running\n  Nothing to close".into()),
+
+        // ── EtabsUnlock ──────────────────────────────────────────────────
+        (EtabsUnlock, Locked) => Allow,
+        (EtabsUnlock, OpenClean | OpenModified) => {
+            Block("✗ Model is open in ETABS\n  Run: ext etabs status".into())
+        }
+        (EtabsUnlock, _) => {
+            Block("✗ Model is not locked\n  Run: ext etabs status to check state".into())
+        }
+
+        // ── EtabsRecover ─────────────────────────────────────────────────
+        (EtabsRecover, Orphaned) => Allow,
+        (EtabsRecover, _) => {
+            Block("✗ ETABS did not crash (state is not ORPHANED)\n  Run: ext etabs status".into())
+        }
 
         // ── Always allowed ────────────────────────────────────────────────
         (Status | Log | Show | Diff | Push | Report | ConfigGet | ConfigList, _) => Allow,
@@ -356,7 +379,7 @@ mod tests {
     }
     #[test]
     fn stash_pop_allowed_when_modified() {
-        assert!(is_allow(Command::StashPop, Modified));
+        assert!(is_warn(Command::StashPop, Modified));
     }
 
     // EtabsOpen
@@ -383,6 +406,64 @@ mod tests {
     #[test]
     fn etabs_open_allowed_when_modified() {
         assert!(is_allow(Command::EtabsOpen, Modified));
+    }
+
+    // EtabsClose
+    #[test]
+    fn etabs_close_allowed_when_open_clean() {
+        assert!(is_allow(Command::EtabsClose, OpenClean));
+    }
+    #[test]
+    fn etabs_close_allowed_when_open_modified() {
+        assert!(is_allow(Command::EtabsClose, OpenModified));
+    }
+    #[test]
+    fn etabs_close_allowed_when_analyzed() {
+        assert!(is_allow(Command::EtabsClose, Analyzed));
+    }
+    #[test]
+    fn etabs_close_allowed_when_locked() {
+        assert!(is_allow(Command::EtabsClose, Locked));
+    }
+    #[test]
+    fn etabs_close_blocked_when_clean() {
+        assert!(is_block(Command::EtabsClose, Clean));
+    }
+    #[test]
+    fn etabs_close_blocked_when_missing() {
+        assert!(is_block(Command::EtabsClose, Missing));
+    }
+
+    // EtabsUnlock
+    #[test]
+    fn etabs_unlock_allowed_when_locked() {
+        assert!(is_allow(Command::EtabsUnlock, Locked));
+    }
+    #[test]
+    fn etabs_unlock_blocked_when_clean() {
+        assert!(is_block(Command::EtabsUnlock, Clean));
+    }
+    #[test]
+    fn etabs_unlock_blocked_when_open_clean() {
+        assert!(is_block(Command::EtabsUnlock, OpenClean));
+    }
+    #[test]
+    fn etabs_unlock_blocked_when_missing() {
+        assert!(is_block(Command::EtabsUnlock, Missing));
+    }
+
+    // EtabsRecover
+    #[test]
+    fn etabs_recover_allowed_when_orphaned() {
+        assert!(is_allow(Command::EtabsRecover, Orphaned));
+    }
+    #[test]
+    fn etabs_recover_blocked_when_clean() {
+        assert!(is_block(Command::EtabsRecover, Clean));
+    }
+    #[test]
+    fn etabs_recover_blocked_when_open_clean() {
+        assert!(is_block(Command::EtabsRecover, OpenClean));
     }
 
     // Always-allowed commands
