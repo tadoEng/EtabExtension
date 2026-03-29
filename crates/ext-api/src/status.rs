@@ -2,11 +2,44 @@ use crate::context::AppContext;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use ext_core::state::{self, ResolveInput, WorkingFileStatus};
+use ext_db::StateFile;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use sysinfo::System;
 
 use crate::path_utils::normalize_path;
+
+/// Resolve the current working file status from a freshly loaded StateFile.
+/// Shared helper used by commit, switch, checkout, stash, and guards.
+pub fn resolve_working_file_status(
+    state: &StateFile,
+    project_root: &std::path::Path,
+) -> WorkingFileStatus {
+    let wf = state.working_file.as_ref();
+    let working_path = wf.map(|w| w.path.clone()).unwrap_or_else(|| {
+        project_root
+            .join(".etabs-ext")
+            .join("main")
+            .join("working")
+            .join("model.edb")
+    });
+    let current_mtime: Option<chrono::DateTime<Utc>> = std::fs::metadata(&working_path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .map(Into::into);
+
+    state::resolve(ext_core::state::ResolveInput {
+        file_exists: working_path.exists(),
+        etabs_pid: wf.and_then(|w| w.etabs_pid),
+        pid_alive: wf
+            .and_then(|w| w.etabs_pid)
+            .map(is_pid_alive)
+            .unwrap_or(false),
+        based_on_version: wf.and_then(|w| w.based_on_version.clone()),
+        last_known_mtime: wf.and_then(|w| w.last_known_mtime),
+        current_mtime,
+    })
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

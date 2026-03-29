@@ -52,6 +52,7 @@ async fn init_creates_project_structure() {
             .join("model.edb")
             .exists()
     );
+    assert!(ext_dir.join("main").join(".branch.json").exists());
     assert!(ext_dir.join(".git").exists());
 }
 
@@ -146,7 +147,5 @@ async fn status_verbose_succeeds_without_sidecar() {
     let report = project_status(&ctx, StatusOptions { verbose: true })
         .await
         .unwrap();
-    if ctx.sidecar.is_none() {
-        assert!(report.sidecar_warning.is_some());
-    }
+    assert!(report.sidecar_warning.is_some() || report.sidecar_status.is_some());
 }

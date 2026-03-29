@@ -10,10 +10,6 @@
 //   - resolved Config (merged config.toml + config.local.toml)
 //   - resolved SidecarClient (path looked up from config → env → PATH)
 //   - current StateFile (loaded fresh on each API call, never cached)
-//
-// Sidecar path resolution lives here — NOT in ext-core — because
-// resolution requires ext-db::Config, and ext-db depends on ext-core.
-// Putting it here keeps the dependency graph acyclic.
 
 pub mod analyze;
 pub mod branch;
@@ -23,7 +19,9 @@ pub mod config_cmd;
 pub mod context;
 pub mod diff;
 pub mod etabs;
+pub mod guards;
 pub mod init;
+pub mod log;
 mod path_utils;
 pub mod remote;
 pub mod report;

@@ -6,12 +6,14 @@
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+pub use ext_core::stash::StashEntry;
 use ext_core::state::WorkingFileStatus;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub const STATE_FILE: &str = ".etabs-ext/state.json";
-pub const STATE_SCHEMA_VERSION: u32 = 1;
+pub const STATE_SCHEMA_VERSION: u32 = 2;
 
 /// Persisted state for the tracked working file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +48,10 @@ pub struct StateFile {
     /// None if no working file is tracked yet (before ext init or after ext checkout --discard)
     pub working_file: Option<WorkingFileState>,
 
+    /// One stash slot per branch.  Key = branch name.
+    #[serde(default)]
+    pub stashes: HashMap<String, StashEntry>,
+
     pub updated_at: DateTime<Utc>,
 }
 
@@ -54,6 +60,7 @@ impl StateFile {
         Self {
             schema_version: STATE_SCHEMA_VERSION,
             working_file: None,
+            stashes: HashMap::new(),
             updated_at: Utc::now(),
         }
     }
@@ -67,8 +74,13 @@ impl StateFile {
         }
         let text = std::fs::read_to_string(&path)
             .with_context(|| format!("Failed to read state file: {}", path.display()))?;
-        let state: Self = serde_json::from_str(&text)
+        let mut state: Self = serde_json::from_str(&text)
             .with_context(|| format!("State file corrupted: {}", path.display()))?;
+        // Schema migration: v1 → v2 (adds stashes map)
+        if state.schema_version < 2 {
+            state.stashes = HashMap::new();
+            state.schema_version = STATE_SCHEMA_VERSION;
+        }
         Ok(state)
     }
 

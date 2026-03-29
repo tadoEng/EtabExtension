@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
+use ext_core::branch::{self, BranchMeta};
 use ext_core::state::WorkingFileStatus;
 use ext_db::{
     StateFile, WorkingFileState,
@@ -150,6 +151,16 @@ pub async fn init_project(req: InitRequest) -> Result<InitResult> {
     let working_model_path = working_dir.join("model.edb");
     atomic_copy(&edb_path, &working_model_path)?;
 
+    branch::write_meta(
+        &BranchMeta {
+            name: "main".to_string(),
+            created_at: Utc::now(),
+            created_from: None,
+            description: None,
+        },
+        &ext_dir,
+    )?;
+
     let mut shared = Config::default();
     shared.project.name = Some(req.name.clone());
     Config::write_shared(&project_root, &shared)?;
@@ -188,6 +199,7 @@ pub async fn init_project(req: InitRequest) -> Result<InitResult> {
     let state = StateFile {
         schema_version: ext_db::state::STATE_SCHEMA_VERSION,
         working_file: Some(working_state),
+        stashes: std::collections::HashMap::new(),
         updated_at: now,
     };
     state.save(&project_root)?;

@@ -70,9 +70,12 @@ pub struct GenerateE2kData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunAnalysisData {
-    pub cases_run: Vec<String>,
-    pub elapsed_seconds: f64,
-    pub units: UnitInfo,
+    pub file_path: String,
+    pub cases_requested: Option<Vec<String>>,
+    pub case_count: u64,
+    pub finished_case_count: u64,
+    pub analysis_time_ms: u64,
+    pub units: Option<UnitInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,18 +92,26 @@ pub struct ExtractMaterialsData {
 #[serde(rename_all = "camelCase")]
 pub struct TableResult {
     pub success: bool,
-    pub output_path: Option<String>,
-    pub row_count: Option<u64>,
+    pub output_file: Option<String>,
+    pub row_count: u64,
+    pub discarded_row_count: u64,
     pub error: Option<String>,
+    pub extraction_time_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractResultsData {
+    pub file_path: String,
+    pub output_dir: String,
     /// Key = table slug (e.g. "storyForces", "basReactions")
     /// Caller must check each entry's .success — partial failures are normal.
     pub tables: std::collections::HashMap<String, TableResult>,
-    pub units: UnitInfo,
+    pub total_row_count: u64,
+    pub succeeded_count: u64,
+    pub failed_count: u64,
+    pub units: Option<UnitInfo>,
+    pub extraction_time_ms: u64,
 }
 
 // ── extract-results request shape ─────────────────────────────────────────
@@ -229,12 +240,12 @@ impl SidecarClient {
         units: &str,
     ) -> ExtResult<RunAnalysisData> {
         let file_str = file.display().to_string();
-        let cases_str;
         let mut args = vec!["run-analysis", "--file", &file_str, "--units", units];
         if let Some(c) = cases {
-            cases_str = c.join(",");
             args.push("--cases");
-            args.push(&cases_str);
+            for case in c {
+                args.push(case.as_str());
+            }
         }
         let resp = self.run::<RunAnalysisData>(&args).await?;
         resp.data.ok_or_else(|| {

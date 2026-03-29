@@ -17,6 +17,7 @@
 
 use anyhow::{Context, Result, bail};
 use ext_core::sidecar::SidecarClient;
+use ext_core::{branch, fs, version};
 use ext_db::{StateFile, config::Config};
 use std::path::{Path, PathBuf};
 
@@ -63,6 +64,24 @@ impl AppContext {
         let sidecar = config
             .resolve_sidecar_path(&project_root)
             .map(SidecarClient::new);
+
+        let ext_dir = Config::config_dir(&project_root);
+        if let Ok(entries) = std::fs::read_dir(&ext_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                    continue;
+                };
+                if !branch::exists(name, &ext_dir) {
+                    continue;
+                }
+                let _ = version::cleanup_partial_snapshots(&path);
+                let _ = fs::cleanup_stale_tmp(&path.join("working"));
+            }
+        }
 
         Ok(Self {
             project_root,

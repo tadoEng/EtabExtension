@@ -14,4 +14,4 @@ pub use config::{
     TableConfig, TableSelections,
 };
 pub use ext_core::state::WorkingFileStatus;
-pub use state::{StateFile, WorkingFileState};
+pub use state::{StashEntry, StateFile, WorkingFileState};
