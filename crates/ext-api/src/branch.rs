@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result, bail};
 use ext_core::branch::{self, BranchInfo, BranchMeta};
-use ext_core::vcs::{git_create_branch, git_delete_branch, next_version_id};
+use ext_core::vcs::{current_branch, git_create_branch, git_delete_branch, next_version_id};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -31,23 +31,6 @@ pub struct DeleteBranchResult {
     pub name: String,
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/// Read the current branch name from git HEAD.
-fn current_branch(ext_dir: &std::path::Path) -> String {
-    std::process::Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(ext_dir)
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "main".to_string())
-}
-
-// ── Public API ────────────────────────────────────────────────────────────────
-
 /// Create a new branch from an existing committed version.
 ///
 /// `from_ref` — optional `"<branch>/vN"` or `"vN"` (relative to current branch).
@@ -58,7 +41,7 @@ pub async fn create_branch(
     from_ref: Option<&str>,
 ) -> Result<CreateBranchResult> {
     let ext_dir = ctx.ext_dir();
-    let cur_branch = current_branch(&ext_dir);
+    let cur_branch = current_branch(&ext_dir)?;
 
     // Resolve the source branch and version.
     let (source_branch, source_version) = if let Some(r) = from_ref {
@@ -118,7 +101,7 @@ pub async fn create_branch(
 /// List all branches in the project.
 pub async fn list_branches(ctx: &AppContext) -> Result<ListBranchesResult> {
     let ext_dir = ctx.ext_dir();
-    let cur = current_branch(&ext_dir);
+    let cur = current_branch(&ext_dir)?;
     let branches = branch::list(&ext_dir, &cur).with_context(|| "Failed to list branches")?;
     Ok(ListBranchesResult {
         branches,
@@ -133,7 +116,7 @@ pub async fn delete_branch(
     force: bool,
 ) -> Result<DeleteBranchResult> {
     let ext_dir = ctx.ext_dir();
-    let cur = current_branch(&ext_dir);
+    let cur = current_branch(&ext_dir)?;
 
     branch::delete(name, &ext_dir, &cur, force)
         .with_context(|| format!("Failed to delete branch '{name}'"))?;

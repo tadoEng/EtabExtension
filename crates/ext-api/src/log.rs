@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result, bail};
 use ext_core::{
-    vcs::{CommitInfo, list_commits},
+    vcs::{CommitInfo, current_branch, list_commits},
     version::{VersionManifest, manifest::AnalysisSummary},
 };
 use serde::{Deserialize, Serialize};
@@ -25,20 +25,6 @@ pub struct VersionDetail {
     pub analysis: Option<AnalysisSummary>,
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn current_branch_name(ext_dir: &std::path::Path) -> String {
-    std::process::Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(ext_dir)
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "main".to_string())
-}
-
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /// List committed versions on `branch` (default: current branch).
@@ -50,7 +36,7 @@ pub async fn list_versions(
     include_internal: bool,
 ) -> Result<ListVersionsResult> {
     let ext_dir = ctx.ext_dir();
-    let cur = current_branch_name(&ext_dir);
+    let cur = current_branch(&ext_dir)?;
     let target = branch.unwrap_or(&cur).to_string();
 
     // Switch git view to the target branch temporarily using git log --branch.
@@ -68,7 +54,7 @@ pub async fn list_versions(
 /// `version_ref` accepts: `"v3"`, `"main/v3"`, `"steel-columns/v1"`.
 pub async fn show_version(ctx: &AppContext, version_ref: &str) -> Result<VersionDetail> {
     let ext_dir = ctx.ext_dir();
-    let cur = current_branch_name(&ext_dir);
+    let cur = current_branch(&ext_dir)?;
 
     let (branch, version) = if let Some((b, v)) = version_ref.split_once('/') {
         (b.to_string(), v.to_string())
@@ -81,8 +67,14 @@ pub async fn show_version(ctx: &AppContext, version_ref: &str) -> Result<Version
         bail!("✗ Version '{branch}/{version}' not found\n  Run: ext log to see available versions");
     }
 
-    let manifest = VersionManifest::read_from(&version_dir)
+    let mut manifest = VersionManifest::read_from(&version_dir)
         .with_context(|| format!("Failed to read manifest for '{branch}/{version}'"))?;
+    if let Some(commit) = list_commits(&ext_dir, &branch, false)?
+        .into_iter()
+        .find(|commit| commit.version_id.as_deref() == Some(version.as_str()))
+    {
+        manifest.git_commit_hash = Some(commit.hash);
+    }
 
     let analysis = AnalysisSummary::read_from(&version_dir).ok();
 

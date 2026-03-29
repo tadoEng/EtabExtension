@@ -156,6 +156,22 @@ pub fn list_commits(
     Ok(commits)
 }
 
+/// Return the currently checked-out git branch.
+///
+/// Returns an error when the repository is missing, HEAD is detached, or git
+/// does not report a usable branch name.
+pub fn current_branch(repo_dir: &Path) -> Result<String> {
+    let raw = run_git(repo_dir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let branch = raw.trim();
+    if branch.is_empty() {
+        anyhow::bail!("✗ Could not determine current branch");
+    }
+    if branch == "HEAD" {
+        anyhow::bail!("✗ Detached HEAD state\n  Run: ext branch to see all branches");
+    }
+    Ok(branch.to_string())
+}
+
 /// Return the highest version number committed on the current branch.
 ///
 /// Reads manifest.json from each commit's tree to find `id` fields like
@@ -335,6 +351,48 @@ mod tests {
 
         assert_eq!(latest_version_number(repo, "main").unwrap(), 2);
         assert_eq!(next_version_id(repo, "main").unwrap(), "v3");
+    }
+
+    #[test]
+    fn current_branch_reads_active_branch() {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path();
+        init_repo(repo);
+        write_and_commit(repo, "readme.txt", "hi", "init");
+
+        assert_eq!(current_branch(repo).unwrap(), "main");
+
+        Command::new("git")
+            .args(["checkout", "-b", "alt"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        assert_eq!(current_branch(repo).unwrap(), "alt");
+    }
+
+    #[test]
+    fn current_branch_errors_for_detached_head() {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path();
+        init_repo(repo);
+        write_and_commit(repo, "readme.txt", "hi", "init");
+
+        Command::new("git")
+            .args(["checkout", "HEAD~0"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        let err = current_branch(repo).unwrap_err();
+        assert!(err.to_string().contains("Detached HEAD"));
+    }
+
+    #[test]
+    fn current_branch_errors_outside_git_repo() {
+        let tmp = TempDir::new().unwrap();
+        let err = current_branch(tmp.path()).unwrap_err();
+        assert!(!err.to_string().contains("main"));
     }
 
     #[test]

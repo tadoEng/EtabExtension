@@ -11,8 +11,10 @@ pub mod read;
 pub mod subprocess;
 
 pub use read::{
-    CommitInfo, diff_commits, latest_version_number, list_commits, next_version_id, read_blob,
+    CommitInfo, current_branch, diff_commits, latest_version_number, list_commits, next_version_id,
+    read_blob,
 };
 pub use subprocess::{
-    git_add, git_checkout_branch, git_commit, git_config, git_create_branch, git_delete_branch,
+    git_add, git_amend_no_edit, git_checkout_branch, git_commit, git_config, git_create_branch,
+    git_delete_branch,
 };

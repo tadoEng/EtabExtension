@@ -68,6 +68,19 @@ pub fn git_commit(repo: &Path, message: &str, author: &str, email: &str) -> Resu
     Ok(hash)
 }
 
+/// Amend the last commit in place without changing its message.
+///
+/// Returns the new short (8-char) commit hash on success.
+pub fn git_amend_no_edit(repo: &Path, author: &str, email: &str) -> Result<String> {
+    let author_str = format!("{author} <{email}>");
+    run_git(
+        repo,
+        &["commit", "--amend", "--no-edit", "--author", &author_str],
+    )?;
+    let hash = run_git(repo, &["rev-parse", "--short=8", "HEAD"])?;
+    Ok(hash)
+}
+
 /// Create a new git branch at the current HEAD without switching to it.
 pub fn git_create_branch(repo: &Path, name: &str) -> Result<()> {
     run_git(repo, &["branch", name])?;
@@ -145,6 +158,26 @@ mod tests {
         git_add(repo, &[Path::new("manifest.json")]).unwrap();
         let hash = git_commit(repo, "v1 commit", "Alice", "alice@example.com").unwrap();
         assert_eq!(hash.len(), 8);
+    }
+
+    #[test]
+    fn git_amend_updates_hash_without_changing_message() {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path();
+        init_repo(repo);
+
+        let file = repo.join("manifest.json");
+        std::fs::write(&file, r#"{"id":"v1"}"#).unwrap();
+        git_add(repo, &[Path::new("manifest.json")]).unwrap();
+        let hash_before = git_commit(repo, "v1 commit", "Alice", "alice@example.com").unwrap();
+
+        std::fs::write(&file, r#"{"id":"v1","gitCommitHash":"pending"}"#).unwrap();
+        git_add(repo, &[Path::new("manifest.json")]).unwrap();
+        let hash_after = git_amend_no_edit(repo, "Alice", "alice@example.com").unwrap();
+
+        assert_ne!(hash_before, hash_after);
+        let message = run_git(repo, &["log", "-1", "--format=%s"]).unwrap();
+        assert_eq!(message, "v1 commit");
     }
 
     #[test]

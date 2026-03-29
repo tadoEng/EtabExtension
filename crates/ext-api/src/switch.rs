@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
-use ext_core::{branch, state::WorkingFileStatus, vcs::git_checkout_branch};
+use ext_core::{branch, state::WorkingFileStatus, vcs::current_branch, vcs::git_checkout_branch};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -26,20 +26,6 @@ pub struct SwitchResult {
     pub arrival_warning: Option<String>,
 }
 
-// ── Internal helper ───────────────────────────────────────────────────────────
-
-fn current_branch_name(ext_dir: &std::path::Path) -> String {
-    std::process::Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(ext_dir)
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "main".to_string())
-}
-
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /// Switch to an existing branch.
@@ -58,7 +44,7 @@ pub async fn switch_branch(ctx: &AppContext, name: &str) -> Result<SwitchResult>
         GuardOutcome::Allow => None,
     };
 
-    let cur_branch = current_branch_name(&ext_dir);
+    let cur_branch = current_branch(&ext_dir)?;
     if name == cur_branch {
         bail!("✗ Already on branch '{name}'");
     }

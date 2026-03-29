@@ -206,8 +206,8 @@ async fn cli_branch_json_snapshot() {
     },
     {
       "name": "steel-columns",
-      "versionCount": 0,
-      "latestVersion": null,
+      "versionCount": 1,
+      "latestVersion": "v1",
       "createdFrom": "main/v1",
       "isActive": false
     }

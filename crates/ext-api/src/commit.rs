@@ -19,7 +19,7 @@ use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use ext_core::{
     fs::{atomic_copy, check_disk_space},
-    vcs::{git_add, git_commit, next_version_id},
+    vcs::{current_branch, git_add, git_amend_no_edit, git_commit, next_version_id},
     version::{
         VersionManifest,
         snapshot::{begin_snapshot, complete_snapshot},
@@ -90,26 +90,8 @@ pub async fn commit_version(
         let _ = ctx.require_sidecar()?;
     }
 
-    let branch = state
-        .working_file
-        .as_ref()
-        .and_then(|_| {
-            // branch derived from the current git HEAD branch name — read via subprocess
-            Some(
-                std::process::Command::new("git")
-                    .args(["rev-parse", "--abbrev-ref", "HEAD"])
-                    .current_dir(ctx.ext_dir())
-                    .output()
-                    .ok()
-                    .and_then(|o| String::from_utf8(o.stdout).ok())
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| "main".to_string()),
-            )
-        })
-        .unwrap_or_else(|| "main".to_string());
-
     let ext_dir = ctx.ext_dir();
+    let branch = current_branch(&ext_dir)?;
     let branch_dir = ext_dir.join(&branch);
     let working_file = branch_dir.join("working").join("model.edb");
 
@@ -245,23 +227,22 @@ pub async fn commit_version(
     git_add(&ext_dir, &paths_to_add).with_context(|| "Failed to stage files for commit")?;
 
     // Step 9: git commit
-    let git_hash =
+    let initial_git_hash =
         git_commit(&ext_dir, message, &author, &email).with_context(|| "git commit failed")?;
 
-    // Step 10: backfill git_commit_hash and rewrite manifest
-    manifest.git_commit_hash = Some(git_hash.clone());
+    // Step 10: backfill git_commit_hash and amend the user commit in place.
+    // The manifest file cannot stably contain the final amended hash without a
+    // second rewrite, so user-facing reads resolve the visible commit hash from
+    // git history when needed.
+    manifest.git_commit_hash = Some(initial_git_hash.clone());
     manifest
         .write_to(&version_dir)
         .with_context(|| "Failed to rewrite manifest.json with git hash")?;
     git_add(&ext_dir, &[&manifest_path])
         .with_context(|| "Failed to stage finalized manifest.json")?;
-    git_commit(
-        &ext_dir,
-        &format!("ext: finalize manifest {}", version_id),
-        &author,
-        &email,
-    )
-    .with_context(|| "Failed to commit finalized manifest.json")?;
+    let git_hash = git_amend_no_edit(&ext_dir, &author, &email)
+        .with_context(|| "Failed to amend finalized manifest.json into commit")?;
+    manifest.git_commit_hash = Some(git_hash.clone());
 
     // Step 11: complete snapshot (deletes .partial — commits to success)
     complete_snapshot(guard).with_context(|| "Failed to complete snapshot")?;

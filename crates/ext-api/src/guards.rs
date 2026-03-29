@@ -19,6 +19,7 @@ pub enum Command {
     Switch,
     Checkout,
     StashSave,
+    StashPop,
     Analyze,
     EtabsOpen,
     // Always-allowed read-only commands.
@@ -109,6 +110,19 @@ pub fn check_state_guard(command: Command, status: &WorkingFileStatus) -> GuardO
             Block("✗ Close ETABS before stashing\n  Run: ext etabs close".into())
         }
         (StashSave, _) => Allow,
+
+        // ── StashPop ──────────────────────────────────────────────────────
+        (StashPop, OpenClean | OpenModified) => {
+            Block("✗ Close ETABS before restoring stash\n  Run: ext etabs close".into())
+        }
+        (StashPop, Orphaned) => {
+            Block("✗ Working file state unknown\n  Run: ext etabs recover".into())
+        }
+        (StashPop, Analyzed | Locked) => {
+            Block("✗ Commit or discard analysis results before restoring stash".into())
+        }
+        (StashPop, Untracked) => Block("✗ Cannot pop stash onto an untracked working file".into()),
+        (StashPop, _) => Allow,
 
         // ── Analyze ───────────────────────────────────────────────────────
         // Analyze operates on a committed snapshot, never the working file.
@@ -317,6 +331,32 @@ mod tests {
     #[test]
     fn stash_save_allowed_when_modified() {
         assert!(is_allow(Command::StashSave, Modified));
+    }
+
+    // StashPop
+    #[test]
+    fn stash_pop_blocked_when_open_clean() {
+        assert!(is_block(Command::StashPop, OpenClean));
+    }
+    #[test]
+    fn stash_pop_blocked_when_orphaned() {
+        assert!(is_block(Command::StashPop, Orphaned));
+    }
+    #[test]
+    fn stash_pop_blocked_when_untracked() {
+        assert!(is_block(Command::StashPop, Untracked));
+    }
+    #[test]
+    fn stash_pop_blocked_when_analyzed() {
+        assert!(is_block(Command::StashPop, Analyzed));
+    }
+    #[test]
+    fn stash_pop_allowed_when_clean() {
+        assert!(is_allow(Command::StashPop, Clean));
+    }
+    #[test]
+    fn stash_pop_allowed_when_modified() {
+        assert!(is_allow(Command::StashPop, Modified));
     }
 
     // EtabsOpen

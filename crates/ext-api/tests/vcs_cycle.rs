@@ -13,11 +13,26 @@ use ext_api::stash::{self, StashPopConflict, StashPopConflictResolution, StashPo
 use ext_api::switch;
 use ext_core::state::WorkingFileStatus;
 use ext_core::version::VersionManifest;
+use std::process::Command;
 use tempfile::TempDir;
 
 fn write_dummy_edb(path: &std::path::Path, bytes: &[u8]) {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(path, bytes).unwrap();
+}
+
+fn git_log_messages(ext_dir: &std::path::Path, branch: &str) -> Vec<String> {
+    let branch_ref = format!("refs/heads/{branch}");
+    let output = Command::new("git")
+        .args(["log", "--format=%s", &branch_ref])
+        .current_dir(ext_dir)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect()
 }
 
 async fn init_fixture(temp: &TempDir) -> std::path::PathBuf {
@@ -46,6 +61,7 @@ async fn full_vcs_cycle_no_e2k() {
     let temp = TempDir::new().unwrap();
     let project_root = init_fixture(&temp).await;
     let ctx = AppContext::new(&project_root).unwrap();
+    let ext_dir = project_root.join(".etabs-ext");
 
     let commit_v1 = commit::commit_version(
         &ctx,
@@ -59,12 +75,32 @@ async fn full_vcs_cycle_no_e2k() {
     .unwrap();
     assert_eq!(commit_v1.version_id, "v1");
     assert_eq!(commit_v1.branch, "main");
+    let main_v1 = log::show_version(&ctx, "main/v1").await.unwrap();
+    assert_eq!(
+        main_v1.manifest.git_commit_hash.as_deref(),
+        Some(commit_v1.git_hash.as_str())
+    );
+    let main_messages = git_log_messages(&ext_dir, "main");
+    assert_eq!(main_messages[0], "Initial model");
+    assert!(
+        !main_messages
+            .iter()
+            .any(|msg| msg.starts_with("ext: finalize manifest"))
+    );
 
     let create_branch = branch::create_branch(&ctx, "steel-columns", Some("main/v1"))
         .await
         .unwrap();
     assert_eq!(create_branch.name, "steel-columns");
     assert!(create_branch.working_model_path.exists());
+    let branch_list = branch::list_branches(&ctx).await.unwrap();
+    let steel = branch_list
+        .branches
+        .iter()
+        .find(|branch| branch.name == "steel-columns")
+        .unwrap();
+    assert_eq!(steel.version_count, 1);
+    assert_eq!(steel.latest_version.as_deref(), Some("v1"));
 
     let switch_result = switch::switch_branch(&ctx, "steel-columns").await.unwrap();
     assert_eq!(switch_result.branch, "steel-columns");
@@ -82,9 +118,29 @@ async fn full_vcs_cycle_no_e2k() {
     .unwrap();
     assert_eq!(commit_v2.version_id, "v2");
     assert_eq!(commit_v2.branch, "steel-columns");
+    let steel_messages = git_log_messages(&ext_dir, "steel-columns");
+    assert_eq!(steel_messages[0], "Steel option");
+    assert!(steel_messages.iter().any(|msg| msg == "Initial model"));
+    assert!(
+        !steel_messages
+            .iter()
+            .any(|msg| msg.starts_with("ext: finalize manifest"))
+    );
 
     let steel_v2 = log::show_version(&ctx, "steel-columns/v2").await.unwrap();
     assert_eq!(steel_v2.manifest.parent.as_deref(), Some("v1"));
+    assert_eq!(
+        steel_v2.manifest.git_commit_hash.as_deref(),
+        Some(commit_v2.git_hash.as_str())
+    );
+    let branch_list = branch::list_branches(&ctx).await.unwrap();
+    let steel = branch_list
+        .branches
+        .iter()
+        .find(|branch| branch.name == "steel-columns")
+        .unwrap();
+    assert_eq!(steel.version_count, 2);
+    assert_eq!(steel.latest_version.as_deref(), Some("v2"));
 
     let checkout_main = checkout::checkout_version(&ctx, "main/v1", CheckoutOptions::default())
         .await
@@ -165,6 +221,7 @@ async fn commit_analyze_preserves_version_when_analysis_fails() {
         fake_sidecar::write_fake_sidecar(&temp, fake_sidecar::FakeSidecarMode::AnalysisFail);
     fake_sidecar::configure_fake_sidecar(&project_root, &sidecar);
     let ctx = AppContext::new(&project_root).unwrap();
+    let ext_dir = project_root.join(".etabs-ext");
 
     let result = commit::commit_version(
         &ctx,
@@ -203,4 +260,17 @@ async fn commit_analyze_preserves_version_when_analysis_fails() {
     let visible_log = log::list_versions(&ctx, Some("main"), false).await.unwrap();
     assert_eq!(visible_log.commits.len(), 1);
     assert_eq!(visible_log.commits[0].version_id.as_deref(), Some("v1"));
+    let main_messages = git_log_messages(&ext_dir, "main");
+    assert_eq!(main_messages[0], "Initial analyzed model");
+    assert!(
+        !main_messages
+            .iter()
+            .any(|msg| msg.starts_with("ext: finalize manifest"))
+    );
+
+    let shown = log::show_version(&ctx, "main/v1").await.unwrap();
+    assert_eq!(
+        shown.manifest.git_commit_hash.as_deref(),
+        Some(result.git_hash.as_str())
+    );
 }

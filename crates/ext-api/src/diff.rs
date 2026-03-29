@@ -1,7 +1,7 @@
 // ext-api::diff — diff two committed versions.
 
 use anyhow::{Context, Result};
-use ext_core::vcs::diff_commits;
+use ext_core::vcs::{current_branch, diff_commits};
 use serde::{Deserialize, Serialize};
 
 use crate::context::AppContext;
@@ -63,18 +63,6 @@ fn parse_ref<'a>(r: &'a str, current_branch: &'a str) -> (&'a str, &'a str) {
     }
 }
 
-fn current_branch_name(ext_dir: &std::path::Path) -> String {
-    std::process::Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(ext_dir)
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "main".to_string())
-}
-
 /// Check whether a version's manifest says e2kGenerated=false.
 fn e2k_missing(ext_dir: &std::path::Path, branch: &str, version: &str) -> bool {
     let manifest_path = ext_dir.join(branch).join(version).join("manifest.json");
@@ -98,7 +86,7 @@ fn e2k_missing(ext_dir: &std::path::Path, branch: &str, version: &str) -> bool {
 /// Only `.e2k` files are diffed — binary `.edb` files are excluded.
 pub async fn diff_versions(ctx: &AppContext, from_ref: &str, to_ref: &str) -> Result<DiffResult> {
     let ext_dir = ctx.ext_dir();
-    let cur_branch = current_branch_name(&ext_dir);
+    let cur_branch = current_branch(&ext_dir)?;
 
     let (from_branch, from_version) = parse_ref(from_ref, &cur_branch);
     let (to_branch, to_version) = parse_ref(to_ref, &cur_branch);

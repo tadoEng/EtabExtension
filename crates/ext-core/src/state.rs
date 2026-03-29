@@ -14,6 +14,8 @@ pub enum WorkingFileStatus {
     OpenClean,
     OpenModified,
     Orphaned,
+    // Deferred to Week 5-6: these states need live ETABS/sidecar signals and
+    // are not inferred by the Week 3-4 pure resolver yet.
     Analyzed,
     Clean,
     Modified,

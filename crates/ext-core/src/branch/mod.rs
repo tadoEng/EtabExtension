@@ -10,6 +10,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+use crate::vcs::{latest_version_number, list_commits};
+
 // ── BranchMeta ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,17 +163,14 @@ pub fn list(ext_dir: &Path, current_branch: &str) -> Result<Vec<BranchInfo>> {
             description: None,
         });
 
-        // Count committed version directories (those containing manifest.json).
-        let version_count = std::fs::read_dir(&path)
-            .map(|rd| {
-                rd.flatten()
-                    .filter(|e| e.path().is_dir() && e.path().join("manifest.json").exists())
-                    .count() as u32
-            })
+        // Git is the source of truth for committed versions. That keeps branch
+        // metadata aligned with next_version_id even if the filesystem drifts.
+        let version_count = list_commits(ext_dir, &name, false)
+            .map(|commits| commits.len() as u32)
             .unwrap_or(0);
-
-        // Find the latest version id by scanning manifest files.
-        let latest_version = find_latest_version_id(&path);
+        let latest_version = latest_version_number(ext_dir, &name)
+            .ok()
+            .and_then(|n| (n > 0).then(|| format!("v{n}")));
 
         infos.push(BranchInfo {
             is_active: name == current_branch,
@@ -186,38 +185,6 @@ pub fn list(ext_dir: &Path, current_branch: &str) -> Result<Vec<BranchInfo>> {
     infos.sort_by(|a, b| b.is_active.cmp(&a.is_active).then(a.name.cmp(&b.name)));
     Ok(infos)
 }
-
-/// Find the highest version id in a branch directory by reading manifests.
-fn find_latest_version_id(branch_dir: &Path) -> Option<String> {
-    let mut max_n = 0u32;
-    let mut max_id = None;
-
-    let Ok(entries) = std::fs::read_dir(branch_dir) else {
-        return None;
-    };
-
-    for entry in entries.flatten() {
-        let manifest = entry.path().join("manifest.json");
-        if !manifest.exists() {
-            continue;
-        }
-        if let Ok(text) = std::fs::read_to_string(&manifest) {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-                if let Some(id) = json.get("id").and_then(|v| v.as_str()) {
-                    if let Some(n) = id.strip_prefix('v').and_then(|s| s.parse::<u32>().ok()) {
-                        if n > max_n {
-                            max_n = n;
-                            max_id = Some(id.to_owned());
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    max_id
-}
-
 /// Delete a branch directory.
 ///
 /// Refuses to delete `"main"` or the currently active branch.

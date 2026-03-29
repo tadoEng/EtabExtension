@@ -13,6 +13,7 @@ use ext_core::{
     branch,
     fs::{atomic_copy, check_disk_space},
     state::WorkingFileStatus,
+    vcs::current_branch,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -81,20 +82,6 @@ pub struct CheckoutResult {
     pub working_model_path: PathBuf,
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn current_branch_name(ext_dir: &std::path::Path) -> String {
-    std::process::Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(ext_dir)
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "main".to_string())
-}
-
 /// Parse `"main/v3"` → `("main", "v3")` or `"v3"` → `(current_branch, "v3")`.
 fn parse_version_ref(version_ref: &str, current_branch: &str) -> (String, String) {
     if let Some((branch, version)) = version_ref.split_once('/') {
@@ -114,7 +101,7 @@ pub async fn checkout_version(
     let ext_dir = ctx.ext_dir();
     let mut state = ctx.load_state()?;
     let initial_status = resolve_working_file_status(&state, &ctx.project_root);
-    let initial_branch = current_branch_name(&ext_dir);
+    let initial_branch = current_branch(&ext_dir)?;
 
     // Hard blocks (ETABS open, analyzed, orphaned).
     match check_state_guard(Command::Checkout, &initial_status) {
@@ -131,7 +118,7 @@ pub async fn checkout_version(
         // Reload state after switch.
         state = ctx.load_state()?;
     }
-    let active_branch = current_branch_name(&ext_dir);
+    let active_branch = current_branch(&ext_dir)?;
     let cur_status = resolve_working_file_status(&state, &ctx.project_root);
 
     let version_dir = ext_dir.join(&target_branch).join(&target_version);

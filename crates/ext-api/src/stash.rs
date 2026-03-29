@@ -7,6 +7,7 @@ use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use ext_core::stash::{self, StashListEntry};
 use ext_core::state::WorkingFileStatus;
+use ext_core::vcs::current_branch;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -75,20 +76,6 @@ impl std::fmt::Display for StashPopConflict {
 
 impl std::error::Error for StashPopConflict {}
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn current_branch_name(ext_dir: &std::path::Path) -> String {
-    std::process::Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(ext_dir)
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "main".to_string())
-}
-
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /// Stash the current working file for the current branch.
@@ -109,7 +96,7 @@ pub async fn stash_save(
         GuardOutcome::Warn(_) | GuardOutcome::Allow => {}
     }
 
-    let branch = current_branch_name(&ext_dir);
+    let branch = current_branch(&ext_dir)?;
     let working_file = ext_core::branch::working_model_path(&branch, &ext_dir);
     let based_on = state
         .working_file
@@ -143,33 +130,19 @@ pub async fn stash_pop(ctx: &AppContext, opts: StashPopOptions) -> Result<StashP
     let ext_dir = ctx.ext_dir();
     let mut state = ctx.load_state()?;
     let status = resolve_working_file_status(&state, &ctx.project_root);
-    let branch = current_branch_name(&ext_dir);
+    let branch = current_branch(&ext_dir)?;
     let working_file = ext_core::branch::working_model_path(&branch, &ext_dir);
 
-    match status {
-        ext_core::state::WorkingFileStatus::OpenClean
-        | ext_core::state::WorkingFileStatus::OpenModified => {
-            bail!("✗ Close ETABS before restoring stash\n  Run: ext etabs close");
-        }
-        ext_core::state::WorkingFileStatus::Orphaned => {
-            bail!("✗ Working file state unknown\n  Run: ext etabs recover");
-        }
-        ext_core::state::WorkingFileStatus::Analyzed
-        | ext_core::state::WorkingFileStatus::Locked => {
-            bail!("✗ Commit or discard analysis results before restoring stash");
-        }
-        ext_core::state::WorkingFileStatus::Modified => {
-            if opts.conflict_resolution.is_none() {
-                return Err(anyhow::Error::new(StashPopConflict {
-                    branch,
-                    current_status: status,
-                }));
-            }
-        }
-        ext_core::state::WorkingFileStatus::Untracked => {
-            bail!("✗ Cannot pop stash onto an untracked working file");
-        }
-        _ => {}
+    match check_state_guard(Command::StashPop, &status) {
+        GuardOutcome::Block(msg) => bail!("{msg}"),
+        GuardOutcome::Warn(_) | GuardOutcome::Allow => {}
+    }
+    if status == ext_core::state::WorkingFileStatus::Modified && opts.conflict_resolution.is_none()
+    {
+        return Err(anyhow::Error::new(StashPopConflict {
+            branch,
+            current_status: status,
+        }));
     }
 
     let entry = stash::pop(&branch, &working_file, &ext_dir, &mut state.stashes)
@@ -200,7 +173,7 @@ pub async fn stash_pop(ctx: &AppContext, opts: StashPopOptions) -> Result<StashP
 pub async fn stash_drop(ctx: &AppContext, force: bool) -> Result<StashDropResult> {
     let ext_dir = ctx.ext_dir();
     let mut state = ctx.load_state()?;
-    let branch = current_branch_name(&ext_dir);
+    let branch = current_branch(&ext_dir)?;
 
     if !state.stashes.contains_key(&branch) && !force {
         bail!("✗ No stash found for branch '{branch}'\n  Nothing to drop");

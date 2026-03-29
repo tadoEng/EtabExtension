@@ -1,6 +1,8 @@
 // ext-core — pure domain logic
 //
 // DEPENDENCY RULE: ext-core depends only on ext-error and anyhow.
+// TODO(week5-6+): replace broad anyhow usage with typed error surfaces where
+// it materially improves API contracts.
 // It never imports ext-db. AppContext (owned by ext-api) passes
 // already-resolved paths and config values down into ext-core functions.
 //
