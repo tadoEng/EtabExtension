@@ -100,6 +100,20 @@ fn resolve_fast_status(state: &StateFile, working_path: &Path) -> WorkingFileSta
     })
 }
 
+/// Promote a `CLEAN` fast status to `ANALYZED` or `LOCKED` when the persisted
+/// state.json status says so.
+///
+/// This avoids a sidecar call on every command for the common case where the
+/// engineer closed ETABS after analysis: the arrival status (`ANALYZED` or
+/// `LOCKED`) was written to state.json by `etabs_close`, and we read it back
+/// here without another round-trip.
+///
+/// NOTE (Phase 1 limitation): if the engineer opens the `.edb` in ETABS
+/// outside of `ext etabs open`, ETABS may change the analysis/lock state
+/// without `ext` knowing. In that case, `apply_persisted_closed_status` will
+/// return a stale `ANALYZED`/`LOCKED` until the next `ext etabs status` or
+/// `ext etabs close` call refreshes the persisted state. This is acceptable
+/// for Phase 1 — opening ETABS outside `ext` breaks PID tracking regardless.
 fn apply_persisted_closed_status(
     fast_status: WorkingFileStatus,
     state: &StateFile,
@@ -138,7 +152,16 @@ fn sidecar_status_report(data: GetStatusData) -> SidecarStatusReport {
     }
 }
 
-fn apply_sidecar_resolution(
+/// Upgrade a `CLEAN` status to `ANALYZED` or `LOCKED` based on live sidecar data.
+///
+/// Only acts when:
+///   - fast_status is `CLEAN` (other states are definitive without sidecar)
+///   - ETABS is running and has the working file open
+///   - The sidecar reports is_locked or is_analyzed
+///
+/// Exported as `pub(crate)` so `etabs_status` can reuse it without duplicating
+/// the ANALYZED/LOCKED detection logic.
+pub(crate) fn apply_sidecar_resolution(
     status: WorkingFileStatus,
     working_file: &Path,
     data: &GetStatusData,
@@ -164,6 +187,10 @@ fn apply_sidecar_resolution(
     }
 }
 
+/// Async upgrade of a fast status to `ANALYZED`/`LOCKED` via a live sidecar call.
+///
+/// Used by `etabs_open` and `etabs_unlock` which must know the true lock state
+/// before proceeding. All other commands use the fast path only.
 pub async fn resolve_with_sidecar(
     fast_status: WorkingFileStatus,
     sidecar: Option<&SidecarClient>,
