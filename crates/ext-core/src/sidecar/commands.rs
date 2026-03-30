@@ -32,6 +32,7 @@ pub struct GetStatusUnitSystem {
     pub force: String,
     pub length: String,
     pub temperature: String,
+    #[serde(alias = "isUS")]
     pub is_us: bool,
     pub is_metric: bool,
 }

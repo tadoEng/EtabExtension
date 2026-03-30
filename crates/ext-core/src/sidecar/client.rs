@@ -4,7 +4,7 @@ use crate::sidecar::types::SidecarResponse;
 use ext_error::{ExtError, ExtResult};
 use std::path::PathBuf;
 use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 
 /// Spawns etab-cli.exe and captures the single JSON result from stdout.
@@ -67,31 +67,36 @@ impl SidecarClient {
             }
         });
 
-        // Collect stdout — C# contract guarantees exactly one JSON object
+        // Collect stdout — the sidecar writes exactly one JSON object, but it
+        // may be pretty-printed across multiple lines. We must preserve the
+        // full payload rather than keeping only the last non-empty line.
         let stdout = child.stdout.take().expect("stdout was piped");
-        let mut lines = BufReader::new(stdout).lines();
-        let mut json_line = String::new();
-        while let Ok(Some(line)) = lines.next_line().await {
-            let trimmed = line.trim();
-            if !trimmed.is_empty() {
-                json_line = trimmed.to_string();
-            }
-        }
+        let mut stdout_reader = BufReader::new(stdout);
+        let mut json_payload = String::new();
+        stdout_reader
+            .read_to_string(&mut json_payload)
+            .await
+            .map_err(|e| ExtError::SidecarFailed {
+                code: -1,
+                stderr: e.to_string(),
+            })?;
 
         let status = child.wait().await.map_err(|e| ExtError::SidecarFailed {
             code: -1,
             stderr: e.to_string(),
         })?;
 
-        if json_line.is_empty() {
+        let json_payload = json_payload.trim();
+
+        if json_payload.is_empty() {
             return Err(ExtError::SidecarFailed {
                 code: status.code().unwrap_or(-1),
                 stderr: "No JSON output received from sidecar".to_string(),
             });
         }
 
-        let response: SidecarResponse<T> = serde_json::from_str(&json_line)
-            .map_err(|e| ExtError::SidecarParse(format!("{e}: raw={json_line}")))?;
+        let response: SidecarResponse<T> = serde_json::from_str(json_payload)
+            .map_err(|e| ExtError::SidecarParse(format!("{e}: raw={json_payload}")))?;
 
         // Top-level success=false means a fatal error (ETABS didn't start,
         // file not found, etc.) — not a per-table partial failure.

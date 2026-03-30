@@ -26,6 +26,7 @@ pub enum Command {
     Init(InitArgs),
     Status(StatusArgs),
     Commit(CommitArgs),
+    Analyze(AnalyzeArgs),
     Log(LogArgs),
     Show(ShowArgs),
     Branch(BranchArgs),
@@ -33,6 +34,7 @@ pub enum Command {
     Checkout(CheckoutArgs),
     Stash(StashArgs),
     Diff(DiffArgs),
+    Etabs(EtabsArgs),
 }
 
 #[derive(Debug, Args)]
@@ -76,6 +78,17 @@ pub struct CommitArgs {
 
     #[arg(long)]
     pub no_e2k: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct AnalyzeArgs {
+    pub version: String,
+
+    #[arg(long)]
+    pub force: bool,
+
+    #[arg(long, value_delimiter = ',')]
+    pub cases: Option<Vec<String>>,
 }
 
 #[derive(Debug, Args)]
@@ -151,4 +164,33 @@ pub struct StashDropArgs {
 pub struct DiffArgs {
     pub from: String,
     pub to: String,
+}
+
+#[derive(Debug, Args)]
+pub struct EtabsArgs {
+    #[command(subcommand)]
+    pub command: EtabsSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum EtabsSubcommand {
+    Open(EtabsOpenArgs),
+    Close(EtabsCloseArgs),
+    Status,
+    Unlock,
+    Recover,
+}
+
+#[derive(Debug, Args)]
+pub struct EtabsOpenArgs {
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct EtabsCloseArgs {
+    #[arg(long, conflicts_with = "no_save")]
+    pub save: bool,
+
+    #[arg(long, conflicts_with = "save")]
+    pub no_save: bool,
 }
