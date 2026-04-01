@@ -1730,6 +1730,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ext-calc"
+version = "0.1.0"
+
+[[package]]
 name = "ext-core"
 version = "0.1.0"
 dependencies = [
@@ -1771,6 +1775,14 @@ dependencies = [
  "thiserror 2.0.18",
  "ts-rs",
 ]
+
+[[package]]
+name = "ext-render"
+version = "0.1.0"
+
+[[package]]
+name = "ext-report"
+version = "0.1.0"
 
 [[package]]
 name = "ext-tauri"
