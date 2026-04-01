@@ -136,7 +136,7 @@ git2    = "0.20.4"
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 uuid        = { version = "1.22.0", features = ["v4", "serde"] }
-chrono      = { version = "0.4.44", default-features = false, features = ["std", "serde", "clock"] }
+chrono      = { version = "0.4.41", default-features = false, features = ["std", "serde", "clock"] }
 parking_lot = "0.12"
 itertools   = "0.14"
 nonempty    = "0.12.0"
