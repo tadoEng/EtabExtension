@@ -1,168 +1,295 @@
-# Week 7–8 Execution Handoff
+# Week 7-8 Handoff
 
 ## Summary
 
-Proceed with Week 7–8 as a **library-first** implementation across:
+Week 7-8 has been started and the foundation layer is now in place.
 
-- `crates/ext-calc`
-- `crates/ext-render`
-- `crates/ext-report`
+What is genuinely done:
 
-Do **not** introduce an `ext-types` crate yet. Put the shared data contract in `ext-calc::output`, and have render/report consume it. The current realistic fixture set is already good enough for the first pass.
+- `ext-db` now has a shared `[calc]` config model
+- the config split is implemented as strict local-only on writes for `project.sidecar-path` and `project.units`
+- the unit default now matches the Week 7-8 spec baseline: `kip-ft-F`
+- `ext-calc` now exists as a real library surface with shared output types, unit conversion, code params, loader scaffolding, and batch-1 loaders
+- `ext-render` and `ext-report` now have library surfaces instead of being only empty binary placeholders
+- the full workspace compiles with `cargo check --target-dir .codex-target`
 
-New repo facts discovered during planning:
-- the new crates already exist and are already in the workspace
-- they are currently `main.rs` placeholders and need to become library crates
-- `ext-api::report` is still a clean stub, so there is no conflicting implementation to unwind
-- the realistic fixture set is small enough to use early
-- current `ProjectConfig::units_or_default()` still defaults to `"kip-in-F"`, which conflicts with the Week 7–8 spec baseline of `"kip-ft-F"`
+What is not done yet:
 
-Locked preference:
-- config split should be **strict local-only**
-    - shared reads may tolerate legacy `sidecar-path` / `units`
-    - shared writes must stop persisting them
+- batch-2 loaders
+- all engineering checks
+- real `CalcRunner` outputs beyond loader summary
+- render/report production pipeline
+- `ext-api` and CLI integration
+- test execution for the new Week 7-8 units/loaders
 
-## Key Changes
+---
 
-### 1. Harden the config split first
-- Add `ext-db/src/config/calc.rs` with the full shared `[calc]` model.
-- Update `ext-db/src/config/mod.rs` so `calc` is loaded from shared config only.
-- Keep `project.sidecar-path` and `project.units` effectively local-only going forward.
-- Implement strict local-only behavior:
-    - `Config::load()` may still read legacy values from shared config for backward compatibility
-    - `Config::write_shared()` must not write `sidecar-path` or `units`
-    - `Config::write_local()` is the only writer for those fields
-- Fix the unit default mismatch:
-    - Week 7–8 logic should default to `"kip-ft-F"`, not `"kip-in-F"`
-- Extend `TableSelections` with:
-    - `group_assignments`
-    - `material_properties_concrete_data`
-    - `material_list_by_story`
+## Implemented
 
-Important config note:
-- the pasted `[calc.pier-axial].load-combos` list is invalid TOML unless a comma is added after `"EVN_LRFD_GRA"`
+### 1. `ext-db` config foundation
 
-### 2. Convert the new crates to reusable libraries
-- Replace the `main.rs` placeholder shape with `lib.rs` as the primary crate surface in:
-    - `ext-calc`
-    - `ext-render`
-    - `ext-report`
-- Optional binaries can come later, but the reusable lib surface is the real integration target.
-- `ext-api` should orchestrate them later; the CLI should never bypass `ext-api`.
+Added:
 
-### 3. Build `ext-calc` as the system of record
-Create these first:
-- `output.rs`
-- `unit_convert.rs`
-- `code_params.rs`
-- `tables/mod.rs`
-- `checks/mod.rs`
+- `crates/ext-db/src/config/calc.rs`
 
-Public contract:
+Updated:
+
+- `crates/ext-db/src/config/mod.rs`
+- `crates/ext-db/src/config/project.rs`
+- `crates/ext-db/src/config/extract.rs`
+
+Behavior now:
+
+- `Config` includes `calc: CalcConfig`
+- shared config loads `[calc]` from `config.toml`
+- local config still owns machine-specific project fields
+- `Config::write_shared()` strips `project.sidecar-path` and `project.units`
+- `Config::write_local()` writes only local-only project fields
+- legacy shared reads still work because load still merges shared project values with local overrides
+- `ProjectConfig::units_or_default()` now defaults to `"kip-ft-F"`
+
+Also added config tests in `config/mod.rs` covering:
+
+- shared writes omitting local-only project fields
+- local writes persisting only local project fields
+- loading legacy shared project fields with local override
+
+### 2. `ext-calc` library-first scaffolding
+
+Added:
+
+- `crates/ext-calc/src/lib.rs`
+- `crates/ext-calc/src/output.rs`
+- `crates/ext-calc/src/unit_convert.rs`
+- `crates/ext-calc/src/code_params.rs`
+- `crates/ext-calc/src/checks/mod.rs`
+- `crates/ext-calc/src/tables/mod.rs`
+
+Current public shape:
+
 - `CalcRunner::run_all(...) -> Result<CalcOutput>`
-- `CalcOutput` and nested result structs live in `ext-calc::output`
+- shared DTOs live in `ext-calc::output`
+- `CodeParams::from_config(&Config)` exists
+- `UnitContext` supports:
+  - `kip-ft-F`
+  - `kN-m-C`
 
-Implementation order:
-1. unit conversion + code params
-2. loader batch 1
-    - story definitions
-    - material props
-    - pier sections
-    - group assignments
-3. loader batch 2
-    - joint drifts
-    - pier forces
-    - modal
-    - base reactions
-    - story forces
-    - material-by-story
-4. checks 1–4
-    - modal
-    - base shear
-    - wind drift/displacement
-    - seismic drift
-5. checks 6–8 plus torsional stub
-    - pier shear wind
-    - pier shear seismic
-    - pier axial
-    - torsional note output
-6. `CalcRunner` assembly and JSON snapshot output
+Current `CalcRunner` behavior:
 
-### 4. Build `ext-render` on `CalcOutput`, not raw tables
-- Use the existing drift SVG proof-of-concept as the first-pass visual baseline.
-- First render target is drift only.
-- Add a converter from `CalcOutput.drift_wind` / `CalcOutput.drift_seismic` into render series data.
-- Keep SVG as the first output format.
-- Delay extra chart types until the drift pipeline is stable.
+- loads batch-1 tables
+- returns a summary describing loaded inputs
+- does not run engineering checks yet
+- sets all detailed result sections to `None`
 
-### 5. Build `ext-report` on `CalcOutput` + rendered assets
-- Use the existing Typst proof-of-concept as the first-pass report composition baseline.
-- Remove all random/demo data generation.
-- Report inputs should be:
-    - project metadata
-    - `CalcSummary`
-    - detailed calc outputs
-    - rendered SVG asset references
-- First report scope:
-    - cover
-    - summary
-    - drift figure pages
-    - calc tables
+### 3. `ext-calc` batch-1 loaders
 
-### 6. Integrate through `ext-api` last
-After `ext-calc`, `ext-render`, and `ext-report` stabilize:
-- add `ext-api` wrappers for calc/render/report
-- then add CLI commands:
-    - `ext calc`
-    - `ext render`
-    - `ext report`
+Implemented loaders:
 
-## Test Plan
+- `crates/ext-calc/src/tables/story_def.rs`
+- `crates/ext-calc/src/tables/material_props.rs`
+- `crates/ext-calc/src/tables/pier_section.rs`
+- `crates/ext-calc/src/tables/group_assignments.rs`
 
-### Config and unit tests
-- shared `[calc]` loads correctly
-- shared writes no longer persist local-only project fields
-- local reads/writes preserve `sidecar-path` and `units`
-- legacy shared `units` / `sidecar-path` can still be read
-- default preset path uses `"kip-ft-F"`
-- invalid TOML combo lists fail clearly
+What each one does:
 
-### Loader tests
-Use:
-- `crates/ext-calc/tests/fixtures/results_realistic`
+- `story_def`
+  - reads `story_definitions.parquet`
+  - computes `elevation_ft` from reversed cumulative story height
+- `material_props`
+  - reads `material_properties_concrete_data.parquet`
+  - derives `fc_ksi` and `fc_psi`
+- `pier_section`
+  - reads `pier_section_properties.parquet`
+  - derives `acv_in2` and `ag_in2`
+- `group_assignments`
+  - reads `group_assignments.parquet`
+  - returns `HashMap<String, Vec<String>>`
 
-Assert:
-- schema mapping is exact
-- `story_definitions -> elevation_ft` is correct
-- `WidthBot * ThickBot -> Acv/Ag` is correct
-- `Fc -> fc_ksi` is correct
-- group aggregation is correct
-- case/group filtering behaves correctly
+Loader/unit tests were added in these modules, but have not been executed yet in this pass.
 
-### Check tests
-First pass:
-- deterministic smoke/invariant tests
-- `CalcOutput` JSON snapshots
+### 4. `ext-render` first library surface
 
-Second pass after engineering references are supplied:
-- modal threshold mode exact value
-- base shear ratio exact value
-- governing wind drift exact value
-- pier shear exact value
-- axial exact value
+Added:
 
-### Render/report tests
-- drift SVG render smoke test from fixed `CalcOutput`
-- Typst PDF compile smoke test from fixed calc/report inputs
-- one fixture pipeline test:
-    - Parquet fixture -> `CalcOutput` -> drift SVG -> report PDF
+- `crates/ext-render/src/lib.rs`
 
-## Assumptions
+Current behavior:
 
-- No `ext-types` crate in the initial implementation.
-- `ext-calc` is the canonical shared DTO boundary.
-- `results_realistic` is the only required fixture set for the first pass.
-- The drift renderer proof-of-concept is the approved first-pass style.
-- The Typst proof-of-concept is the approved first-pass report style.
-- Torsional irregularity remains a stub until engineering guidance arrives.
-- `ext-api::report` is intentionally the later integration point, not the starting implementation surface.
+- consumes `ext-calc::output::CalcOutput`
+- can emit simple SVG drift charts from:
+  - `calc.drift_wind`
+  - `calc.drift_seismic`
+- this is a lightweight first pass, not yet the full proof-of-concept chart system
+
+### 5. `ext-report` first library surface
+
+Added:
+
+- `crates/ext-report/src/lib.rs`
+
+Current behavior:
+
+- consumes `CalcOutput`
+- provides:
+  - `ReportProjectMeta`
+  - `ReportInput`
+  - `build_typst_document(...)`
+- `compile_pdf(...)` is still an intentional stub that returns an error
+
+### 6. Workspace dependency fix
+
+Updated:
+
+- `Cargo.toml`
+
+Reason:
+
+- `polars 0.53.0` would not resolve with workspace `chrono 0.4.44`
+- workspace `chrono` was pinned down to `0.4.41` to match the Polars dependency range and restore compile success
+
+---
+
+## Remaining Work
+
+### 1. `ext-calc` loader batch 2
+
+Still to implement:
+
+- `joint_drifts`
+- `pier_forces`
+- `modal`
+- `base_reactions`
+- `story_forces`
+- `material_by_story`
+
+Recommended next step:
+
+- add the six missing loader modules
+- keep the same fixture-first test style used in batch 1
+
+### 2. Engineering checks
+
+Still to implement:
+
+- modal participation
+- base shear
+- wind drift + roof displacement
+- seismic drift
+- torsional stub output
+- pier shear wind
+- pier shear seismic
+- pier axial
+
+Recommended sequencing:
+
+1. modal
+2. base shear
+3. drift wind
+4. drift seismic
+5. pier shear wind
+6. pier shear seismic
+7. pier axial
+8. torsional stub
+
+### 3. Real `CalcRunner`
+
+`CalcRunner::run_all()` must be upgraded from “load and summarize” to:
+
+- loading all required tables
+- building lookup maps
+- running enabled checks
+- assembling real `CalcOutput`
+- writing stable JSON snapshots in tests later
+
+### 4. Render/report continuation
+
+`ext-render`
+
+- keep drift-first
+- refine the SVG output toward the proof-of-concept layout
+- convert from actual `DriftOutput` results once the drift checks exist
+
+`ext-report`
+
+- replace the current Typst string skeleton with the real proof-of-concept layout structure
+- wire image references from rendered SVG files
+- add real PDF compilation using Typst once the report contract is stable
+
+### 5. Integration not started yet
+
+Still deferred:
+
+- `ext-api` orchestration for calc/render/report
+- CLI commands:
+  - `ext calc`
+  - `ext render`
+  - `ext report`
+
+This is intentional. Core calc types and behavior should stabilize first.
+
+---
+
+## Verification Status
+
+Passed:
+
+- `cargo check --target-dir .codex-target`
+
+Not run yet in this pass:
+
+- `cargo test -p ext-db -p ext-calc --lib --target-dir .codex-target`
+
+The test command was requested but not executed to completion because the session was interrupted before approval-based execution continued.
+
+---
+
+## Important Notes
+
+### Config note
+
+The sample axial combo list still needs this syntax fix in project config examples:
+
+```toml
+[calc.pier-axial]
+load-combos = [
+    "EVN_LRFD_GRA",
+    "EVN_LRFD_EQ",
+    "EVN_LRFD_Wind",
+]
+```
+
+Without that comma after `"EVN_LRFD_GRA"`, the TOML is invalid.
+
+### Crate-shape note
+
+The new crates now have `lib.rs`, but the original `main.rs` placeholder files still exist physically in:
+
+- `crates/ext-calc/src/main.rs`
+- `crates/ext-render/src/main.rs`
+- `crates/ext-report/src/main.rs`
+
+They are no longer the primary design target, but they have not been removed in this pass.
+
+### Fixture note
+
+Current testing fixture set:
+
+- `crates/ext-calc/tests/fixtures/results_realistic/`
+
+There is still no `results_minimal/` fixture set.
+
+That is acceptable for now; it can be added later if formula tests become too awkward or slow against the realistic fixture set.
+
+---
+
+## Recommended Next Continuation
+
+The next agent should start here:
+
+1. run `cargo test -p ext-db -p ext-calc --lib --target-dir .codex-target`
+2. fix any test/compile issues from the new batch-1 foundation
+3. implement loader batch 2
+4. implement checks 1-4
+5. upgrade `CalcRunner` from summary-only to real `CalcOutput`
+
+Only after that should the next pass expand `ext-render`, `ext-report`, and then `ext-api`/CLI integration.
