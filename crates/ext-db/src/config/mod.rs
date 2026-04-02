@@ -290,7 +290,10 @@ units = "kip-ft-F"
 
         let loaded = Config::load(dir.path()).unwrap();
         assert_eq!(loaded.project.name.as_deref(), Some("Tower A"));
-        assert_eq!(loaded.project.sidecar_path.as_deref(), Some("legacy-sidecar.exe"));
+        assert_eq!(
+            loaded.project.sidecar_path.as_deref(),
+            Some("legacy-sidecar.exe")
+        );
         assert_eq!(loaded.project.units.as_deref(), Some("kip-ft-F"));
         assert_eq!(loaded.calc.code_or_default(), "ACI318-14");
     }

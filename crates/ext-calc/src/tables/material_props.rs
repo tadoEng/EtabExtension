@@ -5,6 +5,8 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use polars::prelude::*;
 
+use super::{required_f64, required_string};
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaterialProp {
     pub name: String,
@@ -20,25 +22,22 @@ pub fn load_material_properties(results_dir: &Path) -> Result<HashMap<String, Ma
         .with_context(|| format!("Failed to open material properties: {}", path.display()))?;
     let df = ParquetReader::new(file).finish()?;
 
-    let names = df.column("Material")?.str()?;
-    let fc = df.column("Fc")?.f64()?;
-    let lightweight = df.column("LtWtConc")?.str()?;
+    let names = df.column("Material")?;
+    let fc = df.column("Fc")?;
+    let lightweight = df.column("LtWtConc")?;
 
     let mut map = HashMap::with_capacity(df.height());
     for idx in 0..df.height() {
-        let name = names
-            .get(idx)
-            .with_context(|| format!("Missing Material at row {idx}"))?;
-        let fc_kipsft2 = fc
-            .get(idx)
-            .with_context(|| format!("Missing Fc at row {idx}"))?;
-        let is_lightweight = matches!(lightweight.get(idx), Some("Yes"));
+        let name = required_string(names, idx, "Material")?;
+        let fc_kipsft2 = required_f64(fc, idx, "Fc")?;
+        let is_lightweight =
+            required_string(lightweight, idx, "LtWtConc")?.eq_ignore_ascii_case("Yes");
         let fc_ksi = fc_kipsft2 / 144.0;
 
         map.insert(
-            name.to_string(),
+            name.clone(),
             MaterialProp {
-                name: name.to_string(),
+                name,
                 fc_kipsft2,
                 fc_ksi,
                 fc_psi: fc_ksi * 1000.0,

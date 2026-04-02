@@ -9,18 +9,17 @@ What is genuinely done:
 - `ext-db` now has a shared `[calc]` config model
 - the config split is implemented as strict local-only on writes for `project.sidecar-path` and `project.units`
 - the unit default now matches the Week 7-8 spec baseline: `kip-ft-F`
-- `ext-calc` now exists as a real library surface with shared output types, unit conversion, code params, loader scaffolding, and batch-1 loaders
+- `ext-calc` now exists as a real library surface with shared output types, unit conversion, code params, loader scaffolding, batch-1 loaders, and batch-2 loaders
 - `ext-render` and `ext-report` now have library surfaces instead of being only empty binary placeholders
 - the full workspace compiles with `cargo check --target-dir .codex-target`
 
 What is not done yet:
 
-- batch-2 loaders
 - all engineering checks
-- real `CalcRunner` outputs beyond loader summary
+- real `CalcRunner` outputs beyond “all required inputs loaded” summary data
 - render/report production pipeline
 - `ext-api` and CLI integration
-- test execution for the new Week 7-8 units/loaders
+- broader integration beyond the currently passing `ext-db` / `ext-calc` library test scope
 
 ---
 
@@ -53,6 +52,7 @@ Also added config tests in `config/mod.rs` covering:
 - shared writes omitting local-only project fields
 - local writes persisting only local project fields
 - loading legacy shared project fields with local override
+- this crate needed `tempfile` added under `dev-dependencies` so its tests compile and run
 
 ### 2. `ext-calc` library-first scaffolding
 
@@ -76,7 +76,7 @@ Current public shape:
 
 Current `CalcRunner` behavior:
 
-- loads batch-1 tables
+- loads batch-1 and batch-2 tables
 - returns a summary describing loaded inputs
 - does not run engineering checks yet
 - sets all detailed result sections to `None`
@@ -105,9 +105,54 @@ What each one does:
   - reads `group_assignments.parquet`
   - returns `HashMap<String, Vec<String>>`
 
-Loader/unit tests were added in these modules, but have not been executed yet in this pass.
+Loader/unit tests in these modules now run successfully against the realistic fixture set.
 
-### 4. `ext-render` first library surface
+### 4. `ext-calc` batch-2 loaders
+
+Implemented loaders:
+
+- `crates/ext-calc/src/tables/joint_drift.rs`
+- `crates/ext-calc/src/tables/pier_forces.rs`
+- `crates/ext-calc/src/tables/modal.rs`
+- `crates/ext-calc/src/tables/base_reactions.rs`
+- `crates/ext-calc/src/tables/story_forces.rs`
+- `crates/ext-calc/src/tables/material_by_story.rs`
+
+Updated:
+
+- `crates/ext-calc/src/tables/mod.rs`
+- `crates/ext-calc/src/lib.rs`
+
+What each one does:
+
+- `joint_drift`
+  - reads `joint_drifts.parquet`
+  - preserves ETABS `DriftX` / `DriftY` as direct drift ratios
+- `pier_forces`
+  - reads `pier_forces.parquet`
+  - derives `shear_v2_abs_kip` for later governing shear selection
+- `modal`
+  - reads `modal_participating_mass_ratios.parquet`
+  - preserves cumulative `SumUX` / `SumUY` / `SumRX` / `SumRY` / `SumRZ`
+- `base_reactions`
+  - reads `base_reactions.parquet`
+  - maps directional force and moment components directly
+- `story_forces`
+  - reads `story_forces.parquet`
+  - maps story-level shear/torsion inputs for later torsional work
+- `material_by_story`
+  - reads `material_list_by_story.parquet`
+  - maps story material weight/takeoff rows for later summaries
+
+`CalcRunner::run_all()` now loads all ten planned Week 7-8 input tables and reports them in the summary output, but still does not perform engineering checks.
+
+Additional implementation detail from verification fixes:
+
+- the realistic Parquet fixtures expose several engineering columns as strings instead of strict numeric columns
+- table loaders were updated to parse numeric-looking strings at the value layer rather than assuming `Float64` / `Int64` typed columns
+- nullable `NumPieces` and `NumStuds` in `material_list_by_story.parquet` are now treated as `0.0`
+
+### 5. `ext-render` first library surface
 
 Added:
 
@@ -121,7 +166,7 @@ Current behavior:
   - `calc.drift_seismic`
 - this is a lightweight first pass, not yet the full proof-of-concept chart system
 
-### 5. `ext-report` first library surface
+### 6. `ext-report` first library surface
 
 Added:
 
@@ -136,7 +181,7 @@ Current behavior:
   - `build_typst_document(...)`
 - `compile_pdf(...)` is still an intentional stub that returns an error
 
-### 6. Workspace dependency fix
+### 7. Workspace dependency fix
 
 Updated:
 
@@ -151,23 +196,7 @@ Reason:
 
 ## Remaining Work
 
-### 1. `ext-calc` loader batch 2
-
-Still to implement:
-
-- `joint_drifts`
-- `pier_forces`
-- `modal`
-- `base_reactions`
-- `story_forces`
-- `material_by_story`
-
-Recommended next step:
-
-- add the six missing loader modules
-- keep the same fixture-first test style used in batch 1
-
-### 2. Engineering checks
+### 1. Engineering checks
 
 Still to implement:
 
@@ -191,17 +220,16 @@ Recommended sequencing:
 7. pier axial
 8. torsional stub
 
-### 3. Real `CalcRunner`
+### 2. Real `CalcRunner`
 
-`CalcRunner::run_all()` must be upgraded from “load and summarize” to:
+`CalcRunner::run_all()` must be upgraded from “load every required table and summarize” to:
 
-- loading all required tables
 - building lookup maps
 - running enabled checks
 - assembling real `CalcOutput`
 - writing stable JSON snapshots in tests later
 
-### 4. Render/report continuation
+### 3. Render/report continuation
 
 `ext-render`
 
@@ -215,7 +243,7 @@ Recommended sequencing:
 - wire image references from rendered SVG files
 - add real PDF compilation using Typst once the report contract is stable
 
-### 5. Integration not started yet
+### 4. Integration not started yet
 
 Still deferred:
 
@@ -234,12 +262,14 @@ This is intentional. Core calc types and behavior should stabilize first.
 Passed:
 
 - `cargo check --target-dir .codex-target`
+- `cargo fmt --all`
+- `cargo test -j 2 -p ext-calc --lib --target-dir .codex-target`
+- `cargo test -j 2 -p ext-db -p ext-calc --lib --target-dir .codex-target`
 
-Not run yet in this pass:
+Important verification note:
 
-- `cargo test -p ext-db -p ext-calc --lib --target-dir .codex-target`
-
-The test command was requested but not executed to completion because the session was interrupted before approval-based execution continued.
+- use limited cargo parallelism such as `-j 2` for this workspace on constrained machines
+- unrestricted cargo parallelism causes avoidable CPU/RAM pressure during the Polars-heavy compile/test path
 
 ---
 
@@ -286,10 +316,14 @@ That is acceptable for now; it can be added later if formula tests become too aw
 
 The next agent should start here:
 
-1. run `cargo test -p ext-db -p ext-calc --lib --target-dir .codex-target`
-2. fix any test/compile issues from the new batch-1 foundation
-3. implement loader batch 2
-4. implement checks 1-4
-5. upgrade `CalcRunner` from summary-only to real `CalcOutput`
+1. keep using constrained cargo parallelism for local verification, for example:
+   - `cargo test -j 2 -p ext-db -p ext-calc --lib --target-dir .codex-target`
+2. implement checks 1-4:
+   - modal
+   - base shear
+   - drift wind
+   - drift seismic
+3. upgrade `CalcRunner` from loader-summary-only to real `CalcOutput`
+4. add stable calc snapshots once the first four checks are wired
 
 Only after that should the next pass expand `ext-render`, `ext-report`, and then `ext-api`/CLI integration.

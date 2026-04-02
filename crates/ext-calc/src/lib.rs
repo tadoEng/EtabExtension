@@ -23,7 +23,13 @@ impl CalcRunner {
         branch: &str,
     ) -> Result<CalcOutput> {
         let story_defs = tables::story_def::load_story_definitions(results_dir)?;
+        let joint_drifts = tables::joint_drift::load_joint_drifts(results_dir)?;
         let material_props = tables::material_props::load_material_properties(results_dir)?;
+        let material_by_story = tables::material_by_story::load_material_by_story(results_dir)?;
+        let modal = tables::modal::load_modal_participating_mass_ratios(results_dir)?;
+        let base_reactions = tables::base_reactions::load_base_reactions(results_dir)?;
+        let story_forces = tables::story_forces::load_story_forces(results_dir)?;
+        let pier_forces = tables::pier_forces::load_pier_forces(results_dir)?;
         let pier_sections = tables::pier_section::load_pier_sections(results_dir)?;
         let group_map = tables::group_assignments::load_group_assignments(results_dir)?;
 
@@ -39,9 +45,39 @@ impl CalcRunner {
                     message: format!("{} story rows", story_defs.len()),
                 },
                 SummaryLine {
+                    key: "jointDrifts".to_string(),
+                    status: "loaded".to_string(),
+                    message: format!("{} drift rows", joint_drifts.len()),
+                },
+                SummaryLine {
                     key: "materialProperties".to_string(),
                     status: "loaded".to_string(),
                     message: format!("{} concrete materials", material_props.len()),
+                },
+                SummaryLine {
+                    key: "materialByStory".to_string(),
+                    status: "loaded".to_string(),
+                    message: format!("{} material-by-story rows", material_by_story.len()),
+                },
+                SummaryLine {
+                    key: "modalParticipation".to_string(),
+                    status: "loaded".to_string(),
+                    message: format!("{} modal rows", modal.len()),
+                },
+                SummaryLine {
+                    key: "baseReactions".to_string(),
+                    status: "loaded".to_string(),
+                    message: format!("{} base reaction rows", base_reactions.len()),
+                },
+                SummaryLine {
+                    key: "storyForces".to_string(),
+                    status: "loaded".to_string(),
+                    message: format!("{} story force rows", story_forces.len()),
+                },
+                SummaryLine {
+                    key: "pierForces".to_string(),
+                    status: "loaded".to_string(),
+                    message: format!("{} pier force rows", pier_forces.len()),
                 },
                 SummaryLine {
                     key: "pierSections".to_string(),

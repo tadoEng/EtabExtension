@@ -47,5 +47,7 @@ pub fn build_typst_document(input: &ReportInput) -> String {
 }
 
 pub fn compile_pdf(_input: &ReportInput) -> Result<Vec<u8>> {
-    anyhow::bail!("Typst PDF compilation is not wired yet; build_typst_document is ready for integration")
+    anyhow::bail!(
+        "Typst PDF compilation is not wired yet; build_typst_document is ready for integration"
+    )
 }

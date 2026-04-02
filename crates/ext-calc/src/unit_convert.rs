@@ -14,9 +14,7 @@ impl EtabsPreset {
         match value.trim().to_ascii_lowercase().as_str() {
             "kip-ft-f" | "us_kip_ft" | "kip_ft" => Ok(Self::KipFtF),
             "kn-m-c" | "si_kn_m" | "kn_m" => Ok(Self::KnMC),
-            other => bail!(
-                "Unsupported unit preset '{other}'. Supported: kip-ft-F, kN-m-C"
-            ),
+            other => bail!("Unsupported unit preset '{other}'. Supported: kip-ft-F, kN-m-C"),
         }
     }
 }

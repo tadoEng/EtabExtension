@@ -4,6 +4,8 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use polars::prelude::*;
 
+use super::{required_f64, required_string};
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PierSectionRow {
     pub story: String,
@@ -24,48 +26,29 @@ pub fn load_pier_sections(results_dir: &Path) -> Result<Vec<PierSectionRow>> {
         .with_context(|| format!("Failed to open pier sections: {}", path.display()))?;
     let df = ParquetReader::new(file).finish()?;
 
-    let stories = df.column("Story")?.str()?;
-    let piers = df.column("Pier")?.str()?;
-    let axis_angles = df.column("AxisAngle")?.f64()?;
-    let width_bot = df.column("WidthBot")?.f64()?;
-    let thick_bot = df.column("ThickBot")?.f64()?;
-    let width_top = df.column("WidthTop")?.f64()?;
-    let thick_top = df.column("ThickTop")?.f64()?;
-    let materials = df.column("Material")?.str()?;
+    let stories = df.column("Story")?;
+    let piers = df.column("Pier")?;
+    let axis_angles = df.column("AxisAngle")?;
+    let width_bot = df.column("WidthBot")?;
+    let thick_bot = df.column("ThickBot")?;
+    let width_top = df.column("WidthTop")?;
+    let thick_top = df.column("ThickTop")?;
+    let materials = df.column("Material")?;
 
     let mut rows = Vec::with_capacity(df.height());
     for idx in 0..df.height() {
-        let width_bot_ft = width_bot
-            .get(idx)
-            .with_context(|| format!("Missing WidthBot at row {idx}"))?;
-        let thick_bot_ft = thick_bot
-            .get(idx)
-            .with_context(|| format!("Missing ThickBot at row {idx}"))?;
+        let width_bot_ft = required_f64(width_bot, idx, "WidthBot")?;
+        let thick_bot_ft = required_f64(thick_bot, idx, "ThickBot")?;
         let acv_in2 = width_bot_ft * thick_bot_ft * 144.0;
         rows.push(PierSectionRow {
-            story: stories
-                .get(idx)
-                .with_context(|| format!("Missing Story at row {idx}"))?
-                .to_string(),
-            pier: piers
-                .get(idx)
-                .with_context(|| format!("Missing Pier at row {idx}"))?
-                .to_string(),
-            axis_angle: axis_angles
-                .get(idx)
-                .with_context(|| format!("Missing AxisAngle at row {idx}"))?,
+            story: required_string(stories, idx, "Story")?,
+            pier: required_string(piers, idx, "Pier")?,
+            axis_angle: required_f64(axis_angles, idx, "AxisAngle")?,
             width_bot_ft,
             thick_bot_ft,
-            width_top_ft: width_top
-                .get(idx)
-                .with_context(|| format!("Missing WidthTop at row {idx}"))?,
-            thick_top_ft: thick_top
-                .get(idx)
-                .with_context(|| format!("Missing ThickTop at row {idx}"))?,
-            material: materials
-                .get(idx)
-                .with_context(|| format!("Missing Material at row {idx}"))?
-                .to_string(),
+            width_top_ft: required_f64(width_top, idx, "WidthTop")?,
+            thick_top_ft: required_f64(thick_top, idx, "ThickTop")?,
+            material: required_string(materials, idx, "Material")?,
             acv_in2,
             ag_in2: acv_in2,
         });

@@ -4,6 +4,8 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use polars::prelude::*;
 
+use super::{required_f64, required_string};
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoryDefRow {
     pub story: String,
@@ -17,19 +19,15 @@ pub fn load_story_definitions(results_dir: &Path) -> Result<Vec<StoryDefRow>> {
         .with_context(|| format!("Failed to open story definitions: {}", path.display()))?;
     let df = ParquetReader::new(file).finish()?;
 
-    let stories = df.column("Story")?.str()?;
-    let heights = df.column("Height")?.f64()?;
+    let stories = df.column("Story")?;
+    let heights = df.column("Height")?;
 
     let mut rows = Vec::with_capacity(df.height());
     for idx in 0..df.height() {
-        let story = stories
-            .get(idx)
-            .with_context(|| format!("Missing Story at row {idx}"))?;
-        let height_ft = heights
-            .get(idx)
-            .with_context(|| format!("Missing Height at row {idx}"))?;
+        let story = required_string(stories, idx, "Story")?;
+        let height_ft = required_f64(heights, idx, "Height")?;
         rows.push(StoryDefRow {
-            story: story.to_string(),
+            story,
             height_ft,
             elevation_ft: 0.0,
         });
