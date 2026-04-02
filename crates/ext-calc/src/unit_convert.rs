@@ -6,6 +6,7 @@ use crate::output::Quantity;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EtabsPreset {
     KipFtF,
+    KipInF,
     KnMC,
 }
 
@@ -13,8 +14,9 @@ impl EtabsPreset {
     pub fn from_str(value: &str) -> Result<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "kip-ft-f" | "us_kip_ft" | "kip_ft" => Ok(Self::KipFtF),
+            "kip-in-f" | "us_kip_in" | "kip_in" | "kip/in/f" | "kip-in" => Ok(Self::KipInF),
             "kn-m-c" | "si_kn_m" | "kn_m" => Ok(Self::KnMC),
-            other => bail!("Unsupported unit preset '{other}'. Supported: kip-ft-F, kN-m-C"),
+            other => bail!("Unsupported unit preset '{other}'. Supported: kip-ft-F, kip-in-F, kN-m-C"),
         }
     }
 }
@@ -38,6 +40,7 @@ impl UnitContext {
     pub fn force_to_kip(&self, value: f64) -> f64 {
         match self.preset {
             EtabsPreset::KipFtF => value,
+            EtabsPreset::KipInF => value,
             EtabsPreset::KnMC => value * 0.224_809,
         }
     }
@@ -45,6 +48,7 @@ impl UnitContext {
     pub fn length_to_inch(&self, value: f64) -> f64 {
         match self.preset {
             EtabsPreset::KipFtF => value * 12.0,
+            EtabsPreset::KipInF => value,
             EtabsPreset::KnMC => value * 39.370_1,
         }
     }
@@ -52,6 +56,7 @@ impl UnitContext {
     pub fn length_to_ft(&self, value: f64) -> f64 {
         match self.preset {
             EtabsPreset::KipFtF => value,
+            EtabsPreset::KipInF => value / 12.0,
             EtabsPreset::KnMC => value * 3.280_84,
         }
     }
@@ -59,13 +64,14 @@ impl UnitContext {
     pub fn stress_to_ksi(&self, value: f64) -> f64 {
         match self.preset {
             EtabsPreset::KipFtF => value / 144.0,
+            EtabsPreset::KipInF => value,
             EtabsPreset::KnMC => value * 0.000_145_038,
         }
     }
 
     pub fn force_label(&self) -> &'static str {
         match self.preset {
-            EtabsPreset::KipFtF => "kip",
+            EtabsPreset::KipFtF | EtabsPreset::KipInF => "kip",
             EtabsPreset::KnMC => "kN",
         }
     }
@@ -73,6 +79,7 @@ impl UnitContext {
     pub fn length_label(&self) -> &'static str {
         match self.preset {
             EtabsPreset::KipFtF => "ft",
+            EtabsPreset::KipInF => "in",
             EtabsPreset::KnMC => "m",
         }
     }
@@ -80,13 +87,14 @@ impl UnitContext {
     pub fn moment_label(&self) -> &'static str {
         match self.preset {
             EtabsPreset::KipFtF => "kip·ft",
+            EtabsPreset::KipInF => "kip·in",
             EtabsPreset::KnMC => "kN·m",
         }
     }
 
     pub fn qty_force(&self, kip: f64) -> Quantity {
         match self.preset {
-            EtabsPreset::KipFtF => Quantity::new(kip, "kip"),
+            EtabsPreset::KipFtF | EtabsPreset::KipInF => Quantity::new(kip, "kip"),
             EtabsPreset::KnMC => Quantity::new(kip / 0.224_809, "kN"),
         }
     }
@@ -94,13 +102,14 @@ impl UnitContext {
     pub fn qty_area_in2(&self, in2: f64) -> Quantity {
         match self.preset {
             EtabsPreset::KipFtF => Quantity::new(in2 / 144.0, "ft²"),
+            EtabsPreset::KipInF => Quantity::new(in2, "in²"),
             EtabsPreset::KnMC => Quantity::new(in2 * 0.000_645_16, "m²"),
         }
     }
 
     pub fn qty_length_disp(&self, ft: f64) -> Quantity {
         match self.preset {
-            EtabsPreset::KipFtF => Quantity::new(ft * 12.0, "in"),
+            EtabsPreset::KipFtF | EtabsPreset::KipInF => Quantity::new(ft * 12.0, "in"),
             EtabsPreset::KnMC => Quantity::new(ft * 304.8, "mm"),
         }
     }
@@ -135,8 +144,19 @@ mod tests {
         assert!(EtabsPreset::from_str("kip-ft-F").is_ok());
         assert!(EtabsPreset::from_str("KIP-FT-F").is_ok());
         assert!(EtabsPreset::from_str("US_Kip_Ft").is_ok());
+        assert!(EtabsPreset::from_str("kip-in-F").is_ok());
+        assert!(EtabsPreset::from_str("US_Kip_In").is_ok());
         assert!(EtabsPreset::from_str("kN-m-C").is_ok());
         assert!(EtabsPreset::from_str("SI_kN_m").is_ok());
         assert!(EtabsPreset::from_str("badunit").is_err());
+    }
+
+    #[test]
+    fn kip_in_maps_lengths_and_stress_directly() {
+        let uc = UnitContext::new(EtabsPreset::KipInF);
+        assert!((uc.length_to_inch(22.0) - 22.0).abs() < 1e-9);
+        assert!((uc.length_to_ft(24.0) - 2.0).abs() < 1e-9);
+        assert!((uc.stress_to_ksi(8.0) - 8.0).abs() < 1e-9);
+        assert_eq!(uc.moment_label(), "kip·in");
     }
 }

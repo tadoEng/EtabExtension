@@ -1,0 +1,31 @@
+[calc]
+code = "ACI318-14"
+occupancy-category = "II"
+modal-case = "Modal-Rizt"
+drift-tracking-groups = ["Joint48"]
+
+[calc.modal]
+min-mass-participation = 0.90
+display-mode-limit = 20
+
+[calc.base-shear]
+elf-case-x = "ELF_X"
+elf-case-y = "ELF_Y"
+rsa-case-x = "RSA_X"
+rsa-case-y = "RSA_Y"
+rsa-scale-min = 1.0
+
+[calc.drift-wind]
+load-cases = ["Wind_10yr_Diagonal",]
+drift-limit = 0.0025
+
+[calc.drift-seismic]
+# The realistic fixture currently contains wind-only drift rows, so seismic
+# drift checks use the same extracted case until dedicated seismic drift
+# fixtures are added.
+load-cases = ["Wind_10yr_Diagonal"]
+drift-limit = 0.020
+
+[calc.displacement-wind]
+load-cases = ["Wind_10yr_Diagonal"]
+disp-limit-h = 500

@@ -58,8 +58,10 @@ pub struct CalcSummary {
 #[serde(rename_all = "camelCase")]
 pub struct StoryDriftResult {
     pub story: String,
+    pub group_name: String,
     pub output_case: String,
     pub direction: String,
+    pub sense: String,
     pub drift_ratio: f64,
     pub dcr: f64,
     pub pass: bool,
@@ -67,9 +69,25 @@ pub struct StoryDriftResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DriftEnvelopeRow {
+    pub story: String,
+    pub group_name: String,
+    pub output_case: String,
+    pub max_disp_x_pos_ft: f64,
+    pub max_disp_x_neg_ft: f64,
+    pub max_disp_y_pos_ft: f64,
+    pub max_disp_y_neg_ft: f64,
+    pub max_drift_x_pos: f64,
+    pub max_drift_x_neg: f64,
+    pub max_drift_y_pos: f64,
+    pub max_drift_y_neg: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DriftOutput {
     pub allowable_ratio: f64,
-    pub stories: Vec<StoryDriftResult>,
+    pub rows: Vec<DriftEnvelopeRow>,
     pub governing: StoryDriftResult,
     pub pass: bool,
     pub roof_disp_x: Option<Quantity>,
@@ -80,7 +98,43 @@ pub struct DriftOutput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DisplacementEnvelopeRow {
+    pub story: String,
+    pub group_name: String,
+    pub output_case: String,
+    pub max_disp_x_pos_ft: f64,
+    pub max_disp_x_neg_ft: f64,
+    pub max_disp_y_pos_ft: f64,
+    pub max_disp_y_neg_ft: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JointDisplacementResult {
+    pub story: String,
+    pub group_name: String,
+    pub output_case: String,
+    pub direction: String,
+    pub sense: String,
+    pub displacement: Quantity,
+    pub dcr: f64,
+    pub pass: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisplacementOutput {
+    pub rows: Vec<DisplacementEnvelopeRow>,
+    pub governing: JointDisplacementResult,
+    pub disp_limit: Quantity,
+    pub pass: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BaseShearDir {
+    pub rsa_case: String,
+    pub elf_case: String,
     pub v_rsa: Quantity,
     pub v_elf: Quantity,
     pub ratio: f64,
@@ -89,14 +143,47 @@ pub struct BaseShearDir {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BaseReactionCheckRow {
+    pub output_case: String,
+    pub case_type: String,
+    pub step_type: String,
+    pub step_number: Option<f64>,
+    pub fx_kip: f64,
+    pub fy_kip: f64,
+    pub fz_kip: f64,
+    pub mx_kip_ft: f64,
+    pub my_kip_ft: f64,
+    pub mz_kip_ft: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BaseShearOutput {
+    /// Review table: carries filtered base-reaction rows for reporting, while the
+    /// actual design summary is computed only from configured ELF/RSA cases.
+    pub rows: Vec<BaseReactionCheckRow>,
     pub direction_x: BaseShearDir,
     pub direction_y: BaseShearDir,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ModalModeRow {
+    pub case: String,
+    pub mode: i64,
+    pub period: f64,
+    pub ux: f64,
+    pub uy: f64,
+    pub sum_ux: f64,
+    pub sum_uy: f64,
+    pub rz: f64,
+    pub sum_rz: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModalOutput {
+    pub rows: Vec<ModalModeRow>,
     pub threshold: f64,
     pub mode_reaching_ux: Option<i64>,
     pub mode_reaching_uy: Option<i64>,
@@ -170,6 +257,7 @@ pub struct CalcOutput {
     pub base_shear: Option<BaseShearOutput>,
     pub drift_wind: Option<DriftOutput>,
     pub drift_seismic: Option<DriftOutput>,
+    pub displacement_wind: Option<DisplacementOutput>,
     pub torsional: Option<TorsionalOutput>,
     pub pier_shear_wind: Option<PierShearOutput>,
     pub pier_shear_seismic: Option<PierShearOutput>,

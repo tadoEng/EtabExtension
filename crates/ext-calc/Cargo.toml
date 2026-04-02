@@ -6,6 +6,14 @@ edition.workspace = true
 authors.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "ext_calc"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ext-calc"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = { workspace = true }
 chrono = { workspace = true }

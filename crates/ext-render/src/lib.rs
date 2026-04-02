@@ -54,17 +54,17 @@ fn write_drift_svg(
     title: &str,
     config: &RenderConfig,
 ) -> Result<PathBuf> {
-    let max_ratio = drift
-        .stories
+    let story_points = build_story_points(drift);
+    let max_ratio = story_points
         .iter()
-        .map(|story| story.drift_ratio)
+        .map(|(_, ratio)| *ratio)
         .fold(drift.allowable_ratio, f64::max)
         .max(1e-6);
 
-    let count = drift.stories.len().max(1) as f64;
+    let count = story_points.len().max(1) as f64;
     let mut points = Vec::new();
-    for (idx, row) in drift.stories.iter().enumerate() {
-        let x = 60.0 + (row.drift_ratio / max_ratio) * ((config.width - 120) as f64);
+    for (idx, (_, ratio)) in story_points.iter().enumerate() {
+        let x = 60.0 + (*ratio / max_ratio) * ((config.width - 120) as f64);
         let y = 40.0 + (idx as f64 / count) * ((config.height - 80) as f64);
         points.push(format!("{x:.1},{y:.1}"));
     }
@@ -90,4 +90,25 @@ fn write_drift_svg(
 
     fs::write(&path, svg)?;
     Ok(path)
+}
+
+fn build_story_points(drift: &DriftOutput) -> Vec<(String, f64)> {
+    let mut by_story: Vec<(String, f64)> = Vec::new();
+    for row in &drift.rows {
+        let max_ratio = [
+            row.max_drift_x_pos.abs(),
+            row.max_drift_x_neg.abs(),
+            row.max_drift_y_pos.abs(),
+            row.max_drift_y_neg.abs(),
+        ]
+        .into_iter()
+        .fold(0.0_f64, f64::max);
+
+        if let Some((_, existing)) = by_story.iter_mut().find(|(story, _)| *story == row.story) {
+            *existing = existing.max(max_ratio);
+        } else {
+            by_story.push((row.story.clone(), max_ratio));
+        }
+    }
+    by_story
 }

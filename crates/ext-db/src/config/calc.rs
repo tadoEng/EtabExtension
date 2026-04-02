@@ -23,6 +23,9 @@ pub struct CalcConfig {
     #[serde(rename = "drift-seismic", default)]
     pub drift_seismic: DriftCalcConfig,
 
+    #[serde(rename = "displacement-wind", default)]
+    pub displacement_wind: DisplacementCalcConfig,
+
     #[serde(rename = "pier-shear-wind", default)]
     pub pier_shear_wind: PierShearCalcConfig,
 
@@ -41,30 +44,13 @@ impl CalcConfig {
     pub fn occupancy_or_default(&self) -> &str {
         self.occupancy_category.as_deref().unwrap_or("II")
     }
-
-    pub fn modal_case_or_default(&self) -> &str {
-        self.modal_case.as_deref().unwrap_or("Modal-Rizt")
-    }
-
-    pub fn drift_groups_or_default(&self) -> Vec<String> {
-        if self.drift_tracking_groups.is_empty() {
-            vec!["Tracking_Points".to_string()]
-        } else {
-            self.drift_tracking_groups.clone()
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ModalCalcConfig {
     pub min_mass_participation: Option<f64>,
-}
-
-impl ModalCalcConfig {
-    pub fn threshold(&self) -> f64 {
-        self.min_mass_participation.unwrap_or(0.90)
-    }
+    pub display_mode_limit: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -77,37 +63,6 @@ pub struct BaseShearCalcConfig {
     pub rsa_scale_min: Option<f64>,
 }
 
-impl BaseShearCalcConfig {
-    pub fn elf_x(&self) -> &str {
-        self.elf_case_x.as_deref().unwrap_or("ELF_X")
-    }
-
-    pub fn elf_y(&self) -> &str {
-        self.elf_case_y.as_deref().unwrap_or("ELF_Y")
-    }
-
-    pub fn rsa_x(&self) -> &str {
-        self.rsa_case_x.as_deref().unwrap_or("RSA_X")
-    }
-
-    pub fn rsa_y(&self) -> &str {
-        self.rsa_case_y.as_deref().unwrap_or("RSA_Y")
-    }
-
-    pub fn scale_min(&self) -> f64 {
-        self.rsa_scale_min.unwrap_or(1.0)
-    }
-
-    pub fn all_cases(&self) -> Vec<String> {
-        vec![
-            self.elf_x().to_string(),
-            self.elf_y().to_string(),
-            self.rsa_x().to_string(),
-            self.rsa_y().to_string(),
-        ]
-    }
-}
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct DriftCalcConfig {
@@ -115,6 +70,14 @@ pub struct DriftCalcConfig {
     pub load_cases: Vec<String>,
 
     pub drift_limit: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct DisplacementCalcConfig {
+    #[serde(default)]
+    pub load_cases: Vec<String>,
+
     pub disp_limit_h: Option<u32>,
 }
 
