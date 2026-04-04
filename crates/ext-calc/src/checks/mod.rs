@@ -3,6 +3,10 @@ pub mod displacement_wind;
 pub mod drift_seismic;
 pub mod drift_wind;
 pub mod modal;
+pub mod pier_axial;
+pub mod pier_shear;
+pub mod pier_shear_seismic;
+pub mod pier_shear_wind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CheckSelection {

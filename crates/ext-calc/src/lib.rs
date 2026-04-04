@@ -22,16 +22,25 @@ impl CalcRunner {
         version_id: &str,
         branch: &str,
     ) -> Result<CalcOutput> {
-        let story_defs = tables::story_def::load_story_definitions(results_dir)?;
-        let joint_drifts = tables::joint_drift::load_joint_drifts(results_dir)?;
+        let story_defs    = tables::story_def::load_story_definitions(results_dir)?;
+        let joint_drifts  = tables::joint_drift::load_joint_drifts(results_dir)?;
         let material_props = tables::material_props::load_material_properties(results_dir)?;
         let _material_by_story = tables::material_by_story::load_material_by_story(results_dir)?;
-        let modal = tables::modal::load_modal_participating_mass_ratios(results_dir)?;
+        let modal         = tables::modal::load_modal_participating_mass_ratios(results_dir)?;
         let base_reactions = tables::base_reactions::load_base_reactions(results_dir)?;
-        let _story_forces = tables::story_forces::load_story_forces(results_dir)?;
-        let _pier_forces = tables::pier_forces::load_pier_forces(results_dir)?;
-        let _pier_sections = tables::pier_section::load_pier_sections(results_dir)?;
-        let group_map = tables::group_assignments::load_group_assignments(results_dir)?;
+        let _story_forces  = tables::story_forces::load_story_forces(results_dir)?;
+        let pier_forces    = tables::pier_forces::load_pier_forces(results_dir)?;
+        let pier_sections  = tables::pier_section::load_pier_sections(results_dir)?;
+        let group_map      = tables::group_assignments::load_group_assignments(results_dir)?;
+
+        // Build material lookup once; shared across all three pier checks.
+        // Uses the seismic fallback fc as the unified default (8.0 ksi);
+        // both wind and seismic configs typically share the same fc_default.
+        let pier_fc_map = checks::pier_shear::build_pier_fc_map(
+            &pier_sections,
+            &material_props,
+            params.pier_shear_seismic.fc_default_ksi,
+        );
 
         let modal_output = if params.check_selection.modal {
             Some(checks::modal::run(&modal, params)?)
@@ -73,6 +82,36 @@ impl CalcRunner {
         } else {
             None
         };
+        let pier_shear_wind_output = if params.check_selection.pier_shear_wind {
+            Some(checks::pier_shear_wind::run(
+                &pier_forces,
+                &pier_sections,
+                &pier_fc_map,
+                params,
+            )?)
+        } else {
+            None
+        };
+        let pier_shear_seismic_output = if params.check_selection.pier_shear_seismic {
+            Some(checks::pier_shear_seismic::run(
+                &pier_forces,
+                &pier_sections,
+                &pier_fc_map,
+                params,
+            )?)
+        } else {
+            None
+        };
+        let pier_axial_output = if params.check_selection.pier_axial {
+            Some(checks::pier_axial::run(
+                &pier_forces,
+                &pier_sections,
+                &pier_fc_map,
+                params,
+            )?)
+        } else {
+            None
+        };
 
         let summary = build_summary(
             modal_output.as_ref(),
@@ -80,6 +119,9 @@ impl CalcRunner {
             drift_wind_output.as_ref(),
             drift_seismic_output.as_ref(),
             displacement_wind_output.as_ref(),
+            pier_shear_wind_output.as_ref(),
+            pier_shear_seismic_output.as_ref(),
+            pier_axial_output.as_ref(),
             material_props.len(),
             group_map.len(),
         );
@@ -104,9 +146,9 @@ impl CalcRunner {
             drift_seismic: drift_seismic_output,
             displacement_wind: displacement_wind_output,
             torsional: None,
-            pier_shear_wind: None,
-            pier_shear_seismic: None,
-            pier_axial: None,
+            pier_shear_wind: pier_shear_wind_output,
+            pier_shear_seismic: pier_shear_seismic_output,
+            pier_axial: pier_axial_output,
         })
     }
 }
@@ -117,6 +159,9 @@ fn build_summary(
     drift_wind: Option<&output::DriftOutput>,
     drift_seismic: Option<&output::DriftOutput>,
     displacement_wind: Option<&output::DisplacementOutput>,
+    pier_shear_wind: Option<&output::PierShearOutput>,
+    pier_shear_seismic: Option<&output::PierShearOutput>,
+    pier_axial: Option<&output::PierAxialOutput>,
     material_count: usize,
     group_count: usize,
 ) -> CalcSummary {
@@ -247,26 +292,78 @@ fn build_summary(
         status: "loaded".to_string(),
         message: format!("{group_count} group mappings available"),
     });
+    // Torsional irregularity check is deferred until the formula is confirmed.
     lines.push(SummaryLine {
         key: "torsional".to_string(),
         status: "pending".to_string(),
         message: "torsional irregularity check not implemented yet".to_string(),
     });
-    lines.push(SummaryLine {
-        key: "pierShearWind".to_string(),
-        status: "pending".to_string(),
-        message: "pier shear wind check not implemented yet".to_string(),
-    });
-    lines.push(SummaryLine {
-        key: "pierShearSeismic".to_string(),
-        status: "pending".to_string(),
-        message: "pier shear seismic check not implemented yet".to_string(),
-    });
-    lines.push(SummaryLine {
-        key: "pierAxial".to_string(),
-        status: "pending".to_string(),
-        message: "pier axial check not implemented yet".to_string(),
-    });
+    if let Some(shear_wind) = pier_shear_wind {
+        check_count += 1;
+        if shear_wind.pass { pass_count += 1; } else { fail_count += 1; }
+        lines.push(SummaryLine {
+            key: "pierShearWind".to_string(),
+            status: if shear_wind.pass { "pass" } else { "fail" }.to_string(),
+            message: format!(
+                "{} / {} / {} DCR={:.3} (ϕ={:.2})",
+                shear_wind.governing.pier_label,
+                shear_wind.governing.story,
+                shear_wind.governing.combo,
+                shear_wind.governing.dcr,
+                shear_wind.phi_v,
+            ),
+        });
+    } else {
+        lines.push(SummaryLine {
+            key: "pierShearWind".to_string(),
+            status: "pending".to_string(),
+            message: "pier shear wind check not enabled".to_string(),
+        });
+    }
+    if let Some(shear_seismic) = pier_shear_seismic {
+        check_count += 1;
+        if shear_seismic.pass { pass_count += 1; } else { fail_count += 1; }
+        lines.push(SummaryLine {
+            key: "pierShearSeismic".to_string(),
+            status: if shear_seismic.pass { "pass" } else { "fail" }.to_string(),
+            message: format!(
+                "{} / {} / {} DCR={:.3} (ϕ={:.2})",
+                shear_seismic.governing.pier_label,
+                shear_seismic.governing.story,
+                shear_seismic.governing.combo,
+                shear_seismic.governing.dcr,
+                shear_seismic.phi_v,
+            ),
+        });
+    } else {
+        lines.push(SummaryLine {
+            key: "pierShearSeismic".to_string(),
+            status: "pending".to_string(),
+            message: "pier shear seismic check not enabled".to_string(),
+        });
+    }
+    if let Some(axial) = pier_axial {
+        check_count += 1;
+        if axial.pass { pass_count += 1; } else { fail_count += 1; }
+        lines.push(SummaryLine {
+            key: "pierAxial".to_string(),
+            status: if axial.pass { "pass" } else { "fail" }.to_string(),
+            message: format!(
+                "{} / {} / {} DCR={:.3} fa={:.3} ksi",
+                axial.governing.pier_label,
+                axial.governing.story,
+                axial.governing.combo,
+                axial.governing.dcr,
+                axial.governing.fa.value,
+            ),
+        });
+    } else {
+        lines.push(SummaryLine {
+            key: "pierAxial".to_string(),
+            status: "pending".to_string(),
+            message: "pier axial check not enabled".to_string(),
+        });
+    }
 
     CalcSummary {
         overall_status: if fail_count > 0 {
@@ -304,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn calc_runner_populates_checks_1_to_4() {
+    fn calc_runner_populates_all_checks() {
         let results_dir = fixture_dir();
         let params = configured_params_from_fixture(&results_dir);
         let output = CalcRunner::run_all(
@@ -316,24 +413,38 @@ mod tests {
         )
         .unwrap();
 
+        // Checks 1-5: modal, base shear, drift wind, drift seismic, displacement wind
         assert!(output.modal.is_some());
         assert!(output.base_shear.is_some());
         assert!(output.drift_wind.is_some());
         assert!(output.drift_seismic.is_some());
         assert!(output.displacement_wind.is_some());
+        // Check 6-8: pier shear wind, seismic, axial
+        assert!(output.pier_shear_wind.is_some());
+        assert!(output.pier_shear_seismic.is_some());
+        assert!(output.pier_axial.is_some());
+        // Torsional is still pending (deferred)
         assert!(output.torsional.is_none());
-        assert_eq!(output.summary.check_count, 5);
+        // 8 active checks
+        assert_eq!(output.summary.check_count, 8, "expected 8 checks: modal, base shear, drift wind, drift seismic, displacement wind, pier shear wind, pier shear seismic, pier axial");
         assert_ne!(output.summary.overall_status, "pending");
-        assert_eq!(output.summary.overall_status, "pass");
+        // Modal message fix: should not contain 'Some('
+        let modal_line = output.summary.lines.iter()
+            .find(|l| l.key == "modal")
+            .unwrap();
         assert!(
-            output
-                .summary
-                .lines
-                .iter()
-                .find(|line| line.key == "modal")
-                .unwrap()
-                .message
-                .contains("UX mode 12, UY mode 23")
+            modal_line.message.contains("UX mode 12, UY mode 23"),
+            "modal message was: {}", modal_line.message
         );
+        assert!(
+            !modal_line.message.contains("Some("),
+            "modal message should not contain 'Some(': {}", modal_line.message
+        );
+        // Pier shear wind summary should reference ϕ
+        let shear_wind_line = output.summary.lines.iter()
+            .find(|l| l.key == "pierShearWind")
+            .unwrap();
+        assert_eq!(shear_wind_line.status, "pass");
+        assert!(shear_wind_line.message.contains("ϕ=0.75"));
     }
 }

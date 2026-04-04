@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repo is a mixed Rust and TypeScript workspace. Core Rust crates live in `crates/`: `ext-core` holds domain logic, `ext-api` exposes workflows, `ext` is the CLI, `ext-tauri` is the desktop shell, and supporting crates such as `ext-db`, `ext-calc`, `ext-report`, and `ext-agent*` provide storage, calculation, reporting, and agent features. The desktop frontend lives in `apps/desktop/src`, and shared TypeScript contracts live in `packages/shared/src`.
+This repo is a mixed Rust and TypeScript workspace. Core Rust crates live in `crates/`: `ext-core` holds domain logic, `ext-api` exposes workflows, `ext` is the CLI, `ext-tauri` is the desktop shell, and supporting crates such as `ext-db`, `ext-calc`, `ext-report`, `ext-error`, `ext-render`, and `ext-agent*` provide storage, calculation, reporting, error handling, rendering, and agent features. The desktop frontend lives in `apps/desktop/src`, and shared TypeScript contracts live in `packages/shared/src`.
 
 Tests are mostly crate-local: Rust unit tests sit beside source files, and integration tests live under `crates/*/tests`. Large test fixtures are stored in paths like `crates/ext-calc/tests/fixtures`.
 

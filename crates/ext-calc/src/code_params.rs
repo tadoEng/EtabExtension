@@ -25,6 +25,35 @@ pub struct DisplacementParams {
     pub disp_limit_h: u32,
 }
 
+/// Parameters for pier shear wall checks (ACI 318-14 §11.5.4.3 / §18.10.4).
+/// Wind and seismic checks share the same formula — only ϕ differs:
+///   Wind:    ϕ = 0.75  (ACI 318-14 §9.3.2.3)
+///   Seismic: ϕ = 0.60  (ACI 318-14 §21.2.4.1)
+#[derive(Debug, Clone)]
+pub struct PierShearParams {
+    pub load_combos: Vec<String>,
+    /// Shear strength reduction factor ϕ.
+    pub phi_v: f64,
+    /// αc coefficient, psi-based form: 2.0 for hw/lw ≥ 2.0.
+    /// ACI 318-14 §11.5.4.3.  Must be used with fc_psi, NOT fc_ksi.
+    pub alpha_c: f64,
+    /// Horizontal reinforcement yield strength (ksi). Grade 60 = 60.0.
+    pub fy_ksi: f64,
+    /// Horizontal reinforcement ratio ρt. ACI minimum: 0.0025.
+    pub rho_t: f64,
+    /// Fallback f'c (ksi) when material join yields no match for a pier/story.
+    pub fc_default_ksi: f64,
+}
+
+/// Parameters for pier axial stress check (ACI 318-14 §22.4).
+#[derive(Debug, Clone)]
+pub struct PierAxialParams {
+    pub load_combos: Vec<String>,
+    /// Axial strength reduction factor ϕ.
+    /// ACI 318-14 §9.3.2.2 tied: 0.65.
+    pub phi_axial: f64,
+}
+
 #[derive(Debug, Clone)]
 pub struct CodeParams {
     pub code: String,
@@ -37,6 +66,9 @@ pub struct CodeParams {
     pub drift_wind: DriftParams,
     pub drift_seismic: DriftParams,
     pub displacement_wind: DisplacementParams,
+    pub pier_shear_wind: PierShearParams,
+    pub pier_shear_seismic: PierShearParams,
+    pub pier_axial: PierAxialParams,
     pub check_selection: CheckSelection,
     pub unit_context: UnitContext,
 }
@@ -102,6 +134,19 @@ impl CodeParams {
             "[calc.displacement-wind].disp-limit-h",
         )?;
 
+        let pier_shear_wind_combos = required_string_list(
+            &config.calc.pier_shear_wind.load_combos,
+            "[calc.pier-shear-wind].load-combos",
+        )?;
+        let pier_shear_seismic_combos = required_string_list(
+            &config.calc.pier_shear_seismic.load_combos,
+            "[calc.pier-shear-seismic].load-combos",
+        )?;
+        let pier_axial_combos = required_string_list(
+            &config.calc.pier_axial.load_combos,
+            "[calc.pier-axial].load-combos",
+        )?;
+
         Ok(Self {
             code: config.calc.code_or_default().to_string(),
             occupancy_category: config.calc.occupancy_or_default().to_string(),
@@ -127,6 +172,26 @@ impl CodeParams {
             displacement_wind: DisplacementParams {
                 load_cases: displacement_wind_load_cases,
                 disp_limit_h: displacement_wind_disp_limit_h,
+            },
+            pier_shear_wind: PierShearParams {
+                load_combos: pier_shear_wind_combos,
+                phi_v: config.calc.pier_shear_wind.phi_v(0.75),
+                alpha_c: config.calc.pier_shear_wind.alpha_c(),
+                fy_ksi: config.calc.pier_shear_wind.fy_ksi(),
+                rho_t: config.calc.pier_shear_wind.rho_t(),
+                fc_default_ksi: config.calc.pier_shear_wind.fc_default_ksi(),
+            },
+            pier_shear_seismic: PierShearParams {
+                load_combos: pier_shear_seismic_combos,
+                phi_v: config.calc.pier_shear_seismic.phi_v(0.60),
+                alpha_c: config.calc.pier_shear_seismic.alpha_c(),
+                fy_ksi: config.calc.pier_shear_seismic.fy_ksi(),
+                rho_t: config.calc.pier_shear_seismic.rho_t(),
+                fc_default_ksi: config.calc.pier_shear_seismic.fc_default_ksi(),
+            },
+            pier_axial: PierAxialParams {
+                load_combos: pier_axial_combos,
+                phi_axial: config.calc.pier_axial.phi_axial(),
             },
             check_selection: CheckSelection::default(),
             unit_context: UnitContext::from_config(config)?,
@@ -209,6 +274,9 @@ mod tests {
         config.calc.drift_seismic.drift_limit = Some(0.020);
         config.calc.displacement_wind.load_cases = vec!["Wind_10yr_Diagonal".into()];
         config.calc.displacement_wind.disp_limit_h = Some(500);
+        config.calc.pier_shear_wind.load_combos = vec!["EVN_LRFD_EQ".into()];
+        config.calc.pier_shear_seismic.load_combos = vec!["EVN_LRFD_EQ".into()];
+        config.calc.pier_axial.load_combos = vec!["EVN_LRFD_EQ".into()];
         config
     }
 
@@ -294,5 +362,53 @@ mod tests {
             err.to_string()
                 .contains("missing required config: [calc.modal].display-mode-limit")
         );
+    }
+
+    #[test]
+    fn code_params_require_pier_shear_wind_combos() {
+        let mut config = base_valid_config();
+        config.calc.pier_shear_wind.load_combos.clear();
+
+        let err = CodeParams::from_config(&config).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("missing required config: [calc.pier-shear-wind].load-combos")
+        );
+    }
+
+    #[test]
+    fn code_params_require_pier_shear_seismic_combos() {
+        let mut config = base_valid_config();
+        config.calc.pier_shear_seismic.load_combos.clear();
+
+        let err = CodeParams::from_config(&config).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("missing required config: [calc.pier-shear-seismic].load-combos")
+        );
+    }
+
+    #[test]
+    fn code_params_require_pier_axial_combos() {
+        let mut config = base_valid_config();
+        config.calc.pier_axial.load_combos.clear();
+
+        let err = CodeParams::from_config(&config).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("missing required config: [calc.pier-axial].load-combos")
+        );
+    }
+
+    #[test]
+    fn code_params_pier_shear_defaults_phi_v_correctly() {
+        let config = base_valid_config();
+        let params = CodeParams::from_config(&config).unwrap();
+        // Wind: default ϕ = 0.75 (ACI 318-14 §9.3.2.3)
+        assert!((params.pier_shear_wind.phi_v - 0.75).abs() < 1e-9);
+        // Seismic: default ϕ = 0.60 (ACI 318-14 §21.2.4.1)
+        assert!((params.pier_shear_seismic.phi_v - 0.60).abs() < 1e-9);
+        // Axial: default ϕ = 0.65 (ACI 318-14 §9.3.2.2 tied)
+        assert!((params.pier_axial.phi_axial - 0.65).abs() < 1e-9);
     }
 }
