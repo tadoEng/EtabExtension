@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FileCode, GitBranch, Clock, FileText, Settings } from 'lucide-react';
+import { FileCode, GitBranch, Clock, FileText, Settings, FlaskConical } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { mockProjectState } from '@etab-extension/shared/mocks';
 // Layout components
@@ -11,12 +11,13 @@ import { BranchesPanel } from '@/components/branches/BranchesPanel';
 import { HistoryPanel } from '@/components/history/HistoryPanel';
 import { ReportsPanel } from '@/components/reports/ReportsPanel';
 import { SettingsPanel } from '@/components/settings/SettingsPanel';
+import { SandboxPanel } from '@/components/sandbox/SandboxPanel';
 
-type MainView = 'workspace' | 'branches' | 'history' | 'reports' | 'settings';
+type MainView = 'workspace' | 'branches' | 'history' | 'reports' | 'settings' | 'sandbox';
 
 function App() {
     const [sidebarOpen, setSidebarOpen] = useState(true);
-    const [activeView, setActiveView] = useState<MainView>('workspace');
+    const [activeView, setActiveView] = useState<MainView>('sandbox');
     const { currentProject, openProject } = useProjectStore();
 
     useEffect(() => {
@@ -38,6 +39,8 @@ function App() {
                 return <ReportsPanel />;
             case 'settings':
                 return <SettingsPanel />;
+            case 'sandbox':
+                return <SandboxPanel />;
             default:
                 return <WorkspacePanel />;
         }
@@ -106,6 +109,19 @@ function App() {
                         </button>
 
                         <div className="flex-1" />
+
+                        {/* Sandbox — Vite 8 test view */}
+                        <button
+                            onClick={() => setActiveView('sandbox')}
+                            className={`p-3 rounded-lg transition-colors ${
+                                activeView === 'sandbox'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'hover:bg-accent text-muted-foreground'
+                            }`}
+                            title="Sandbox (Vite 8 test)"
+                        >
+                            <FlaskConical className="w-5 h-5" />
+                        </button>
 
                         <button
                             onClick={() => setActiveView('settings')}
