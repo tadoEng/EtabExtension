@@ -1,7 +1,9 @@
 use ext_calc::output::DriftOutput;
 
 use crate::chart_build::{DRIFT_SEISMIC_IMAGE, DRIFT_WIND_IMAGE, aggregate_story_max};
-use crate::chart_types::{CartesianSeries, ChartKind, ChartSpec, NamedChartSpec, RenderConfig, SeriesType};
+use crate::chart_types::{
+    CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
+};
 
 pub fn build_wind(drift: &DriftOutput, config: &RenderConfig) -> NamedChartSpec {
     build_chart(
@@ -55,16 +57,23 @@ fn build_chart(
             height: config.height,
             kind: ChartKind::Cartesian {
                 categories,
+                swap_axes: true,
                 series: vec![
                     CartesianSeries {
                         name: "Demand".to_string(),
                         data: values,
                         kind: SeriesType::Line,
+                        color: Some("#1f77b4".to_string()),
+                        line_style: Some(LinePattern::Solid),
+                        smooth: true,
                     },
                     CartesianSeries {
                         name: "Limit".to_string(),
                         data: limits,
                         kind: SeriesType::Line,
+                        color: Some("#cc0000".to_string()),
+                        line_style: Some(LinePattern::Dashed),
+                        smooth: false,
                     },
                 ],
             },

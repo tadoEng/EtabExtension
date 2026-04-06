@@ -7,7 +7,12 @@ pub fn render_table(table: &KeyValueTable) -> String {
     }
 
     let column_spec = vec!["1fr"; table.headers.len()].join(", ");
-    let mut out = format!("#table(columns: ({column_spec}),\n");
+    let mut out = String::new();
+    if let Some(title) = table.title.as_ref() {
+        out.push_str(&format!("#text(size: 9pt, weight: \"bold\")[{}]\n", escape_text(title)));
+        out.push_str("#v(6pt)\n");
+    }
+    out.push_str(&format!("#table(columns: ({column_spec}), stroke: 0.5pt + luma(180), inset: 5pt,\n"));
 
     for header in &table.headers {
         out.push_str(&format!("[*{}*],\n", escape_text(header)));
@@ -20,5 +25,12 @@ pub fn render_table(table: &KeyValueTable) -> String {
     }
 
     out.push_str(")\n");
+    out
+}
+
+pub fn render_table_page(title: &str, table: &KeyValueTable) -> String {
+    let mut out = format!("#text(size: 16pt, weight: \"bold\")[{}]\n", escape_text(title));
+    out.push_str("#v(10pt)\n");
+    out.push_str(&render_table(table));
     out
 }

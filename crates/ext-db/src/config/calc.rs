@@ -61,6 +61,18 @@ pub struct BaseShearCalcConfig {
     pub rsa_case_x: Option<String>,
     pub rsa_case_y: Option<String>,
     pub rsa_scale_min: Option<f64>,
+
+    #[serde(default)]
+    pub pie_groups: Vec<BaseReactionPieGroupConfig>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct BaseReactionPieGroupConfig {
+    pub label: String,
+
+    #[serde(default)]
+    pub load_cases: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

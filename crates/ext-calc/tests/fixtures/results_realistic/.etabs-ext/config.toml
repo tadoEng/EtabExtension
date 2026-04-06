@@ -15,6 +15,22 @@ rsa-case-x = "RSA_X"
 rsa-case-y = "RSA_Y"
 rsa-scale-min = 1.0
 
+[[calc.base-shear.pie-groups]]
+label = "Dead"
+load-cases = ["Dead"]
+
+[[calc.base-shear.pie-groups]]
+label = "SDL"
+load-cases = ["SDL"]
+
+[[calc.base-shear.pie-groups]]
+label = "Live_red"
+load-cases = ["Live_red"]
+
+[[calc.base-shear.pie-groups]]
+label = "Live_unred"
+load-cases = ["Live_unred"]
+
 [calc.drift-wind]
 load-cases = ["Wind_10yr_Diagonal",]
 drift-limit = 0.0025
@@ -28,7 +44,7 @@ drift-limit = 0.020
 
 [calc.displacement-wind]
 load-cases = ["Wind_10yr_Diagonal"]
-disp-limit-h = 500
+disp-limit-h = 400
 
 [calc.pier-shear-wind]
 # Wind LRFD strength combos — ϕ = 0.75 (ACI 318-14 §9.3.2.3)

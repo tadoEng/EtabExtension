@@ -126,12 +126,23 @@ impl World for TypstWorld {
 
 pub fn render_pdf(document: &ReportDocument, svg_map: HashMap<String, String>) -> Result<Vec<u8>> {
     for section in &document.sections {
-        if let ReportSection::ChartBlock { charts, .. } = section {
-            for chart in charts {
+        match section {
+            ReportSection::SingleChartPage { chart, .. }
+            | ReportSection::ChartAndTablePage { chart, .. } => {
                 if !svg_map.contains_key(&chart.logical_name) {
                     bail!("Missing SVG asset for '{}'", chart.logical_name);
                 }
             }
+            ReportSection::TwoChartsPage { charts, .. } => {
+                for chart in charts {
+                    if !svg_map.contains_key(&chart.logical_name) {
+                        bail!("Missing SVG asset for '{}'", chart.logical_name);
+                    }
+                }
+            }
+            ReportSection::SummaryPage { .. }
+            | ReportSection::TableOnlyPage { .. }
+            | ReportSection::CalculationPage { .. } => {}
         }
     }
 
@@ -169,28 +180,12 @@ pub fn write_pdf(path: &Path, pdf_bytes: &[u8]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::render_pdf;
-    use crate::build_report_document;
-    use crate::report_types::{ChartRef, ReportProjectMeta};
-    use ext_calc::output::CalcOutput;
+    use crate::report_types::{ChartRef, ReportDocument, ReportProjectMeta, ReportSection};
     use std::collections::HashMap;
-    use std::path::PathBuf;
 
-    fn fixture_calc_output() -> CalcOutput {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../ext-calc/tests/fixtures/results_realistic/calc_output.json");
-        let text = std::fs::read_to_string(path).unwrap();
-        serde_json::from_str(&text).unwrap()
-    }
-
-    fn sample_document() -> crate::report_types::ReportDocument {
-        let calc = fixture_calc_output();
-        build_report_document(
-            &calc,
-            &[ChartRef {
-                logical_name: "images/sample.svg".to_string(),
-                caption: "Rendered proof chart".to_string(),
-            }],
-            ReportProjectMeta {
+    fn sample_document() -> ReportDocument {
+        ReportDocument {
+            project: ReportProjectMeta {
                 project_name: "Proof Tower".to_string(),
                 project_number: "P-001".to_string(),
                 reference: "CLI-PROOF".to_string(),
@@ -200,8 +195,22 @@ mod tests {
                 subject: "CLI proof report".to_string(),
                 scale: "NTS".to_string(),
                 revision: "0".to_string(),
+                sheet_prefix: "SK".to_string(),
             },
-        )
+            branch: "main".to_string(),
+            version_id: "v1".to_string(),
+            overall_status: "pass".to_string(),
+            check_count: 1,
+            pass_count: 1,
+            fail_count: 0,
+            sections: vec![ReportSection::SingleChartPage {
+                title: "Rendered proof chart".to_string(),
+                chart: ChartRef {
+                    logical_name: "images/sample.svg".to_string(),
+                    caption: "Rendered proof chart".to_string(),
+                },
+            }],
+        }
     }
 
     #[test]

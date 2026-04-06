@@ -4,50 +4,42 @@ use crate::report_types::{ReportDocument, ReportSection};
 pub fn build_typst_document(document: &ReportDocument) -> String {
     let mut doc = String::new();
     doc.push_str("#set text(font: \"Arial\", size: 9pt)\n");
-    doc.push_str("#set page(width: 17in, height: 11in, margin: (top: 0.5in, left: 0.5in, right: 0.5in, bottom: 0.7in))\n");
+    doc.push_str("#set page(width: 17in, height: 11in, margin: (top: 0.5in, left: 1.0in, right: 0.5in, bottom: 0.5in))\n");
     doc.push_str("#set par(justify: false)\n\n");
-
-    doc.push_str(&format!(
-        "#align(center + horizon)[\n  #text(size: 26pt, weight: \"bold\")[{}]\n  #v(10pt)\n  #text(size: 16pt)[Structural Check Report]\n  #v(6pt)\n  #text(fill: rgb(\"#555555\"))[{}]\n]\n\n",
-        escape_text(&document.project.project_name),
-        escape_text(&document.project.subject),
-    ));
-
-    doc.push_str("#grid(columns: (1fr, 1fr), gutter: 18pt,\n");
-    doc.push_str(&format!(
-        "  [*Reference:* {}\\\n*Project No.:* {}\\\n*Revision:* {}],\n",
-        escape_text(&document.project.reference),
-        escape_text(&document.project.project_number),
-        escape_text(&document.project.revision),
-    ));
-    doc.push_str(&format!(
-        "  [*Engineer:* {}\\\n*Checker:* {}\\\n*Date:* {}],\n)\n\n",
-        escape_text(&document.project.engineer),
-        escape_text(&document.project.checker),
-        escape_text(&document.project.date),
-    ));
+    doc.push_str(&title_block_fn());
+    doc.push_str(&content_rect_fn());
 
     for (index, section) in document.sections.iter().enumerate() {
         if index > 0 {
             doc.push_str("\n#pagebreak()\n");
         }
 
-        match section {
-            ReportSection::SummaryText { title, lines } => {
-                doc.push_str(&sections::summary::render_summary_section(title, lines));
+        let body = match section {
+            ReportSection::SummaryPage { title, lines } => {
+                sections::summary::render_summary_page(document, title, lines)
             }
-            ReportSection::ChartBlock {
+            ReportSection::SingleChartPage { title, chart } => {
+                sections::chart::render_single_chart_page(title, chart)
+            }
+            ReportSection::TwoChartsPage { title, charts } => {
+                sections::chart::render_two_charts_page(title, charts)
+            }
+            ReportSection::ChartAndTablePage {
                 title,
-                layout,
-                charts,
+                chart,
                 table,
+                table_emphasis,
             } => {
-                doc.push_str(&sections::chart::render_chart_section(title, layout, charts, table.as_ref()));
+                sections::chart::render_chart_and_table_page(title, chart, table, *table_emphasis)
             }
-            ReportSection::CalculationNotes { title, blocks } => {
-                doc.push_str(&sections::calculations::render_calculation_section(title, blocks));
+            ReportSection::TableOnlyPage { title, table } => {
+                sections::table::render_table_page(title, table)
             }
-        }
+            ReportSection::CalculationPage { title, blocks } => {
+                sections::calculations::render_calculation_page(title, blocks)
+            }
+        };
+        doc.push_str(&wrap_page(document, index + 1, &body));
     }
 
     doc
@@ -58,6 +50,108 @@ pub(crate) fn escape_text(text: &str) -> String {
         .replace('[', "\\[")
         .replace(']', "\\]")
         .replace('#', "\\#")
+}
+
+fn title_block_fn() -> String {
+    r##"
+#let title_block(project, proj_num, reference, engineer, checker, date, subject, scale, sheet, revision) = {
+  place(bottom + left)[
+    #set text(font: "Arial")
+    #table(
+      columns: (1.35in, 3.2in, 4.0in, 1.6in, 2.0in, 3.35in),
+      stroke: 1pt + black,
+      inset: 5pt,
+
+      [
+        #align(center + horizon)[
+          #stack(spacing: 0pt,
+            text(size: 11pt, weight: "bold")[Thornton],
+            text(size: 11pt, weight: "bold")[Tomasetti],
+          )
+        ]
+      ],
+      [
+        #stack(spacing: 2pt,
+          text(size: 5.5pt, fill: luma(110))[PROJECT],
+          text(size: 8pt, weight: "bold")[#project],
+          text(size: 5.5pt, fill: luma(110))[PROJECT NO.],
+          text(size: 7.5pt)[#proj_num],
+        )
+      ],
+      [
+        #stack(spacing: 2pt,
+          text(size: 5.5pt, fill: luma(110))[DRAWING TITLE],
+          text(size: 8.5pt, weight: "bold")[#subject],
+        )
+      ],
+      [
+        #stack(spacing: 2pt,
+          text(size: 5.5pt, fill: luma(110))[REFERENCE],
+          text(size: 7.5pt)[#reference],
+          text(size: 5.5pt, fill: luma(110))[REVISION],
+          text(size: 8pt, weight: "bold")[#revision],
+        )
+      ],
+      [
+        #stack(spacing: 2pt,
+          text(size: 5.5pt, fill: luma(110))[DRAWN BY],
+          text(size: 8pt, weight: "bold")[#engineer],
+          text(size: 5.5pt, fill: luma(110))[CHECKED BY],
+          text(size: 8pt, weight: "bold")[#checker],
+        )
+      ],
+      [
+        #stack(spacing: 2pt,
+          text(size: 5.5pt, fill: luma(110))[DATE],
+          text(size: 7.5pt)[#date],
+          text(size: 5.5pt, fill: luma(110))[SCALE / SHEET],
+          text(size: 8pt)[#scale],
+          text(size: 14pt, weight: "bold")[#sheet],
+        )
+      ],
+    )
+  ]
+}
+
+"##
+    .to_string()
+}
+
+fn wrap_page(document: &ReportDocument, page_number: usize, body: &str) -> String {
+    let sheet_prefix = if document.project.sheet_prefix.is_empty() {
+        "SK".to_string()
+    } else {
+        document.project.sheet_prefix.clone()
+    };
+    let sheet = format!("{sheet_prefix}-{page_number:02}");
+    format!(
+        "#title_block([{}], [{}], [{}], [{}], [{}], [{}], [{}], [{}], [{}], [{}])\n#content_rect([\n{}\n])\n",
+        escape_text(&document.project.project_name),
+        escape_text(&document.project.project_number),
+        escape_text(&document.project.reference),
+        escape_text(&document.project.engineer),
+        escape_text(&document.project.checker),
+        escape_text(&document.project.date),
+        escape_text(&document.project.subject),
+        escape_text(&document.project.scale),
+        escape_text(&sheet),
+        escape_text(&document.project.revision),
+        body,
+    )
+}
+
+fn content_rect_fn() -> String {
+    r##"
+#let content_rect(body) = rect(
+  width: 100%,
+  height: 8.85in,
+  stroke: 1.2pt + black,
+  inset: 18pt,
+  body,
+)
+
+"##
+    .to_string()
 }
 
 #[cfg(test)]
@@ -93,11 +187,15 @@ mod tests {
                 subject: "CLI proof report".to_string(),
                 scale: "NTS".to_string(),
                 revision: "0".to_string(),
+                sheet_prefix: "SK".to_string(),
             },
         );
 
         let source = super::build_typst_document(&document);
         assert!(source.contains("width: 17in"));
         assert!(source.contains("height: 11in"));
+        assert!(source.contains("left: 1.0in"));
+        assert!(source.contains("bottom: 0.5in"));
+        assert!(source.contains("#let title_block("));
     }
 }

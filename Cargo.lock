@@ -2543,6 +2543,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "ext-calc",
+ "ext-db",
+ "ext-render",
  "serde_json",
  "typst",
  "typst-pdf",

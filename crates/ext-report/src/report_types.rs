@@ -9,6 +9,7 @@ pub struct ReportProjectMeta {
     pub subject: String,
     pub scale: String,
     pub revision: String,
+    pub sheet_prefix: String,
 }
 
 #[derive(Debug, Clone)]
@@ -27,6 +28,7 @@ pub enum ChartLayout {
 
 #[derive(Debug, Clone, Default)]
 pub struct KeyValueTable {
+    pub title: Option<String>,
     pub headers: Vec<String>,
     pub rows: Vec<Vec<String>>,
 }
@@ -39,17 +41,29 @@ pub struct CalculationBlock {
 
 #[derive(Debug, Clone)]
 pub enum ReportSection {
-    SummaryText {
+    SummaryPage {
         title: String,
         lines: Vec<String>,
     },
-    ChartBlock {
+    SingleChartPage {
         title: String,
-        layout: ChartLayout,
-        charts: Vec<ChartRef>,
-        table: Option<KeyValueTable>,
+        chart: ChartRef,
     },
-    CalculationNotes {
+    TwoChartsPage {
+        title: String,
+        charts: Vec<ChartRef>,
+    },
+    ChartAndTablePage {
+        title: String,
+        chart: ChartRef,
+        table: KeyValueTable,
+        table_emphasis: bool,
+    },
+    TableOnlyPage {
+        title: String,
+        table: KeyValueTable,
+    },
+    CalculationPage {
         title: String,
         blocks: Vec<CalculationBlock>,
     },

@@ -2,6 +2,7 @@
 pub struct RenderConfig {
     pub width: u32,
     pub height: u32,
+    pub base_reaction_groups: Vec<BaseReactionGroup>,
 }
 
 impl Default for RenderConfig {
@@ -9,8 +10,15 @@ impl Default for RenderConfig {
         Self {
             width: 900,
             height: 620,
+            base_reaction_groups: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct BaseReactionGroup {
+    pub label: String,
+    pub load_cases: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -26,6 +34,7 @@ pub enum ChartKind {
     Cartesian {
         categories: Vec<String>,
         series: Vec<CartesianSeries>,
+        swap_axes: bool,
     },
     Pie {
         data: Vec<(f64, String)>,
@@ -37,12 +46,21 @@ pub struct CartesianSeries {
     pub name: String,
     pub data: Vec<f64>,
     pub kind: SeriesType,
+    pub color: Option<String>,
+    pub line_style: Option<LinePattern>,
+    pub smooth: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum SeriesType {
     Bar,
     Line,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum LinePattern {
+    Solid,
+    Dashed,
 }
 
 #[derive(Debug, Clone)]

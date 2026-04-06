@@ -8,12 +8,15 @@ mod pier_shear;
 use charming::{
     Chart,
     component::{Axis, Grid, Legend, Title},
-    element::{AxisType, Tooltip, Trigger},
+    datatype::{CompositeValue, DataPoint},
+    element::{AxisLabel, AxisType, Color, ItemStyle, LineStyle, LineStyleType, Tooltip, Trigger},
     series::{Bar, Line, Pie},
 };
 use ext_calc::output::CalcOutput;
 
-use crate::chart_types::{ChartKind, ChartSpec, NamedChartSpec, RenderConfig, SeriesType};
+use crate::chart_types::{
+    ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
+};
 
 pub const MODAL_IMAGE: &str = "images/modal.svg";
 pub const BASE_SHEAR_IMAGE: &str = "images/base_shear.svg";
@@ -64,7 +67,11 @@ pub fn build_report_charts(calc: &CalcOutput, config: &RenderConfig) -> Vec<Name
 
 pub fn build_chart(spec: &ChartSpec) -> Chart {
     match &spec.kind {
-        ChartKind::Cartesian { categories, series } => build_cartesian(spec, categories, series),
+        ChartKind::Cartesian {
+            categories,
+            series,
+            swap_axes,
+        } => build_cartesian(spec, categories, series, *swap_axes),
         ChartKind::Pie { data } => build_pie(spec, data),
     }
 }
@@ -73,6 +80,7 @@ fn build_cartesian(
     spec: &ChartSpec,
     categories: &[String],
     series: &[crate::chart_types::CartesianSeries],
+    swap_axes: bool,
 ) -> Chart {
     let mut chart = Chart::new()
         .title(Title::new().text(spec.title.as_str()).left("center"))
@@ -85,22 +93,64 @@ fn build_cartesian(
         )
         .tooltip(Tooltip::new().trigger(Trigger::Axis))
         .legend(Legend::new().top("6%"))
-        .x_axis(
+        .x_axis(if swap_axes {
+            Axis::new().type_(AxisType::Value)
+        } else {
             Axis::new()
                 .type_(AxisType::Category)
-                .data(categories.iter().map(String::as_str).collect::<Vec<_>>()),
-        )
-        .y_axis(Axis::new().type_(AxisType::Value));
+                .axis_label(AxisLabel::new().rotate(24))
+                .data(categories.iter().map(String::as_str).collect::<Vec<_>>())
+        })
+        .y_axis(if swap_axes {
+            Axis::new()
+                .type_(AxisType::Category)
+                .data(categories.iter().map(String::as_str).collect::<Vec<_>>())
+        } else {
+            Axis::new().type_(AxisType::Value)
+        });
 
     for entry in series {
         chart = match entry.kind {
-            SeriesType::Bar => chart.series(Bar::new().name(entry.name.as_str()).data(entry.data.clone())),
-            SeriesType::Line => chart.series(
-                Line::new()
+            SeriesType::Bar => {
+                let data = if swap_axes {
+                    build_swapped_axis_points(categories, &entry.data)
+                } else {
+                    entry.data.iter().copied().map(DataPoint::from).collect()
+                };
+                let mut series_builder = Bar::new().name(entry.name.as_str()).data(data);
+                if let Some(color) = entry.color.as_deref() {
+                    series_builder = series_builder.item_style(ItemStyle::new().color(Color::Value(color.to_string())));
+                }
+                chart.series(series_builder)
+            }
+            SeriesType::Line => {
+                let data = if swap_axes {
+                    build_swapped_axis_points(categories, &entry.data)
+                } else {
+                    entry.data.iter().copied().map(DataPoint::from).collect()
+                };
+                let mut series_builder = Line::new()
                     .name(entry.name.as_str())
-                    .smooth(true)
-                    .data(entry.data.clone()),
-            ),
+                    .smooth(entry.smooth)
+                    .show_symbol(!matches!(entry.line_style, Some(LinePattern::Dashed)))
+                    .data(data);
+                if let Some(color) = entry.color.as_deref() {
+                    series_builder =
+                        series_builder.line_style(LineStyle::new().color(Color::Value(color.to_string())));
+                }
+                if let Some(pattern) = entry.line_style {
+                    let mut style = LineStyle::new();
+                    if let Some(color) = entry.color.as_deref() {
+                        style = style.color(Color::Value(color.to_string()));
+                    }
+                    style = match pattern {
+                        LinePattern::Solid => style.type_(LineStyleType::Solid),
+                        LinePattern::Dashed => style.type_(LineStyleType::Dashed),
+                    };
+                    series_builder = series_builder.line_style(style);
+                }
+                chart.series(series_builder)
+            }
         };
     }
 
@@ -125,6 +175,19 @@ fn build_pie(spec: &ChartSpec, data: &[(f64, String)]) -> Chart {
         )
 }
 
+fn build_swapped_axis_points(categories: &[String], values: &[f64]) -> Vec<DataPoint> {
+    categories
+        .iter()
+        .zip(values.iter())
+        .map(|(category, value)| {
+            DataPoint::from(vec![
+                CompositeValue::from(*value),
+                CompositeValue::from(category.clone()),
+            ])
+        })
+        .collect()
+}
+
 pub(crate) fn aggregate_story_max(iter: impl Iterator<Item = (String, f64)>) -> Vec<(String, f64)> {
     let mut values: Vec<(String, f64)> = Vec::new();
 
@@ -136,13 +199,5 @@ pub(crate) fn aggregate_story_max(iter: impl Iterator<Item = (String, f64)>) -> 
         }
     }
 
-    values
-}
-
-pub(crate) fn top_pier_values(iter: impl Iterator<Item = (String, f64)>) -> Vec<(String, f64)> {
-    let mut values = iter.collect::<Vec<_>>();
-    values.sort_by(|left, right| right.1.total_cmp(&left.1));
-    values.truncate(8);
-    values.reverse();
     values
 }

@@ -9,8 +9,8 @@ pub use chart_build::{
     build_chart, build_report_charts,
 };
 pub use chart_types::{
-    CartesianSeries, ChartKind, ChartSpec, NamedChartSpec, RenderConfig, RenderedAsset,
-    RenderedCharts, SeriesType,
+    BaseReactionGroup, CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec,
+    RenderConfig, RenderedAsset, RenderedCharts, SeriesType,
 };
 pub use render_html::{render_all_html, render_html};
 #[cfg(feature = "ssr")]

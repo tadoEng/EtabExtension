@@ -1,7 +1,9 @@
 use ext_calc::output::DisplacementOutput;
 
 use crate::chart_build::{DISPLACEMENT_WIND_IMAGE, aggregate_story_max};
-use crate::chart_types::{CartesianSeries, ChartKind, ChartSpec, NamedChartSpec, RenderConfig, SeriesType};
+use crate::chart_types::{
+    CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
+};
 
 pub fn build(displacement: &DisplacementOutput, config: &RenderConfig) -> NamedChartSpec {
     let story_values = aggregate_story_max(displacement.rows.iter().map(|row| {
@@ -25,16 +27,23 @@ pub fn build(displacement: &DisplacementOutput, config: &RenderConfig) -> NamedC
             height: config.height,
             kind: ChartKind::Cartesian {
                 categories: story_values.iter().map(|(story, _)| story.clone()).collect(),
+                swap_axes: true,
                 series: vec![
                     CartesianSeries {
                         name: "Demand".to_string(),
                         data: story_values.iter().map(|(_, value)| *value).collect(),
                         kind: SeriesType::Line,
+                        color: Some("#1f77b4".to_string()),
+                        line_style: Some(LinePattern::Solid),
+                        smooth: true,
                     },
                     CartesianSeries {
                         name: "Limit".to_string(),
                         data: vec![displacement.disp_limit.value; story_values.len()],
                         kind: SeriesType::Line,
+                        color: Some("#cc0000".to_string()),
+                        line_style: Some(LinePattern::Dashed),
+                        smooth: false,
                     },
                 ],
             },

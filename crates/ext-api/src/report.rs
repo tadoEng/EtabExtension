@@ -4,7 +4,7 @@ use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use ext_calc::{CalcRunner, code_params::CodeParams, output::CalcOutput};
 use ext_core::vcs::current_branch;
-use ext_render::{RenderConfig, render_all_svg, write_svg_assets};
+use ext_render::{BaseReactionGroup, RenderConfig, render_all_svg, write_svg_assets};
 use ext_report::{ChartRef, ReportProjectMeta, build_report_document, render_pdf, write_pdf};
 use serde::{Deserialize, Serialize};
 
@@ -109,7 +109,7 @@ pub fn render_version(
 ) -> Result<RenderArtifacts> {
     let version = resolve_version_ref(ctx, version_ref)?;
     let calc_output = load_calc_output(ctx, version_ref)?;
-    let rendered = render_all_svg(&calc_output, &RenderConfig::default())?;
+    let rendered = render_all_svg(&calc_output, &build_render_config(ctx))?;
     let output_dir = report_output_dir(ctx, &version, output_root);
     let asset_dir = output_dir.join("assets");
     let written_paths = write_svg_assets(&rendered, &asset_dir)?;
@@ -142,7 +142,7 @@ pub fn report_version(
 ) -> Result<ReportArtifacts> {
     let version = resolve_version_ref(ctx, version_ref)?;
     let calc_output = load_calc_output(ctx, version_ref)?;
-    let rendered = render_all_svg(&calc_output, &RenderConfig::default())?;
+    let rendered = render_all_svg(&calc_output, &build_render_config(ctx))?;
     let charts = rendered
         .assets
         .iter()
@@ -254,7 +254,41 @@ fn build_project_meta(ctx: &AppContext, version: &VersionPaths) -> ReportProject
         subject: "Structural check report".to_string(),
         scale: "NTS".to_string(),
         revision: "0".to_string(),
+        sheet_prefix: "SK".to_string(),
     }
+}
+
+fn build_render_config(ctx: &AppContext) -> RenderConfig {
+    let configured_groups = ctx
+        .config
+        .calc
+        .base_shear
+        .pie_groups
+        .iter()
+        .map(|group| BaseReactionGroup {
+            label: group.label.clone(),
+            load_cases: group.load_cases.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    RenderConfig {
+        base_reaction_groups: if configured_groups.is_empty() {
+            default_base_reaction_groups()
+        } else {
+            configured_groups
+        },
+        ..RenderConfig::default()
+    }
+}
+
+fn default_base_reaction_groups() -> Vec<BaseReactionGroup> {
+    ["Dead", "SDL", "Live_red", "Live_unred"]
+        .into_iter()
+        .map(|name| BaseReactionGroup {
+            label: name.to_string(),
+            load_cases: vec![name.to_string()],
+        })
+        .collect()
 }
 
 #[cfg(test)]

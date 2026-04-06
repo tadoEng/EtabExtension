@@ -1,7 +1,9 @@
 use ext_calc::output::PierShearOutput;
 
-use crate::chart_build::{PIER_SHEAR_SEISMIC_IMAGE, PIER_SHEAR_WIND_IMAGE, top_pier_values};
-use crate::chart_types::{CartesianSeries, ChartKind, ChartSpec, NamedChartSpec, RenderConfig, SeriesType};
+use crate::chart_build::{PIER_SHEAR_SEISMIC_IMAGE, PIER_SHEAR_WIND_IMAGE};
+use crate::chart_types::{
+    CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
+};
 
 pub fn build_wind(output: &PierShearOutput, config: &RenderConfig) -> NamedChartSpec {
     build_chart(
@@ -30,12 +32,7 @@ fn build_chart(
     output: &PierShearOutput,
     config: &RenderConfig,
 ) -> NamedChartSpec {
-    let governing = top_pier_values(
-        output
-            .piers
-            .iter()
-            .map(|row| (format!("{} {}", row.story, row.pier_label), row.dcr)),
-    );
+    let governing = governing_story_stress(output);
 
     NamedChartSpec {
         logical_name: logical_name.to_string(),
@@ -45,13 +42,50 @@ fn build_chart(
             width: config.width,
             height: config.height,
             kind: ChartKind::Cartesian {
-                categories: governing.iter().map(|(label, _)| label.clone()).collect(),
-                series: vec![CartesianSeries {
-                    name: "DCR".to_string(),
-                    data: governing.iter().map(|(_, value)| *value).collect(),
-                    kind: SeriesType::Bar,
-                }],
+                categories: governing.iter().map(|(story, _)| story.clone()).collect(),
+                swap_axes: true,
+                series: vec![
+                    CartesianSeries {
+                        name: "Stress".to_string(),
+                        data: governing.iter().map(|(_, value)| value.0).collect(),
+                        kind: SeriesType::Line,
+                        color: Some("#1f77b4".to_string()),
+                        line_style: Some(LinePattern::Solid),
+                        smooth: true,
+                    },
+                    CartesianSeries {
+                        name: "Limit".to_string(),
+                        data: governing.iter().map(|(_, value)| value.1).collect(),
+                        kind: SeriesType::Line,
+                        color: Some("#cc0000".to_string()),
+                        line_style: Some(LinePattern::Dashed),
+                        smooth: false,
+                    },
+                ],
             },
         },
     }
+}
+
+fn governing_story_stress(output: &PierShearOutput) -> Vec<(String, (f64, f64))> {
+    let mut values: Vec<(String, (f64, f64, f64))> = Vec::new();
+
+    for row in &output.piers {
+        let demand = row.vu.value / row.acv.value;
+        let limit = row.phi_vn.value / row.acv.value;
+        let dcr = row.dcr;
+
+        if let Some((_, existing)) = values.iter_mut().find(|(story, _)| story == &row.story) {
+            if dcr > existing.2 {
+                *existing = (demand, limit, dcr);
+            }
+        } else {
+            values.push((row.story.clone(), (demand, limit, dcr)));
+        }
+    }
+
+    values
+        .into_iter()
+        .map(|(story, (demand, limit, _))| (story, (demand, limit)))
+        .collect()
 }

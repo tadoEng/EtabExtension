@@ -9,12 +9,12 @@ rust-version.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 ext-calc = { path = "../ext-calc" }
+ext-db = { path = "../ext-db" }
+ext-render = { path = "../ext-render" }
+serde_json = { workspace = true }
 typst = { workspace = true }
 typst-pdf = { workspace = true }
 walkdir = "2.5.0"
-
-[dev-dependencies]
-serde_json = { workspace = true }
 
 [lints]
 workspace = true
