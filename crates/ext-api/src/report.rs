@@ -4,8 +4,8 @@ use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use ext_calc::{CalcRunner, code_params::CodeParams, output::CalcOutput};
 use ext_core::vcs::current_branch;
-use ext_render::{RenderConfig, render_report_svgs, write_svg_assets};
-use ext_report::{ReportImage, ReportInput, ReportProjectMeta, compile_pdf, write_pdf};
+use ext_render::{RenderConfig, render_all_svg, write_svg_assets};
+use ext_report::{ChartRef, ReportProjectMeta, build_report_document, render_pdf, write_pdf};
 use serde::{Deserialize, Serialize};
 
 use crate::context::AppContext;
@@ -109,7 +109,7 @@ pub fn render_version(
 ) -> Result<RenderArtifacts> {
     let version = resolve_version_ref(ctx, version_ref)?;
     let calc_output = load_calc_output(ctx, version_ref)?;
-    let rendered = render_report_svgs(&calc_output, &RenderConfig::default())?;
+    let rendered = render_all_svg(&calc_output, &RenderConfig::default())?;
     let output_dir = report_output_dir(ctx, &version, output_root);
     let asset_dir = output_dir.join("assets");
     let written_paths = write_svg_assets(&rendered, &asset_dir)?;
@@ -142,25 +142,22 @@ pub fn report_version(
 ) -> Result<ReportArtifacts> {
     let version = resolve_version_ref(ctx, version_ref)?;
     let calc_output = load_calc_output(ctx, version_ref)?;
-    let rendered = render_report_svgs(&calc_output, &RenderConfig::default())?;
-    let input = ReportInput {
-        project: build_project_meta(ctx, &version),
-        calc: calc_output,
-        images: rendered
-            .assets
-            .iter()
-            .map(|asset| ReportImage {
-                logical_name: asset.logical_name.clone(),
-                caption: asset.caption.clone(),
-            })
-            .collect(),
-    };
+    let rendered = render_all_svg(&calc_output, &RenderConfig::default())?;
+    let charts = rendered
+        .assets
+        .iter()
+        .map(|asset| ChartRef {
+            logical_name: asset.logical_name.clone(),
+            caption: asset.caption.clone(),
+        })
+        .collect::<Vec<_>>();
+    let document = build_report_document(&calc_output, &charts, build_project_meta(ctx, &version));
     let svg_map = rendered
         .assets
         .into_iter()
         .map(|asset| (asset.logical_name, asset.svg))
         .collect();
-    let pdf = compile_pdf(&input, svg_map)?;
+    let pdf = render_pdf(&document, svg_map)?;
 
     let output_dir = report_output_dir(ctx, &version, output_root);
     let pdf_path = output_dir.join(format!("{report_name}.pdf"));
@@ -171,7 +168,7 @@ pub fn report_version(
         branch: version.branch,
         output_dir,
         pdf_path,
-        logical_images: input.images.into_iter().map(|image| image.logical_name).collect(),
+        logical_images: charts.into_iter().map(|chart| chart.logical_name).collect(),
     })
 }
 
