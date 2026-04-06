@@ -25,3 +25,6 @@ EOF
 Cargo.lock
 pnpm-lock.yaml
 
+
+# codex working folder
+.codex-target/

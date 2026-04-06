@@ -693,6 +693,30 @@ Recommended API sequencing:
 
 This avoids having the CLI shape churn while the core data contract is still moving.
 
+### 13.1 Canonical workflow rule
+
+The repo has one workflow orchestration layer only:
+
+- `ext-api` is the canonical API surface for all frontends
+- `ext` CLI calls `ext-api`
+- `ext-tauri` calls `ext-api`
+- no frontend may orchestrate `ext-calc`, `ext-render`, and `ext-report` directly as a peer to `ext-api`
+
+This keeps the business workflow consistent across desktop and CLI usage.
+
+### 13.2 Canonical calc artifact rule
+
+`calc_output.json` is the canonical cross-frontend calculation artifact.
+
+That means:
+
+- `ext-calc` produces the persisted artifact
+- `ext-api` reads the persisted artifact when running render/report workflows
+- `ext-tauri` may cache the loaded `CalcOutput` in memory for responsiveness, but that cache is only an optimization
+- if cache and disk ever disagree, the persisted artifact is the source of truth
+
+This rule avoids a second hidden workflow path that exists only inside the desktop shell.
+
 ---
 
 ## 14. Smaller Delivery Slices
@@ -1032,4 +1056,3 @@ This merged spec is considered ready when:
 - unit conversion rules are locked
 - the implementation path is split into small slices with test gates
 - the repo can implement `ext-calc` first without blocking on render/report polish
-

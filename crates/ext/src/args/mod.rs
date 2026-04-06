@@ -27,6 +27,9 @@ pub enum Command {
     Status(StatusArgs),
     Commit(CommitArgs),
     Analyze(AnalyzeArgs),
+    Calc(CalcArgs),
+    Render(RenderArgs),
+    Report(ReportArgs),
     Log(LogArgs),
     Show(ShowArgs),
     Branch(BranchArgs),
@@ -89,6 +92,30 @@ pub struct AnalyzeArgs {
 
     #[arg(long, value_delimiter = ',')]
     pub cases: Option<Vec<String>>,
+}
+
+#[derive(Debug, Args)]
+pub struct CalcArgs {
+    pub version: String,
+}
+
+#[derive(Debug, Args)]
+pub struct RenderArgs {
+    pub version: String,
+
+    #[arg(long)]
+    pub output_root: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct ReportArgs {
+    pub version: String,
+
+    #[arg(long)]
+    pub output_root: Option<PathBuf>,
+
+    #[arg(long, default_value = "report")]
+    pub name: String,
 }
 
 #[derive(Debug, Args)]

@@ -36,3 +36,7 @@ pub use etabs::{
     EtabsRecoverResult, EtabsStatusResult, EtabsUnlockResult, RecoveryChoice, etabs_close,
     etabs_open, etabs_recover, etabs_status, etabs_unlock,
 };
+pub use report::{
+    CalcArtifacts, RenderArtifact, RenderArtifacts, ReportArtifacts, load_calc_output,
+    render_version, report_version, run_calc,
+};

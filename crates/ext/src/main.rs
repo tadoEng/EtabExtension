@@ -24,6 +24,13 @@ async fn main() -> Result<()> {
         Command::Analyze(args) => {
             commands::analyze::execute(&out, cli.project_path.as_ref(), args).await
         }
+        Command::Calc(args) => commands::calc::execute(&out, cli.project_path.as_ref(), args).await,
+        Command::Render(args) => {
+            commands::render::execute(&out, cli.project_path.as_ref(), args).await
+        }
+        Command::Report(args) => {
+            commands::report::execute(&out, cli.project_path.as_ref(), args).await
+        }
         Command::Log(args) => commands::log::execute(&out, cli.project_path.as_ref(), args).await,
         Command::Show(args) => commands::show::execute(&out, cli.project_path.as_ref(), args).await,
         Command::Branch(args) => {

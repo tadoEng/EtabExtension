@@ -12,6 +12,7 @@ use crate::output::OutputFormat;
 
 pub mod analyze;
 pub mod branch;
+pub mod calc;
 pub mod checkout;
 pub mod commit;
 pub mod diff;
@@ -22,6 +23,8 @@ pub mod etabs_status;
 pub mod etabs_unlock;
 pub mod init;
 pub mod log;
+pub mod render;
+pub mod report;
 pub mod show;
 pub mod stash;
 pub mod status;

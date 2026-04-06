@@ -12,7 +12,7 @@ What is genuinely done:
   - unit conversion
   - strict config validation
   - batch-1 and batch-2 loaders
-  - checks 1-5 implemented
+  - checks 1-4 implemented, plus displacement output within the wind serviceability scope
   - a working `CalcRunner::run_all(...)`
   - a minimal review runner via `cargo run -p ext-calc -- <path>`
 - `ext-calc` tests now use a real fixture `.etabs-ext/config.toml` and `config.local.toml`
@@ -66,19 +66,20 @@ Implemented:
 - `UnitContext` and unit conversion
 - `CodeParams::from_config(&Config)` with strict validation for calc-driving fields
 - all current Week 7-8 loaders
-- checks 1-5:
+- checks 1-4:
   - modal
   - base shear
   - drift wind
   - drift seismic
-  - displacement wind
-- `CalcRunner::run_all(...)` wiring for checks 1-5
+- displacement wind output is also implemented, but it is treated as part of the wind serviceability area rather than a separate canonical check number
+- `CalcRunner::run_all(...)` wiring for checks 1-4 plus displacement output
 
 Current `CalcRunner` behavior:
 
 - loads all planned Week 7-8 input tables
-- runs checks 1-5
-- leaves checks 6-9 as `None`
+- runs checks 1-4
+- also emits displacement wind output used by render/report consumers
+- leaves checks 5-8 as `None`
 - emits real summary lines for implemented checks
 - writes `calc_output.json` through the minimal review runner in `src/main.rs`
 
@@ -131,10 +132,10 @@ Reason:
 
 Still to implement:
 
-- Check 6: torsional irregularity
-- Check 7: pier shear wind
-- Check 8: pier shear seismic
-- Check 9: pier axial
+- Check 5: torsional irregularity
+- Check 6: pier shear wind
+- Check 7: pier shear seismic
+- Check 8: pier axial
 
 ### 2. Snapshot and contract hardening
 
@@ -232,7 +233,7 @@ This writes:
 Current review-specific behavior:
 
 - base shear review rows exclude modal cases and ETABS helper cases beginning with `~`
-- displacement wind is now a separate output section driven by `[calc.displacement-wind]`
+- displacement wind is emitted as its own output section driven by `[calc.displacement-wind]`, but report/UI numbering should still follow the canonical Week 7-8 check order where torsional is Check 5
 
 ---
 
@@ -243,7 +244,7 @@ The next agent should start here:
 1. keep using the focused verification command:
    - `cargo test -p ext-db -p ext-calc --lib --target-dir .codex-target`
 2. add `CalcOutput` snapshot coverage
-3. implement checks 6-9 inside the same strict TOML-driven contract
+3. implement checks 5-8 inside the same strict TOML-driven contract
 4. expand `ext-render`
 5. expand `ext-report`
 6. only then wire `ext-api` and CLI integration
