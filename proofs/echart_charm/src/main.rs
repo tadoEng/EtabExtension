@@ -85,6 +85,15 @@ fn cmd_report(args: &[String]) -> anyhow::Result<()> {
     svgs.insert("images/story_shear.svg".into(), chart::render_svg(&ss)?);
     println!("  story_shear.svg done");
 
+    // Chart 4: Wind drift envelope
+    let drift_stories = vec![
+        "Roof","L10","L09","L08","L07","L06","L05","L04","L03","L02","L01",
+    ].iter().map(|s| s.to_string()).collect();
+    let drift_demand = vec![0.012, 0.011, 0.010, 0.009, 0.008, 0.007, 0.008, 0.009, 0.010, 0.011, 0.012];
+    let drift = chart::drift_envelope_chart(drift_stories, drift_demand, 0.025);
+    svgs.insert("images/drift_wind.svg".into(), chart::render_svg(&drift)?);
+    println!("  drift_wind.svg done");
+
     // Build report data
     let project = typst::ProjectData {
         project_name: "Pacific Tower".into(),
