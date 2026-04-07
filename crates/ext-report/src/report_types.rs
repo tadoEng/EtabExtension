@@ -31,6 +31,10 @@ pub struct KeyValueTable {
     pub title: Option<String>,
     pub headers: Vec<String>,
     pub rows: Vec<Vec<String>>,
+    /// Per-row annotation tags driving cell colour in the Typst renderer.
+    /// Length must equal `rows.len()` or be empty (no colour).
+    /// Known values: "ux_threshold", "uy_threshold", "pass", "fail", "warn".
+    pub row_annotations: Vec<Option<String>>,
 }
 
 #[derive(Debug, Clone)]

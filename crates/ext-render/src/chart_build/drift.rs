@@ -48,13 +48,17 @@ fn build_chart(
     let values = story_values.iter().map(|(_, value)| *value).collect();
     let limits = vec![drift.allowable_ratio; story_values.len()];
 
+    // Scale chart height so bars don't compress on tall buildings (35+ stories).
+    let story_count = story_values.len() as u32;
+    let height = config.height.max(story_count * 18 + 100);
+
     NamedChartSpec {
         logical_name: logical_name.to_string(),
         caption: caption.to_string(),
         spec: ChartSpec {
             title: title.to_string(),
             width: config.width,
-            height: config.height,
+            height,
             kind: ChartKind::Cartesian {
                 categories,
                 swap_axes: true,

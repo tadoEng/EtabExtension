@@ -142,30 +142,42 @@ fn build_summary_lines(calc: &CalcOutput) -> Vec<String> {
 }
 
 fn build_modal_table(modal: &ModalOutput) -> KeyValueTable {
-    let rows = modal
-        .rows
-        .iter()
-        .map(|row| {
-            let highlight = match (
-                modal.mode_reaching_ux == Some(row.mode),
-                modal.mode_reaching_uy == Some(row.mode),
-            ) {
-                (true, true) => "UX/UY threshold",
-                (true, false) => "UX threshold",
-                (false, true) => "UY threshold",
-                (false, false) => "",
-            };
-            vec![
-                row.mode.to_string(),
-                format!("{:.3}", row.period),
-                format!("{:.1}%", row.ux * 100.0),
-                format!("{:.1}%", row.uy * 100.0),
-                format!("{:.1}%", row.sum_ux * 100.0),
-                format!("{:.1}%", row.sum_uy * 100.0),
-                highlight.to_string(),
-            ]
-        })
-        .collect();
+    let mut rows = Vec::new();
+    let mut row_annotations: Vec<Option<String>> = Vec::new();
+
+    for row in &modal.rows {
+        let is_ux = modal.mode_reaching_ux == Some(row.mode);
+        let is_uy = modal.mode_reaching_uy == Some(row.mode);
+        let annotation = match (is_ux, is_uy) {
+            (true, true) => Some("ux_uy_threshold".to_string()),
+            (true, false) => Some("ux_threshold".to_string()),
+            (false, true) => Some("uy_threshold".to_string()),
+            (false, false) => {
+                // Highlight rows with individually high contribution (>=10%)
+                if row.ux >= 0.10 || row.uy >= 0.10 {
+                    Some("high".to_string())
+                } else {
+                    None
+                }
+            }
+        };
+        let highlight_label = match annotation.as_deref() {
+            Some("ux_threshold") => "UX threshold",
+            Some("uy_threshold") => "UY threshold",
+            Some("ux_uy_threshold") => "UX/UY threshold",
+            _ => "",
+        };
+        rows.push(vec![
+            row.mode.to_string(),
+            format!("{:.3}", row.period),
+            format!("{:.1}%", row.ux * 100.0),
+            format!("{:.1}%", row.uy * 100.0),
+            format!("{:.1}%", row.sum_ux * 100.0),
+            format!("{:.1}%", row.sum_uy * 100.0),
+            highlight_label.to_string(),
+        ]);
+        row_annotations.push(annotation);
+    }
 
     KeyValueTable {
         title: Some(format!(
@@ -182,6 +194,7 @@ fn build_modal_table(modal: &ModalOutput) -> KeyValueTable {
             "Highlight".to_string(),
         ],
         rows,
+        row_annotations,
     }
 }
 
@@ -202,15 +215,15 @@ fn build_base_shear_table(base_shear: &BaseShearOutput) -> KeyValueTable {
             ));
         }
     }
-
+    let row_count = grouped.len();
     KeyValueTable {
         title: Some("All extracted base reaction load cases. Gravity pie includes configured gravity cases only.".to_string()),
         headers: vec![
             "Load Case".to_string(),
             "Type".to_string(),
-            "Fx".to_string(),
-            "Fy".to_string(),
-            "Fz".to_string(),
+            "Fx (kip)".to_string(),
+            "Fy (kip)".to_string(),
+            "Fz (kip)".to_string(),
         ],
         rows: grouped
             .into_iter()
@@ -224,32 +237,55 @@ fn build_base_shear_table(base_shear: &BaseShearOutput) -> KeyValueTable {
                 ]
             })
             .collect(),
+        row_annotations: vec![None; row_count],
     }
 }
 
 fn build_drift_table(drift: &DriftOutput) -> KeyValueTable {
-    let mut rows = drift
-        .rows
+    // Group by story: pick the governing-case row (max demand) per story to keep
+    // the table concise while showing every story level.
+    let mut story_max: Vec<(String, String, f64)> = Vec::new();
+    for row in &drift.rows {
+        let demand = [
+            row.max_drift_x_pos.abs(),
+            row.max_drift_x_neg.abs(),
+            row.max_drift_y_pos.abs(),
+            row.max_drift_y_neg.abs(),
+        ]
+        .into_iter()
+        .fold(0.0_f64, f64::max);
+        if let Some(entry) = story_max.iter_mut().find(|e| e.0 == row.story) {
+            if demand > entry.2 {
+                entry.1 = row.output_case.clone();
+                entry.2 = demand;
+            }
+        } else {
+            story_max.push((row.story.clone(), row.output_case.clone(), demand));
+        }
+    }
+
+    let mut row_annotations: Vec<Option<String>> = Vec::new();
+    let rows = story_max
         .iter()
-        .map(|row| {
-            let demand = [
-                row.max_drift_x_pos.abs(),
-                row.max_drift_x_neg.abs(),
-                row.max_drift_y_pos.abs(),
-                row.max_drift_y_neg.abs(),
-            ]
-            .into_iter()
-            .fold(0.0_f64, f64::max);
+        .map(|(story, case, demand)| {
+            let dcr = demand / drift.allowable_ratio;
+            let annotation = if dcr >= 1.0 {
+                Some("fail".to_string())
+            } else if dcr >= 0.85 {
+                Some("warn".to_string())
+            } else {
+                None
+            };
+            row_annotations.push(annotation);
             vec![
-                row.story.clone(),
-                row.output_case.clone(),
+                story.clone(),
+                case.clone(),
                 format!("{:.5}", demand),
                 format!("{:.5}", drift.allowable_ratio),
-                format!("{:.3}", demand / drift.allowable_ratio),
+                format!("{:.3}", dcr),
             ]
         })
         .collect::<Vec<_>>();
-    rows.truncate(12);
 
     KeyValueTable {
         title: Some(format!(
@@ -262,37 +298,63 @@ fn build_drift_table(drift: &DriftOutput) -> KeyValueTable {
         headers: vec![
             "Story".to_string(),
             "Case".to_string(),
-            "Demand".to_string(),
-            "Limit".to_string(),
+            "Demand (ratio)".to_string(),
+            "Limit (ratio)".to_string(),
             "DCR".to_string(),
         ],
         rows,
+        row_annotations,
     }
 }
 
 fn build_displacement_table(displacement: &DisplacementOutput) -> KeyValueTable {
-    let mut rows = displacement
-        .rows
+    // Convert ft → in for readability; limit.unit carries the authoritative label.
+    let to_in = |ft: f64| ft * 12.0;
+    let limit_in = to_in(displacement.disp_limit.value);
+
+    let mut story_max: Vec<(String, String, f64)> = Vec::new();
+    for row in &displacement.rows {
+        let demand = [
+            row.max_disp_x_pos_ft.abs(),
+            row.max_disp_x_neg_ft.abs(),
+            row.max_disp_y_pos_ft.abs(),
+            row.max_disp_y_neg_ft.abs(),
+        ]
+        .into_iter()
+        .fold(0.0_f64, f64::max);
+        if let Some(entry) = story_max.iter_mut().find(|e| e.0 == row.story) {
+            if demand > entry.2 {
+                entry.1 = row.output_case.clone();
+                entry.2 = demand;
+            }
+        } else {
+            story_max.push((row.story.clone(), row.output_case.clone(), demand));
+        }
+    }
+
+    let mut row_annotations: Vec<Option<String>> = Vec::new();
+    let rows = story_max
         .iter()
-        .map(|row| {
-            let demand = [
-                row.max_disp_x_pos_ft.abs(),
-                row.max_disp_x_neg_ft.abs(),
-                row.max_disp_y_pos_ft.abs(),
-                row.max_disp_y_neg_ft.abs(),
-            ]
-            .into_iter()
-            .fold(0.0_f64, f64::max);
+        .map(|(story, case, demand_ft)| {
+            let demand_in = to_in(*demand_ft);
+            let dcr = demand_in / limit_in;
+            let annotation = if dcr >= 1.0 {
+                Some("fail".to_string())
+            } else if dcr >= 0.85 {
+                Some("warn".to_string())
+            } else {
+                None
+            };
+            row_annotations.push(annotation);
             vec![
-                row.story.clone(),
-                row.output_case.clone(),
-                format!("{:.4}", demand),
-                format!("{:.4}", displacement.disp_limit.value),
-                format!("{:.3}", demand / displacement.disp_limit.value),
+                story.clone(),
+                case.clone(),
+                format!("{:.4}", demand_in),
+                format!("{:.4}", limit_in),
+                format!("{:.3}", dcr),
             ]
         })
         .collect::<Vec<_>>();
-    rows.truncate(12);
 
     KeyValueTable {
         title: Some(format!(
@@ -305,36 +367,61 @@ fn build_displacement_table(displacement: &DisplacementOutput) -> KeyValueTable 
         headers: vec![
             "Story".to_string(),
             "Case".to_string(),
-            "Demand".to_string(),
-            "Limit".to_string(),
+            "Demand (in)".to_string(),
+            "Limit (in)".to_string(),
             "DCR".to_string(),
         ],
         rows,
+        row_annotations,
     }
 }
 
 fn build_pier_shear_table(pier: &PierShearOutput) -> KeyValueTable {
-    let mut rows = pier
+    // ACI 318-19 §18.10.4.4: maximum nominal shear stress = 8√f'c (psi)
+    // fc_ksi is per-row; use the governing pier's value for the limit column header,
+    // but compute per-row limit so mixed-fc walls are handled correctly.
+    let mut rows: Vec<Vec<String>> = pier
         .piers
         .iter()
         .map(|row| {
+            let vu_acv = row.vu.value / row.acv.value;          // psi
+            let phi_vn_acv = row.phi_vn.value / row.acv.value;  // psi
+            let fc_psi = row.fc_ksi * 1000.0;
+            let limit_8sqrt_fc = 8.0 * fc_psi.sqrt();            // psi
             vec![
                 row.story.clone(),
                 row.pier_label.clone(),
                 row.combo.clone(),
-                format!("{:.3}", row.vu.value / row.acv.value),
-                format!("{:.3}", row.phi_vn.value / row.acv.value),
+                format!("{:.1}", vu_acv),
+                format!("{:.1}", limit_8sqrt_fc),
+                format!("{:.1}", phi_vn_acv),
                 format!("{:.3}", row.dcr),
                 pass_fail(row.pass),
             ]
         })
-        .collect::<Vec<_>>();
+        .collect();
+    // Sort by DCR descending so worst cases appear first.
     rows.sort_by(|left, right| {
-        let right_dcr = right[5].parse::<f64>().unwrap_or(0.0);
-        let left_dcr = left[5].parse::<f64>().unwrap_or(0.0);
+        let right_dcr = right[6].parse::<f64>().unwrap_or(0.0);
+        let left_dcr = left[6].parse::<f64>().unwrap_or(0.0);
         right_dcr.total_cmp(&left_dcr)
     });
-    rows.truncate(12);
+
+    let mut row_annotations: Vec<Option<String>> = rows
+        .iter()
+        .map(|row| {
+            let dcr = row[6].parse::<f64>().unwrap_or(0.0);
+            if dcr >= 1.0 { Some("fail".to_string()) }
+            else if dcr >= 0.85 { Some("warn".to_string()) }
+            else { None }
+        })
+        .collect();
+    // Annotate the governing row explicitly.
+    if let Some(first) = row_annotations.first_mut() {
+        if first.is_none() {
+            *first = Some("pass".to_string());
+        }
+    }
 
     KeyValueTable {
         title: Some(format!(
@@ -348,12 +435,14 @@ fn build_pier_shear_table(pier: &PierShearOutput) -> KeyValueTable {
             "Story".to_string(),
             "Pier".to_string(),
             "Combo".to_string(),
-            "Vu/Acv".to_string(),
-            "Phi Vn/Acv".to_string(),
+            "Vu/Acv (psi)".to_string(),
+            "8\u{221A}f'c (psi)".to_string(),
+            "\u{03C6}Vn/Acv (psi)".to_string(),
             "DCR".to_string(),
             "Status".to_string(),
         ],
         rows,
+        row_annotations,
     }
 }
 
@@ -422,7 +511,7 @@ mod tests {
             },
         );
 
-        assert_eq!(document.sections.len(), 6);
+        assert_eq!(document.sections.len(), 9);
         assert!(matches!(document.sections[0], ReportSection::SummaryPage { .. }));
         assert!(matches!(document.sections[1], ReportSection::TableOnlyPage { .. }));
         assert!(matches!(document.sections[2], ReportSection::ChartAndTablePage { .. }));

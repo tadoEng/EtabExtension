@@ -1,3 +1,6 @@
+// FILE: D:\repo\echart_charm\src\typst.rs
+// Replace the entire file with this content.
+
 use anyhow::Result;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -14,22 +17,27 @@ use typst_pdf::PdfOptions;
 
 // ─── Image layout system ──────────────────────────────────────────────────────
 //
-// Tabloid landscape content rect inner area (inside 2pt border + 20pt inset):
-//   Width  ≈ 15.6in
-//   Height ≈ 8.55in  (9.35in usable − 2×0.4in for border+inset)
+// Page geometry (tabloid landscape 17×11in):
+//   Top margin    0.40in  — breathing room above content rect
+//   Bottom margin 0.65in  — reserved for 0.60in title-block + 0.05in bleed
+//   Left/right    0.50in each
 //
-// Image height budget per layout (accounts for page heading ~0.4in,
-// caption ~0.25in per image, and inter-image gaps):
+// Content rect = width: 100%, height: 100%  (fills the margin box exactly).
+// Usable inner area (inside 2pt stroke + 20pt inset):
+//   Width  ≈ 15.55in
+//   Height ≈ 9.47in
 //
-//   Single           → 1 image  → height: 7.2in  (centered)
-//   SideBySide       → 2 images → height: 6.8in  (left / right, 1fr each)
-//   Stacked          → 2 images → height: 3.6in  each (top / bottom)
-//   ThreeImages      → 3 images → row1: 2 side 3.8in, row2: 1 centered 3.8in
-//   TableAndImage    → table left (~7in col), image right → height: 6.5in
-//   TwoTablesOneImage→ table top, image bottom or side
+// Image height budget per layout:
+//   Single           → 7.2in  (centered)
+//   SideBySide       → 6.8in  (left / right, 1fr each)
+//   Stacked          → 3.5in  each (top / bottom)
+//   Three            → 3.6in  for all three
+//   TableAndImage    → 6.2in  (right column)
+//   TableOnly        → no images
+//   ChartThenTable   → chart page: 7.2in full; table page: full-width table
 //
 // Rule: ALWAYS constrain images by `height:`, never `width: 100%`.
-// SVG intrinsic ratio 800×550 (≈ 1.45) → width: 100% = 15.6in → 10.8in tall → overflow.
+// SVG intrinsic ratio 800×550 (≈ 1.45) → width:100% = 15.6in → 10.8in → overflow.
 
 #[derive(Debug, Clone)]
 pub enum ImageLayout {
@@ -45,6 +53,10 @@ pub enum ImageLayout {
     TableAndImage,
     /// One data table spanning full width (no images on this page)
     TableOnly,
+    /// Chart on page A (full width), full-width table on page B.
+    /// Use when the table is too tall to share a page with the chart.
+    /// Automatically consumes two sheet numbers.
+    ChartThenTable,
 }
 
 // ─── Data structures ─────────────────────────────────────────────────────────
@@ -89,31 +101,35 @@ pub struct CalculationSection {
 }
 
 /// One named image to embed. The logical filename must match the key
-/// used in the SVG map passed to generate_report_*().
+/// used in the SVG map passed to generate_report().
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageRef {
     pub logical_name: String,   // e.g. "images/story_shear.svg"
     pub caption:      String,
 }
 
-/// A page of image content with an explicit layout.
+/// A page of image/table content with an explicit layout.
 #[derive(Debug, Clone)]
 pub struct ImagePage {
     pub heading: String,
     pub layout:  ImageLayout,
-    pub images:  Vec<ImageRef>,   // must match layout arity
-    /// Optional inline Typst table markup (used by TableAndImage / TableOnly)
+    pub images:  Vec<ImageRef>,      // must match layout arity
+    /// Inline Typst markup for TableAndImage / TableOnly / ChartThenTable.
     pub table_markup: Option<String>,
+    /// Heading override for the table page when using ChartThenTable.
+    /// Falls back to `heading` when None.
+    pub table_heading: Option<String>,
 }
 
-/// Top-level report descriptor
+/// Top-level report descriptor.
 #[derive(Debug, Clone)]
 pub struct ReportData {
-    pub project:             ProjectData,
-    pub pages:               Vec<ReportPage>,
+    pub project: ProjectData,
+    pub pages:   Vec<ReportPage>,
 }
 
-/// Each page in the report body (after cover, before DCR table).
+/// Each logical page in the report body (after cover).
+/// Note: ChartThenTable emits two physical pages.
 #[derive(Debug, Clone)]
 pub enum ReportPage {
     Images(ImagePage),
@@ -139,7 +155,7 @@ impl TypstWorld {
         println!("loading fonts...");
         let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self::search_fonts(&current_dir.join("fonts"), &mut fonts, &mut book);
-        Self::search_fonts(Path::new(r"C:\Windows\Fonts"),  &mut fonts, &mut book);
+        Self::search_fonts(Path::new(r"C:\Windows\Fonts"), &mut fonts, &mut book);
 
         if fonts.is_empty() { panic!("no fonts could be loaded"); }
         println!("fonts loaded: {}", fonts.len());
@@ -179,7 +195,8 @@ impl TypstWorld {
         for entry in walkdir::WalkDir::new(path)
             .follow_links(true)
             .sort_by(|a, b| a.file_name().cmp(b.file_name()))
-            .into_iter().filter_map(|e| e.ok())
+            .into_iter()
+            .filter_map(|e| e.ok())
         {
             let p = entry.path();
             if p.is_file() {
@@ -199,7 +216,7 @@ impl TypstWorld {
 }
 
 impl World for TypstWorld {
-    fn library(&self) -> &LazyHash<Library> { &self.library }
+    fn library(&self) -> &LazyHash<Library>  { &self.library }
     fn book(&self)    -> &LazyHash<FontBook> { &self.book    }
     fn main(&self)    -> FileId              { self.main.id() }
 
@@ -210,12 +227,12 @@ impl World for TypstWorld {
 
     fn file(&self, id: FileId) -> FileResult<Bytes> {
         let path = id.vpath().as_rootless_path();
-        if let Some(b) = self.image_cache.get(Path::new(path))                        { return Ok(b.clone()); }
-        if let Some(b) = self.image_cache.get(&PathBuf::from("images").join(path))    { return Ok(b.clone()); }
+        if let Some(b) = self.image_cache.get(Path::new(path))                     { return Ok(b.clone()); }
+        if let Some(b) = self.image_cache.get(&PathBuf::from("images").join(path)) { return Ok(b.clone()); }
         Err(typst::diag::FileError::NotFound(path.into()))
     }
 
-    fn font(&self, index: usize) -> Option<Font>      { self.fonts.get(index).cloned() }
+    fn font(&self, index: usize) -> Option<Font>        { self.fonts.get(index).cloned() }
     fn today(&self, _: Option<i64>) -> Option<Datetime> { None }
 }
 
@@ -260,46 +277,51 @@ fn generate_typst(data: &ReportData) -> String {
     let mut sheet_counter = base_sheet;
     let mut out = String::new();
 
-    // ── Global setup ─────────────────────────────────────────────────────────
     out.push_str(&global_setup());
-
-    // ── Title block function ─────────────────────────────────────────────────
     out.push_str(&title_block_fn());
+    out.push_str(&helper_fns());
 
-    // ── Helper closures (emit as Typst strings) ───────────────────────────────
-    // content_rect: draws the working zone border
-    out.push_str(r##"
-#let content_rect(body) = rect(
-  width: 100%,
-  height: 100%,
-  stroke: 2pt + black,
-  inset: 20pt,
-  body,
-)
-
-#let dcr_color(v) = {
-  if v >= 1.0      { rgb("#CC0000") }
-  else if v >= 0.95 { rgb("#E06000") }
-  else if v >= 0.85 { rgb("#B08000") }
-  else              { rgb("#1A7A1A") }
-}
-
-"##);
-
-    // ── PAGE 1: Cover ─────────────────────────────────────────────────────────
+    // PAGE 1: Cover
     let s = format!("SK-{:02}", sheet_counter);
     out.push_str(&cover_page(&p.project_name, &p.subject, &tb_call(p, &s)));
     sheet_counter += 1;
 
-    // ── Body pages ────────────────────────────────────────────────────────────
+    // Body pages
     for page in &data.pages {
         out.push_str("\n#pagebreak()\n");
         let s = format!("SK-{:02}", sheet_counter);
+
         match page {
-            ReportPage::Images(img_page)        => out.push_str(&image_page(img_page, &tb_call(p, &s))),
-            ReportPage::Calculations(sections)  => out.push_str(&calc_page(sections, &tb_call(p, &s))),
-            ReportPage::DcrTable(elements)      => {
-                // DCR tables may span multiple pages
+            ReportPage::Images(img_page) => {
+                let rendered = image_page(img_page, &tb_call(p, &s));
+
+                if rendered.contains("__CHART_THEN_TABLE_SPLIT__") {
+                    // ChartThenTable: split into two physical pages.
+                    let mut parts = rendered.splitn(2, "__CHART_THEN_TABLE_SPLIT__");
+                    let chart_part = parts.next().unwrap_or("");
+                    let table_part = parts.next().unwrap_or("");
+
+                    out.push_str(chart_part);
+
+                    // Second page — advance counter, emit table page.
+                    sheet_counter += 1;
+                    let s2 = format!("SK-{:02}", sheet_counter);
+                    out.push_str("\n#pagebreak()\n");
+                    out.push_str(&format!(
+                        "#content_rect[\n  {}\n]\n{}",
+                        table_part,
+                        tb_call(p, &s2),
+                    ));
+                } else {
+                    out.push_str(&rendered);
+                }
+            }
+
+            ReportPage::Calculations(sections) => {
+                out.push_str(&calc_page(sections, &tb_call(p, &s)));
+            }
+
+            ReportPage::DcrTable(elements) => {
                 for (i, chunk) in elements.chunks(22).enumerate() {
                     if i > 0 {
                         out.push_str("\n#pagebreak()\n");
@@ -310,6 +332,7 @@ fn generate_typst(data: &ReportData) -> String {
                 }
             }
         }
+
         sheet_counter += 1;
     }
 
@@ -319,28 +342,62 @@ fn generate_typst(data: &ReportData) -> String {
 // ─── Global Typst setup ───────────────────────────────────────────────────────
 
 fn global_setup() -> String {
+    // Page geometry (tabloid landscape 17×11in):
+    //   Top margin    0.40in — breathing room above content rect
+    //   Bottom margin 0.65in — reserved for the 0.60in title-block + 0.05in bleed
+    //   Left/right    0.50in each
+    //
+    // content_rect uses height: 100% which fills exactly the margin box.
+    // title_block is placed at dy: 0pt from the bottom+left anchor, so it sits
+    // immediately below (outside) the content rect with zero gap.
     r##"
 #set text(font: "Arial", size: 9pt)
 #set page(
   width: 17in,
   height: 11in,
-  margin: (top: 0.5in, left: 0.5in, right: 0.5in, bottom: 1.15in),
+  margin: (top: 0.40in, left: 0.50in, right: 0.50in, bottom: 0.65in),
 )
 "##.into()
 }
 
-// ─── Title block function definition ─────────────────────────────────────────
+// ─── Helper Typst functions ───────────────────────────────────────────────────
+
+fn helper_fns() -> String {
+    r##"
+#let content_rect(body) = rect(
+  width: 100%,
+  height: 100%,
+  stroke: 2pt + black,
+  inset: 20pt,
+  body,
+)
+
+#let dcr_color(v) = {
+  if v >= 1.0       { rgb("#CC0000") }
+  else if v >= 0.95 { rgb("#E06000") }
+  else if v >= 0.85 { rgb("#B08000") }
+  else              { rgb("#1A7A1A") }
+}
+
+"##.into()
+}
+
+// ─── Title block function ─────────────────────────────────────────────────────
 //
-// Columns (total 16in):
-//   Logo 1.5in | Project 3.8in | Title 4.6in | Ref/Rev 1.6in | By/Ckd/Date 1.9in | Scale/Sheet 2.6in
+// Total width: 16in across 6 columns:
+//   Logo 1.5in | Project 3.8in | Drawing title 4.6in |
+//   Ref/Rev 1.6in | Drawn/Checked/Date 1.9in | Scale/Sheet 2.6in
 //
-// Ref/Rev, By/Ckd/Date, Scale/Sheet split into two half-rows (0.3in each).
-// Outer border 1.5pt; internal dividers 0.5pt.
+// All columns share a single 0.60in row height.
+// Internal column dividers: 0.5pt; outer border: 1.5pt.
+// dy: 0pt — block sits exactly at the bottom margin edge, flush below content_rect.
 
 fn title_block_fn() -> String {
     r##"
 #let title_block(project, proj_num, reference, engineer, checker, date, subject, scale, sheet, revision) = {
-  place(bottom + left, dy: 0.6in)[
+  // dy: 0pt — anchors at the page bottom-margin edge.
+  // The content_rect above fills height: 100% so they meet with zero gap.
+  place(bottom + left, dy: 0pt)[
     #set text(font: "Arial")
     #block(width: 16in, stroke: (thickness: 1.5pt, paint: black))[
       #grid(
@@ -418,7 +475,7 @@ fn title_block_fn() -> String {
 "##.into()
 }
 
-/// Emit a title_block() call with all project fields + the given sheet string.
+/// Emit a `#title_block(...)` call with all project fields and the given sheet.
 fn tb_call(p: &ProjectData, sheet: &str) -> String {
     format!(
         r##"#title_block("{}", "{}", "{}", "{}", "{}", "{}", "{}", "{}", "{}", "{}")"##,
@@ -446,15 +503,6 @@ fn cover_page(project_name: &str, subject: &str, tb: &str) -> String {
 }
 
 // ── Image page ────────────────────────────────────────────────────────────────
-//
-// Height constants (all in inches, chosen to fit inside content_rect safely):
-//
-//   Single           → img_h = 7.2
-//   SideBySide       → img_h = 6.8
-//   Stacked          → img_h = 3.5 each
-//   Three            → img_h = 3.6 for all three
-//   TableAndImage    → img_h = 6.2 (right column)
-//   TableOnly        → no images
 
 fn image_page(pg: &ImagePage, tb: &str) -> String {
     let heading = format!(
@@ -522,23 +570,21 @@ fn image_page(pg: &ImagePage, tb: &str) -> String {
 #align(center)[
   #figure(image("{}", height: 3.6in), caption: [{}], supplement: none)
 ]"##,
-                    a.logical_name, a.caption,
-                    b.logical_name, b.caption,
-                    c.logical_name, c.caption)
+                a.logical_name, a.caption,
+                b.logical_name, b.caption,
+                c.logical_name, c.caption)
         }
 
         ImageLayout::TableAndImage => {
-            let img    = &pg.images[0];
-            let table  = pg.table_markup.as_deref().unwrap_or("// no table markup");
+            let img   = &pg.images[0];
+            let table = pg.table_markup.as_deref().unwrap_or("// no table markup");
             format!(r##"
 #grid(
   columns: (1fr, 1fr),
   gutter: 16pt,
-  // Left: inline data table
   align(top)[
     {}
   ],
-  // Right: chart image
   align(center)[
     #figure(image("{}", height: 6.2in), caption: [{}], supplement: none)
   ],
@@ -549,7 +595,44 @@ fn image_page(pg: &ImagePage, tb: &str) -> String {
             let table = pg.table_markup.as_deref().unwrap_or("// no table markup");
             format!("\n{}\n", table)
         }
+
+        // Chart body only — the second page is emitted below via sentinel split.
+        ImageLayout::ChartThenTable => {
+            let img = &pg.images[0];
+            format!(r##"
+#align(center)[
+  #figure(
+    image("{}", height: 7.2in),
+    caption: [{}],
+    supplement: none,
+  )
+]"##, img.logical_name, img.caption)
+        }
     };
+
+    // ── ChartThenTable: emit chart page + sentinel + table page body ──────────
+    if matches!(pg.layout, ImageLayout::ChartThenTable) {
+        let table_heading_str = pg.table_heading.as_deref().unwrap_or(&pg.heading);
+        let table_heading_markup = format!(
+            r##"#align(center)[
+  #text(size: 14pt, weight: "bold", fill: rgb("#003A70"))[{}]
+]
+#v(10pt)"##,
+            table_heading_str.to_uppercase()
+        );
+        let table_body = pg.table_markup.as_deref().unwrap_or("// no table markup");
+
+        let chart_page = format!(r##"
+#content_rect[
+  {heading}
+  {body}
+]
+{tb}"##);
+
+        // The sentinel is stripped by generate_typst; the table part is wrapped
+        // in content_rect with the next sheet's tb_call by the caller.
+        return format!("{chart_page}\n__CHART_THEN_TABLE_SPLIT__\n{table_heading_markup}\n{table_body}\n");
+    }
 
     format!(r##"
 #content_rect[
@@ -560,12 +643,6 @@ fn image_page(pg: &ImagePage, tb: &str) -> String {
 }
 
 // ── Calculation page ──────────────────────────────────────────────────────────
-//
-// Mimics a hand-calc sheet inside the content_rect:
-//   - Section heading in blue (matches engineering style)
-//   - Each step: description in bold, formula in display math, result below,
-//     optional note in muted text
-//   - Two-column layout within each section to use landscape width
 
 fn calc_page(sections: &[CalculationSection], tb: &str) -> String {
     let mut body = String::from(r##"
@@ -576,8 +653,7 @@ fn calc_page(sections: &[CalculationSection], tb: &str) -> String {
 "##);
 
     for section in sections {
-        body.push_str(&format!(
-            r##"
+        body.push_str(&format!(r##"
 #rect(
   width: 100%,
   fill: rgb("#EEF3F8"),
@@ -589,8 +665,7 @@ fn calc_page(sections: &[CalculationSection], tb: &str) -> String {
 #v(6pt)
 "##, section.title));
 
-        // Two-column grid for steps — uses landscape width effectively
-        let col_break = (section.steps.len() + 1) / 2;
+        let col_break   = (section.steps.len() + 1) / 2;
         let left_steps  = &section.steps[..col_break];
         let right_steps = &section.steps[col_break..];
 
@@ -598,9 +673,7 @@ fn calc_page(sections: &[CalculationSection], tb: &str) -> String {
         body.push_str(&render_steps(left_steps));
         body.push_str(r##"], align(top)["##);
         body.push_str(&render_steps(right_steps));
-        body.push_str(r##"])
-#v(10pt)
-"##);
+        body.push_str("#])\n#v(10pt)\n");
     }
 
     format!(r##"
@@ -613,27 +686,21 @@ fn calc_page(sections: &[CalculationSection], tb: &str) -> String {
 fn render_steps(steps: &[CalculationStep]) -> String {
     let mut out = String::new();
     for (i, step) in steps.iter().enumerate() {
-        out.push_str(&format!(
-            r##"
+        out.push_str(&format!(r##"
 #text(size: 8pt, weight: "bold")[{}. {}]
 #v(2pt)
 $ {} $
-"##,
-            i + 1, step.description, step.formula,
-        ));
+"##, i + 1, step.description, step.formula));
+
         if !step.result.is_empty() {
             out.push_str(&format!(
                 r##"#text(size: 8pt, fill: rgb("#003A70"), weight: "bold")[→ $ {} $]
-"##,
-                step.result
-            ));
+"##, step.result));
         }
         if !step.note.is_empty() {
             out.push_str(&format!(
                 r##"#text(size: 7pt, fill: luma(120))[{}]
-"##,
-                step.note
-            ));
+"##, step.note));
         }
         out.push_str("#v(8pt)\n");
     }
@@ -716,48 +783,53 @@ fn dcr_page(elements: &[FoundationElement], is_first: bool, tb: &str) -> String 
 {tb}"##)
 }
 
-// ─── Sample data builders (for main.rs / testing) ────────────────────────────
+// ─── Sample data builders ─────────────────────────────────────────────────────
 
-/// Build a complete example ReportData with all page types.
+/// Build a complete example ReportData with all page types, including
+/// a ChartThenTable demo page.
 pub fn example_report_data(project: ProjectData) -> ReportData {
     ReportData {
         project,
         pages: vec![
             // Page 2: Two charts side by side
             ReportPage::Images(ImagePage {
-                heading:      "Structural Analysis — Load Distribution".into(),
-                layout:       ImageLayout::SideBySide,
-                images:       vec![
+                heading:       "Structural Analysis — Load Distribution".into(),
+                layout:        ImageLayout::SideBySide,
+                images:        vec![
                     ImageRef { logical_name: "images/base_reactions.svg".into(), caption: "Base Reactions by Load Case".into() },
                     ImageRef { logical_name: "images/force_disp.svg".into(),     caption: "Force vs Displacement".into() },
                 ],
-                table_markup: None,
+                table_markup:  None,
+                table_heading: None,
             }),
 
             // Page 3: Single story shear chart
             ReportPage::Images(ImagePage {
-                heading:      "Lateral Load Analysis".into(),
-                layout:       ImageLayout::Single,
-                images:       vec![
+                heading:       "Lateral Load Analysis".into(),
+                layout:        ImageLayout::Single,
+                images:        vec![
                     ImageRef { logical_name: "images/story_shear.svg".into(), caption: "Story Shear — X and Y Directions".into() },
                 ],
-                table_markup: None,
+                table_markup:  None,
+                table_heading: None,
             }),
 
-            // Page 4: Table + image side by side
+            // Page 4a/4b: Drift chart (page 4) then full drift table (page 5).
+            // Use this pattern whenever the table is too tall to share a page.
             ReportPage::Images(ImagePage {
-                heading:      "Load Summary".into(),
-                layout:       ImageLayout::TableAndImage,
-                images:       vec![
-                    ImageRef { logical_name: "images/base_reactions.svg".into(), caption: "Base Reactions (Reference)".into() },
+                heading:       "Wind Drift Review".into(),
+                layout:        ImageLayout::ChartThenTable,
+                images:        vec![
+                    ImageRef { logical_name: "images/drift_wind.svg".into(), caption: "Maximum drift ratio per story under wind loading.".into() },
                 ],
-                table_markup: Some(load_summary_table()),
+                table_markup:  Some(load_summary_table()),  // replace with real drift table markup
+                table_heading: Some("Wind Drift — Story Data".into()),
             }),
 
-            // Page 5: Hand calculations
+            // Hand calculations
             ReportPage::Calculations(example_calculations()),
 
-            // Page 6+: DCR table
+            // DCR table (auto-paginates at 22 rows)
             ReportPage::DcrTable(generate_random_elements(30)),
         ],
     }
@@ -778,14 +850,14 @@ pub fn load_summary_table() -> String {
   text(fill: white, weight: "bold", size: 8pt)[Fx (kips)],
   text(fill: white, weight: "bold", size: 8pt)[Fy (kips)],
   text(fill: white, weight: "bold", size: 8pt)[Fz (kips)],
-  [Dead (D)],       [0.0],  [0.0],  [2450.0],
-  [Live (L)],       [0.0],  [0.0],  [820.0],
-  [Super. DL (SDL)],[0.0],  [0.0],  [310.0],
-  [Wind X (Wx)],    [185.0],[0.0],  [12.0],
-  [Wind Y (Wy)],    [0.0],  [172.0],[8.0],
-  [Seismic X (Ex)], [240.0],[0.0],  [18.0],
-  [Seismic Y (Ey)], [0.0],  [228.0],[15.0],
-  [1.2D+1.6L],      [0.0],  [0.0],  [4252.0],
+  [Dead (D)],        [0.0],  [0.0],  [2450.0],
+  [Live (L)],        [0.0],  [0.0],   [820.0],
+  [Super. DL (SDL)], [0.0],  [0.0],   [310.0],
+  [Wind X (Wx)],   [185.0],  [0.0],    [12.0],
+  [Wind Y (Wy)],     [0.0],[172.0],     [8.0],
+  [Seismic X (Ex)],[240.0],  [0.0],    [18.0],
+  [Seismic Y (Ey)],  [0.0],[228.0],    [15.0],
+  [1.2D+1.6L],       [0.0],  [0.0], [4252.0],
   [1.2D+1.0Ex+0.3Ey],[72.0],[228.0],[2988.0],
 )
 "##.into()
@@ -883,7 +955,7 @@ pub fn example_calculations() -> Vec<CalculationSection> {
     ]
 }
 
-// ─── Random data ──────────────────────────────────────────────────────────────
+// ─── Random test data ─────────────────────────────────────────────────────────
 
 pub fn generate_random_elements(count: usize) -> Vec<FoundationElement> {
     let mut rng = rand::thread_rng();
@@ -896,9 +968,9 @@ pub fn generate_random_elements(count: usize) -> Vec<FoundationElement> {
     ];
     (1..=count).map(|i| {
         let (pre, du, cu, fmt) = types[rng.gen_range(0..types.len())];
-        let cap  = rng.gen_range(100.0_f64..1000.0);
-        let dcr  = rng.gen_range(0.45_f64..0.98);
-        let dem  = (cap * dcr * 10.0).round() / 10.0;
+        let cap = rng.gen_range(100.0_f64..1000.0);
+        let dcr = rng.gen_range(0.45_f64..0.98);
+        let dem = (cap * dcr * 10.0).round() / 10.0;
         FoundationElement {
             id:            format!("{pre}-{i:03}"),
             demand:        dem,
