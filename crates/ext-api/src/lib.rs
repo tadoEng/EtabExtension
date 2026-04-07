@@ -29,9 +29,14 @@ pub mod stash;
 pub mod status;
 pub mod switch;
 
+pub use analyze::{AnalyzeOptions, AnalyzeResult, analyze_version};
 pub use context::AppContext;
 pub use etabs::{
     CloseMode, EtabsCloseConflict, EtabsCloseResult, EtabsOpenResult, EtabsRecoverConflict,
     EtabsRecoverResult, EtabsStatusResult, EtabsUnlockResult, RecoveryChoice, etabs_close,
     etabs_open, etabs_recover, etabs_status, etabs_unlock,
+};
+pub use report::{
+    CalcArtifacts, RenderArtifact, RenderArtifacts, ReportArtifacts, load_calc_output,
+    render_version, report_version, run_calc,
 };

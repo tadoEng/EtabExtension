@@ -36,7 +36,7 @@ members = [
     ##
     "crates/ext",               # CLI binary. Thin clap layer. Zero business logic.
                                 #   Includes `ext chat` subcommand (Phase 1).
-    "crates/ext-tauri",         # Desktop app. Tauri IPC wrappers over ext-api
+    "crates/ext-tauri", "crates/ext-calc", "crates/ext-render", "crates/ext-report",         # Desktop app. Tauri IPC wrappers over ext-api
                                 #   and ext-agent. Chat panel added Phase 2.
 ]
 resolver = "2"
@@ -136,7 +136,7 @@ git2    = "0.20.4"
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 uuid        = { version = "1.22.0", features = ["v4", "serde"] }
-chrono      = { version = "0.4.44", default-features = false, features = ["std", "serde", "clock"] }
+chrono      = { version = "0.4.41", default-features = false, features = ["std", "serde", "clock"] }
 parking_lot = "0.12"
 itertools   = "0.14"
 nonempty    = "0.12.0"

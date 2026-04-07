@@ -4,17 +4,27 @@ use std::path::{Path, PathBuf};
 use anyhow::{Result, bail};
 use ext_api::AppContext;
 use ext_api::checkout::{CheckoutConflict, CheckoutConflictResolution};
+use ext_api::etabs::{EtabsCloseConflict, EtabsRecoverConflict, RecoveryChoice};
 use ext_api::stash::StashPopConflict;
 
 use crate::args::Cli;
 use crate::output::OutputFormat;
 
+pub mod analyze;
 pub mod branch;
+pub mod calc;
 pub mod checkout;
 pub mod commit;
 pub mod diff;
+pub mod etabs_close;
+pub mod etabs_open;
+pub mod etabs_recover;
+pub mod etabs_status;
+pub mod etabs_unlock;
 pub mod init;
 pub mod log;
+pub mod render;
+pub mod report;
 pub mod show;
 pub mod stash;
 pub mod status;
@@ -83,6 +93,32 @@ pub(crate) fn prompt_stash_overwrite() -> Result<bool> {
 pub(crate) fn prompt_stash_pop_conflict(conflict: &StashPopConflict) -> Result<bool> {
     println!("{conflict}");
     Ok(prompt_line("> ")?.eq_ignore_ascii_case("o"))
+}
+
+pub(crate) fn prompt_etabs_close_conflict(
+    conflict: &EtabsCloseConflict,
+) -> Result<Option<ext_api::CloseMode>> {
+    println!("{conflict}");
+    let choice = prompt_line("> ")?;
+    match choice.to_ascii_lowercase().as_str() {
+        "s" => Ok(Some(ext_api::CloseMode::Save)),
+        "d" => Ok(Some(ext_api::CloseMode::NoSave)),
+        "x" => Ok(None),
+        _ => bail!("Invalid choice: {choice}"),
+    }
+}
+
+pub(crate) fn prompt_etabs_recover_conflict(
+    conflict: &EtabsRecoverConflict,
+) -> Result<Option<RecoveryChoice>> {
+    println!("{conflict}");
+    let choice = prompt_line("> ")?;
+    match choice.to_ascii_lowercase().as_str() {
+        "k" => Ok(Some(RecoveryChoice::KeepChanges)),
+        "r" => Ok(Some(RecoveryChoice::RestoreFromVersion)),
+        "x" => Ok(None),
+        _ => bail!("Invalid choice: {choice}"),
+    }
 }
 
 pub fn output_format(cli: &Cli) -> OutputFormat {

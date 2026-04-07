@@ -19,9 +19,13 @@ dist/
 Thumbs.db
 
 # Env
+.env
 .env*.local
 EOF
 Cargo.lock
 pnpm-lock.yaml
 
 .vs/slnx.sqlite
+
+# codex working folder
+.codex-target/

@@ -26,14 +26,7 @@ impl ExtractConfig {
     }
 }
 
-/// Maps to the 7 supported result tables.
-///
-/// None   = skip
-/// Some   = request with the given selection filters
-///
-/// This struct is serialised to camelCase JSON and passed as --request to
-/// etab-cli extract-results. The serde rename_all here covers the JSON form;
-/// the TOML config uses kebab-case via the [extract.tables] section.
+/// Maps to the ETABS result tables supported by the extraction contract.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableSelections {
@@ -44,6 +37,9 @@ pub struct TableSelections {
     pub joint_drifts: Option<TableConfig>,
     pub pier_forces: Option<TableConfig>,
     pub modal_participating_mass_ratios: Option<TableConfig>,
+    pub group_assignments: Option<TableConfig>,
+    pub material_properties_concrete_data: Option<TableConfig>,
+    pub material_list_by_story: Option<TableConfig>,
 }
 
 impl TableSelections {
@@ -61,6 +57,11 @@ impl TableSelections {
             modal_participating_mass_ratios: other
                 .modal_participating_mass_ratios
                 .or(self.modal_participating_mass_ratios),
+            group_assignments: other.group_assignments.or(self.group_assignments),
+            material_properties_concrete_data: other
+                .material_properties_concrete_data
+                .or(self.material_properties_concrete_data),
+            material_list_by_story: other.material_list_by_story.or(self.material_list_by_story),
         }
     }
 
@@ -73,14 +74,13 @@ impl TableSelections {
             && self.joint_drifts.is_none()
             && self.pier_forces.is_none()
             && self.modal_participating_mass_ratios.is_none()
+            && self.group_assignments.is_none()
+            && self.material_properties_concrete_data.is_none()
+            && self.material_list_by_story.is_none()
     }
 }
 
 /// Per-table selection filters.
-///
-/// None on any field = "include everything for this dimension".
-/// ["*"]             = explicit "all" sentinel (same effect, but explicit intent).
-/// ["X", "Y"]        = exact named items only.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableConfig {

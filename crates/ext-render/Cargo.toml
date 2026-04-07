@@ -1,0 +1,22 @@
+[package]
+name = "ext-render"
+version = "0.1.0"
+repository.workspace = true
+edition.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["ssr"]
+ssr = ["charming/ssr"]
+
+[dependencies]
+anyhow = { workspace = true }
+charming = "0.6.0"
+ext-calc = { path = "../ext-calc" }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

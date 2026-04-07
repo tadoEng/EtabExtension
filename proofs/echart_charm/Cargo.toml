@@ -1,0 +1,23 @@
+[workspace]
+
+[package]
+name = "echart_charm"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+# CLI / Tauri sidecar — bundles Deno engine, ~50-80 MB added to binary
+ssr  = ["charming/ssr"]
+# Tauri WASM frontend — mutually exclusive with ssr
+wasm = ["charming/wasm"]
+
+[dependencies]
+charming   = "0.6.0"
+anyhow     = "1.0.102"
+serde      = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+chrono     = "0.4.44"
+rand       = "0.8.5"
+typst      = "0.14.2"
+typst-pdf  = "0.14.2"
+walkdir    = "2.5.0"

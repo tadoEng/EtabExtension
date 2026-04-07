@@ -5,7 +5,8 @@ use chrono::Duration;
 use ext_api::AppContext;
 use ext_api::commit::{self, CommitOptions};
 use ext_api::etabs::{
-    CloseMode, RecoveryChoice, etabs_close, etabs_open, etabs_recover, etabs_status, etabs_unlock,
+    CloseMode, EtabsRecoverConflict, RecoveryChoice, etabs_close, etabs_open, etabs_recover,
+    etabs_status, etabs_unlock,
 };
 use ext_api::init::{InitRequest, init_project};
 use ext_core::state::WorkingFileStatus;
@@ -176,6 +177,7 @@ async fn etabs_close_save_clears_pid_and_updates_arrival_status() {
     assert!(result.saved);
     assert_eq!(result.arrival_status, WorkingFileStatus::Analyzed);
     assert!(working.etabs_pid.is_none());
+    assert!(working.last_known_mtime.is_some());
     assert_eq!(working.status, WorkingFileStatus::Analyzed);
 }
 
@@ -244,7 +246,7 @@ async fn etabs_unlock_clears_locked_state() {
     set_sidecar_state(
         &sidecar,
         fake_sidecar::FakeSidecarState {
-            is_running: true,
+            is_running: false,
             pid: Some(std::process::id()),
             open_file_path: None,
             is_model_open: false,
@@ -286,6 +288,62 @@ async fn etabs_recover_keep_marks_modified() {
     assert_eq!(result.arrival_status, WorkingFileStatus::Modified);
     assert_eq!(working.status, WorkingFileStatus::Modified);
     assert!(working.etabs_pid.is_none());
+}
+
+#[tokio::test]
+async fn etabs_recover_phase1_surfaces_file_was_modified_true() {
+    let temp = TempDir::new().unwrap();
+    let project_root = init_fixture(&temp).await;
+    let ctx = AppContext::new(&project_root).unwrap();
+
+    let mut state = ctx.load_state().unwrap();
+    let working = state.working_file.as_mut().unwrap();
+    let working_path = working.path.clone();
+    std::fs::write(&working_path, b"before-crash").unwrap();
+    let current_mtime: chrono::DateTime<chrono::Utc> = std::fs::metadata(&working_path)
+        .unwrap()
+        .modified()
+        .unwrap()
+        .into();
+    working.etabs_pid = Some(u32::MAX);
+    working.status = WorkingFileStatus::Orphaned;
+    working.last_known_mtime = Some(current_mtime - Duration::seconds(60));
+    working.based_on_version = Some("v1".to_string());
+    ctx.save_state(&state).unwrap();
+
+    let err = etabs_recover(&ctx, None).await.unwrap_err();
+    let conflict = err.downcast::<EtabsRecoverConflict>().unwrap();
+
+    assert!(conflict.file_was_modified);
+    assert_eq!(conflict.based_on_version.as_deref(), Some("v1"));
+}
+
+#[tokio::test]
+async fn etabs_recover_phase1_surfaces_file_was_modified_false() {
+    let temp = TempDir::new().unwrap();
+    let project_root = init_fixture(&temp).await;
+    let ctx = AppContext::new(&project_root).unwrap();
+
+    let mut state = ctx.load_state().unwrap();
+    let working = state.working_file.as_mut().unwrap();
+    let working_path = working.path.clone();
+    std::fs::write(&working_path, b"before-crash").unwrap();
+    let current_mtime: chrono::DateTime<chrono::Utc> = std::fs::metadata(&working_path)
+        .unwrap()
+        .modified()
+        .unwrap()
+        .into();
+    working.etabs_pid = Some(u32::MAX);
+    working.status = WorkingFileStatus::Orphaned;
+    working.last_known_mtime = Some(current_mtime + Duration::seconds(60));
+    working.based_on_version = Some("v1".to_string());
+    ctx.save_state(&state).unwrap();
+
+    let err = etabs_recover(&ctx, None).await.unwrap_err();
+    let conflict = err.downcast::<EtabsRecoverConflict>().unwrap();
+
+    assert!(!conflict.file_was_modified);
+    assert_eq!(conflict.based_on_version.as_deref(), Some("v1"));
 }
 
 #[tokio::test]

@@ -1,0 +1,375 @@
+# `ext-report` — Report Engine Design
+
+**Crate:** `crates/ext-report`  
+**Purpose:** Takes `CalcOutput` + SVG assets from `ext-render` and produces two output formats:
+1. **PDF report** — via Typst engine (formal client deliverable)
+2. **Excel workbook** — via `rust_xlsxwriter` (engineer review and QA)
+
+Both outputs draw from the same `CalcOutput` source. They diverge completely in how they render it.
+
+---
+
+## Output Format Comparison
+
+| Concern | PDF (Typst) | Excel (`rust_xlsxwriter`) |
+|---|---|---|
+| Primary consumer | Client / authority having jurisdiction | Structural engineer, QA reviewer |
+| Content | Formal report with narrative, charts, stamps | Raw tabular data, one sheet per check |
+| Values | Pre-computed, display-unit quantities | Pre-computed values only (no live formulas) |
+| Charts | Embedded SVG images from `ext-render` | Optional ECharts charts (or none) |
+| Formulas in cells | No | No — pre-computed only (see rationale below) |
+| Conditional formatting | n/a | Yes — DCR cells colored red if > 1.0 |
+| Typical use | Print, archive, submit | Review in Excel, cross-check by hand |
+
+### Rationale: No live Excel formulas
+
+The check logic lives in Rust (`ext-calc`). Replicating it as Excel formulas creates a second implementation that can silently diverge from the spec (e.g. if ρt or ϕ defaults change). Pre-computed values prevent this. Engineers who want to re-run with different parameters should re-run the Rust tool with updated config, not edit formulas in the workbook.
+
+Each sheet includes a header row citing the relevant code section and config values used, so the engineer can trace any number back to the spec.
+
+---
+
+## Module Structure
+
+```
+ext-report/src/
+├── lib.rs
+│
+├── pdf/
+│   ├── mod.rs
+│   ├── renderer.rs        ← ReportRenderer: write .typ + call typst compile
+│   ├── template.rs        ← build_typst_source(calc, svg_paths) → String
+│   └── sections/
+│       ├── cover.rs       ← project info, date, version, branch
+│       ├── summary.rs     ← CalcSummary table: check / status / message
+│       ├── modal.rs       ← modal table + threshold annotation
+│       ├── base_shear.rs  ← RSA/ELF table + direction ratios
+│       ├── drift.rs       ← drift envelope table + governing + SVG
+│       ├── displacement.rs ← displacement table + governing + SVG
+│       └── piers.rs       ← shear wind + seismic + axial tables + SVG
+│
+└── excel/
+    ├── mod.rs
+    ├── renderer.rs        ← ExcelRenderer: build Workbook, write sheets, save
+    ├── summary.rs         ← "Summary" sheet ← CalcSummary
+    ├── modal.rs           ← "Modal" sheet ← ModalOutput
+    ├── base_shear.rs      ← "BaseShear" sheet ← BaseShearOutput
+    ├── drift_wind.rs      ← "DriftWind" sheet ← DriftOutput (wind)
+    ├── drift_seismic.rs   ← "DriftSeismic" sheet ← DriftOutput (seismic)
+    ├── displacement.rs    ← "DispWind" sheet ← DisplacementOutput
+    ├── pier_shear_wind.rs ← "PierShearWind" sheet ← PierShearOutput
+    ├── pier_shear_seismic.rs ← "PierShearSeismic" sheet
+    └── pier_axial.rs      ← "PierAxial" sheet ← PierAxialOutput
+```
+
+---
+
+## PDF Pipeline (Typst)
+
+### Orchestration
+
+`ext-report` no longer drives `ext-render` through file-writing helper functions. The current render boundary is in-memory:
+
+```
+ext-api orchestration:
+  1. ext-render::render_all_svg(calc) -> HashMap<String, String>
+  2. ext-report::pdf::renderer::render(calc, svg_map, output_dir, report_name)
+  3. ext-report writes:
+       - report.typ
+       - assets/*.svg
+       - report.pdf
+```
+
+That ownership split matters:
+
+- `ext-render` returns SVG content
+- `ext-report` decides how those SVGs are named and written for Typst
+- `ext-api` owns the workflow and returns artifact paths to callers
+- `ext-tauri` is a desktop adapter over `ext-api`, not a second orchestration layer
+- the `CalcOutput` feeding this workflow comes from the persisted `calc_output.json` contract, not a desktop-only in-memory source
+
+### Typst integration approach
+
+**Shell out to `typst` CLI** (initial implementation):
+- User must have Typst installed (`typst --version` check on startup)
+- Simpler — no Rust API surface to manage
+- Consistent with the C# sidecar pattern already in the workspace
+
+**Future:** Embed `typst` as a Rust library crate when the public API stabilizes. This would allow single-binary distribution with no external dependency.
+
+### SVG file naming convention
+
+Typst templates reference SVG files by fixed names derived from the keys returned by `ext-render::render_all_svg(calc)`. `ext-report` normalizes those keys into the `assets/` subdirectory of the report output directory:
+
+```
+output/
+├── report.pdf
+├── report.typ          ← intermediate, can be kept for debugging
+└── assets/
+    ├── drift_wind.svg
+    ├── drift_seismic.svg
+    ├── displacement_wind.svg
+    ├── pier_shear_wind.svg
+    ├── pier_shear_seismic.svg
+    ├── pier_axial.svg
+    └── modal.svg
+```
+
+### Typst template structure
+
+```typst
+// Generated by ext-report — do not edit manually
+#set document(title: "Structural Check Report", author: "EtabExtension")
+#set page(width: 17in, height: 11in, margin: (x: 0.5in, y: 0.5in))
+
+// Cover
+#include "sections/cover.typ"
+
+// Summary
+#include "sections/summary.typ"
+
+// Check sections (only included if check was enabled)
+#if modal_enabled { include "sections/modal.typ" }
+#if drift_wind_enabled { include "sections/drift_wind.typ" }
+// ...
+```
+
+The Week 7-8 baseline is tabloid landscape. A4 examples from older notes are superseded and should not be used for sizing charts, section breaks, or desktop preview estimates.
+
+---
+
+## Excel Pipeline (rust_xlsxwriter)
+
+### Orchestration
+
+```
+ext-report::excel::renderer::render(calc, output_path):
+  1. Create Workbook
+  2. Write sheets in order:
+     Summary → Modal → BaseShear → DriftWind → DriftSeismic
+     → DispWind → PierShearWind → PierShearSeismic → PierAxial
+     (skip if check output is None)
+  3. workbook.save(output_path)
+```
+
+### Per-sheet structure
+
+Every sheet follows the same pattern:
+
+```
+Row 0:  Sheet title  (bold, larger font)
+Row 1:  Code reference  (e.g. "ACI 318-14 §11.5.4.3")
+Row 2:  Parameters used  (e.g. "ϕ = 0.75,  αc = 2.0,  fy = 60 ksi,  ρt = 0.0025")
+Row 3:  [blank]
+Row 4:  Column headers  (bold, background fill)
+Row 5+: Data rows
+        [blank]
+Last:   Governing row (bold highlight)
+        Overall: PASS / FAIL (colored cell)
+```
+
+### Sheet specifications
+
+#### Summary Sheet
+
+| Column | Content |
+|---|---|
+| Check | camelCase key from SummaryLine |
+| Status | pass / fail / pending |
+| Message | human-readable detail |
+
+Cell fill: green for "pass", red for "fail", yellow for "pending".
+
+#### Modal Sheet
+
+| Column | Content |
+|---|---|
+| Mode | integer |
+| Period (s) | period_sec |
+| UX | ux participation ratio |
+| UY | uy |
+| ΣUX | cumulative sum_ux |
+| ΣUY | cumulative sum_uy |
+| Rz | rz |
+| ΣRz | sum_rz |
+
+Row highlighted where ΣUX or ΣUY first crosses threshold.
+
+#### Base Shear Sheet
+
+Direction summary block (X then Y):
+
+| Column | Content |
+|---|---|
+| RSA Case | string |
+| ELF Case | string |
+| V_RSA | quantity value + unit |
+| V_ELF | quantity value + unit |
+| Ratio | ratio |
+| Status | PASS / FAIL |
+
+Followed by the full review table (`BaseReactionCheckRow`).
+
+#### Drift Sheets (Wind and Seismic — separate sheets)
+
+Header block: allowable drift ratio, load cases used.
+
+| Column | Content |
+|---|---|
+| Story | story name |
+| Group | group_name |
+| Load Case | output_case |
+| Max Drift X+ | max_drift_x_pos |
+| Max Drift X- | abs(max_drift_x_neg) |
+| Max Drift Y+ | max_drift_y_pos |
+| Max Drift Y- | abs(max_drift_y_neg) |
+| Governing DCR | dcr |
+| Status | PASS / FAIL |
+
+DCR column: conditional format — red fill if > 1.0.  
+Governing row highlighted in bold.
+
+#### Displacement Sheet
+
+Header block: disp_limit_h divisor, building height, computed limit.
+
+| Column | Content |
+|---|---|
+| Story | |
+| Group | |
+| Load Case | |
+| Max Disp X+ | in display units |
+| Max Disp X- | |
+| Max Disp Y+ | |
+| Max Disp Y- | |
+
+Governing block at bottom: displacement, limit, DCR, PASS/FAIL.
+
+#### Pier Shear Sheets (Wind and Seismic — separate sheets)
+
+Header block: ϕ, αc, fy, ρt, fc default.
+
+| Column | Content |
+|---|---|
+| Pier | pier_label |
+| Story | story |
+| Combo | combo |
+| Vu | vu.value (unit in header) |
+| Acv | acv.value (unit in header) |
+| fc' (ksi) | fc_ksi |
+| Vn | vn.value |
+| ϕVn | phi_vn.value |
+| DCR | dcr |
+| Status | PASS / FAIL |
+| Material | material |
+| Section | section_id |
+
+DCR column: red fill if > 1.0.  
+Governing row highlighted.
+
+#### Pier Axial Sheet
+
+Header block: ϕ_axial, formula note (simplified — no rebar).
+
+| Column | Content |
+|---|---|
+| Pier | |
+| Story | |
+| Combo | |
+| Pu | pu.value |
+| Ag | ag.value |
+| ϕPo | phi_po.value |
+| fa (ksi) | fa.value |
+| fa_ratio | fa_ratio |
+| DCR | dcr |
+| Status | PASS / FAIL |
+| fc' (ksi) | fc_ksi |
+| Material | |
+
+---
+
+## Public API
+
+```rust
+// In ext-report/src/lib.rs
+pub use pdf::renderer::render_pdf;
+pub use excel::renderer::render_excel;
+
+pub struct ReportPaths {
+    pub pdf: PathBuf,
+    pub typ: Option<PathBuf>,
+    pub excel: Option<PathBuf>,
+    pub assets_dir: PathBuf,
+    pub assets: Vec<PathBuf>,
+}
+
+/// Render the PDF report from an already-rendered SVG map.
+pub fn render_pdf(
+    calc: &CalcOutput,
+    svg_map: &HashMap<String, String>,
+    output_dir: &Path,
+    report_name: &str,
+) -> Result<ReportPaths>;
+
+/// Optional second stage for engineer-review spreadsheets.
+pub fn render_excel(
+    calc: &CalcOutput,
+    output_path: &Path,
+) -> Result<PathBuf>;
+```
+
+---
+
+## Dependency Notes
+
+| Dependency | Use |
+|---|---|
+| `rust_xlsxwriter` | Excel workbook generation (already proven in POC) |
+| `ext-render` | SVG generation (called by PDF pipeline) |
+| `ext-calc` | `CalcOutput` types |
+| Typst CLI | PDF compilation — external, must be on PATH |
+
+**Future:** When `typst` crate API stabilizes, replace the CLI shell-out with the library for single-binary distribution.
+
+---
+
+## Tauri / App Integration Contract
+
+The report doc should be specific enough for the desktop implementation to proceed without guessing.
+
+### Backend contract
+
+- `ext-api` loads the persisted `calc_output.json` artifact for the active project/version
+- `ext-api` calls `ext-render::render_all_svg(calc)` first
+- `ext-api` passes the returned `svg_map` into `ext-report::render_pdf(...)`
+- `ext-report` writes the Typst source and SVG assets under a caller-provided output directory
+- `ext-report` returns `ReportPaths`; it does not open the PDF itself
+- `ext-tauri` calls `ext-api` and forwards the resulting DTOs to the desktop frontend
+
+Desktop in-memory caching may exist, but only as a mirror of the persisted artifact already loaded through `ext-api`.
+
+### Frontend contract
+
+The desktop report panel should work against real artifact DTOs instead of mock report cards:
+
+| UI action | Backend command | Response |
+|---|---|---|
+| Generate report | `generate_report_artifacts` | `ReportArtifactDto` |
+| Open PDF | `open_report_artifact` | success/error only |
+| Open asset folder | `open_report_artifact` | success/error only |
+
+`apps/desktop` should not parse SVG strings itself for report generation. It only initiates generation and displays returned artifact paths and statuses.
+
+---
+
+## What ext-report Does NOT Do
+
+- Does not perform any structural calculations — all values come from `CalcOutput`
+- Does not generate chart data for the Tauri frontend — interactive chart HTML and report SVG strings come from `ext-render`
+- Does not store configuration — all config values it needs are already embedded in `CalcOutput.meta`
+- Does not ask `ext-render` to write files — it receives SVG strings, writes report assets, and embeds the written files
+
+---
+
+*Last updated: 2026-04-05*  
+*Related: `crates/ext-render/EXT_RENDER_DESIGN.md`, `crates/ext-calc/EXT_CALC_SPEC.md`*

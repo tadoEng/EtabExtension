@@ -5,7 +5,7 @@ mod args;
 mod commands;
 mod output;
 
-use args::{Cli, Command};
+use args::{Cli, Command, EtabsSubcommand};
 use output::OutputChannel;
 
 #[tokio::main]
@@ -20,6 +20,16 @@ async fn main() -> Result<()> {
         }
         Command::Commit(args) => {
             commands::commit::execute(&out, cli.project_path.as_ref(), args).await
+        }
+        Command::Analyze(args) => {
+            commands::analyze::execute(&out, cli.project_path.as_ref(), args).await
+        }
+        Command::Calc(args) => commands::calc::execute(&out, cli.project_path.as_ref(), args).await,
+        Command::Render(args) => {
+            commands::render::execute(&out, cli.project_path.as_ref(), args).await
+        }
+        Command::Report(args) => {
+            commands::report::execute(&out, cli.project_path.as_ref(), args).await
         }
         Command::Log(args) => commands::log::execute(&out, cli.project_path.as_ref(), args).await,
         Command::Show(args) => commands::show::execute(&out, cli.project_path.as_ref(), args).await,
@@ -36,6 +46,23 @@ async fn main() -> Result<()> {
             commands::stash::execute(&out, cli.project_path.as_ref(), args).await
         }
         Command::Diff(args) => commands::diff::execute(&out, cli.project_path.as_ref(), args).await,
+        Command::Etabs(args) => match args.command {
+            EtabsSubcommand::Open(args) => {
+                commands::etabs_open::execute(&out, cli.project_path.as_ref(), args).await
+            }
+            EtabsSubcommand::Close(args) => {
+                commands::etabs_close::execute(&out, cli.project_path.as_ref(), args).await
+            }
+            EtabsSubcommand::Status => {
+                commands::etabs_status::execute(&out, cli.project_path.as_ref()).await
+            }
+            EtabsSubcommand::Unlock => {
+                commands::etabs_unlock::execute(&out, cli.project_path.as_ref()).await
+            }
+            EtabsSubcommand::Recover => {
+                commands::etabs_recover::execute(&out, cli.project_path.as_ref()).await
+            }
+        },
     }
     .with_context(|| "Command failed".to_string())
 }

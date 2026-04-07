@@ -211,6 +211,10 @@ async fn full_vcs_cycle_no_e2k() {
     assert_eq!(diff_result.from_ref, "main/v1");
     assert_eq!(diff_result.to_ref, "steel-columns/v2");
     assert!(diff_result.no_e2k_warning.is_some());
+    assert!(
+        diff_result.diff_text.is_empty(),
+        "Expected empty diff text for --no-e2k commits"
+    );
 }
 
 #[tokio::test]

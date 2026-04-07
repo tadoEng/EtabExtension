@@ -8,6 +8,7 @@
 // AI keys (ai.apiKey) MUST ONLY appear in config.local.toml.
 // config.toml is git-tracked and pushed to OneDrive — never write secrets there.
 
+pub mod calc;
 pub mod extract;
 pub mod git;
 pub mod llm;
@@ -15,6 +16,7 @@ pub mod onedrive;
 pub mod paths;
 pub mod project;
 
+pub use calc::CalcConfig;
 pub use extract::{ExtractConfig, TableConfig, TableSelections};
 pub use git::GitConfig;
 pub use llm::LlmConfig;
@@ -42,6 +44,9 @@ pub struct Config {
     pub extract: ExtractConfig,
 
     #[serde(default)]
+    pub calc: CalcConfig,
+
+    #[serde(default)]
     pub llm: LlmConfig,
 
     #[serde(default)]
@@ -61,6 +66,9 @@ struct SharedConfigFile {
 
     #[serde(default)]
     pub extract: ExtractConfig,
+
+    #[serde(default)]
+    pub calc: CalcConfig,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -96,6 +104,7 @@ impl Config {
         Ok(Self {
             project: base.project.merge(local.project),
             extract: base.extract,
+            calc: base.calc,
             llm: local.llm,
             git: local.git,
             paths: local.paths,
@@ -109,8 +118,9 @@ impl Config {
             .with_context(|| format!("Failed to create config dir: {}", config_dir.display()))?;
 
         let shared = SharedConfigFile {
-            project: config.project.clone(),
+            project: config.project.shared_only(),
             extract: config.extract.clone(),
+            calc: config.calc.clone(),
         };
         Self::write_file(&config_dir.join(CONFIG_FILE), &shared)
     }
@@ -121,7 +131,7 @@ impl Config {
             .with_context(|| format!("Failed to create config dir: {}", config_dir.display()))?;
 
         let local = LocalConfigFile {
-            project: config.project.clone(),
+            project: config.project.local_only(),
             llm: config.llm.clone(),
             git: config.git.clone(),
             paths: config.paths.clone(),
@@ -203,5 +213,88 @@ impl Config {
                 candidate.exists().then_some(candidate)
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn sample_config() -> Config {
+        let mut config = Config::default();
+        config.project.name = Some("Tower A".into());
+        config.project.sidecar_path = Some("C:\\sidecar\\etab-cli.exe".into());
+        config.project.units = Some("kip-ft-F".into());
+        config.calc.code = Some("ACI318-14".into());
+        config.extract.tables.group_assignments = Some(TableConfig::default());
+        config
+    }
+
+    #[test]
+    fn write_shared_omits_local_only_project_fields() {
+        let dir = tempdir().unwrap();
+        let config = sample_config();
+
+        Config::write_shared(dir.path(), &config).unwrap();
+        let text = std::fs::read_to_string(dir.path().join(CONFIG_DIR).join(CONFIG_FILE)).unwrap();
+
+        assert!(text.contains("name = \"Tower A\""));
+        assert!(text.contains("[calc]"));
+        assert!(!text.contains("sidecar-path"));
+        assert!(!text.contains("units = "));
+    }
+
+    #[test]
+    fn write_local_only_persists_local_project_fields() {
+        let dir = tempdir().unwrap();
+        let config = sample_config();
+
+        Config::write_local(dir.path(), &config).unwrap();
+        let text =
+            std::fs::read_to_string(dir.path().join(CONFIG_DIR).join(CONFIG_LOCAL_FILE)).unwrap();
+
+        assert!(text.contains("sidecar-path"));
+        assert!(text.contains("units = \"kip-ft-F\""));
+        assert!(!text.contains("name = \"Tower A\""));
+    }
+
+    #[test]
+    fn load_merges_legacy_shared_project_fields_with_local_override() {
+        let dir = tempdir().unwrap();
+        let config_dir = dir.path().join(CONFIG_DIR);
+        std::fs::create_dir_all(&config_dir).unwrap();
+
+        std::fs::write(
+            config_dir.join(CONFIG_FILE),
+            r#"
+[project]
+name = "Tower A"
+sidecar-path = "legacy-sidecar.exe"
+units = "kN-m-C"
+
+[calc]
+code = "ACI318-14"
+"#,
+        )
+        .unwrap();
+
+        std::fs::write(
+            config_dir.join(CONFIG_LOCAL_FILE),
+            r#"
+[project]
+units = "kip-ft-F"
+"#,
+        )
+        .unwrap();
+
+        let loaded = Config::load(dir.path()).unwrap();
+        assert_eq!(loaded.project.name.as_deref(), Some("Tower A"));
+        assert_eq!(
+            loaded.project.sidecar_path.as_deref(),
+            Some("legacy-sidecar.exe")
+        );
+        assert_eq!(loaded.project.units.as_deref(), Some("kip-ft-F"));
+        assert_eq!(loaded.calc.code_or_default(), "ACI318-14");
     }
 }

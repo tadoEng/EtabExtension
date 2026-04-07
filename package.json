@@ -14,7 +14,7 @@
     "tauri": "tauri"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.9.6",
+    "@tauri-apps/cli": "^2.10.1",
     "cross-env": "^10.1.0"
   }
 }

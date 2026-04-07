@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Committed config — shared across all machines via OneDrive.
-/// Never put secrets or machine-specific paths here.
+/// Project config supports legacy reads from shared config, but new writes split
+/// shared vs local fields explicitly.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ProjectConfig {
@@ -11,11 +11,11 @@ pub struct ProjectConfig {
     pub name: Option<String>,
 
     /// Relative or absolute path to etab-cli.exe.
-    /// Override per-machine via config.local.toml or ETABS_SIDECAR_PATH env.
+    /// Machine-local going forward; shared reads are tolerated for compatibility.
     pub sidecar_path: Option<String>,
 
     /// Default unit preset for sidecar operations.
-    /// e.g. "kip-in-F", "kN-m-C"
+    /// Machine-local going forward; shared reads are tolerated for compatibility.
     pub units: Option<String>,
 }
 
@@ -30,6 +30,22 @@ impl ProjectConfig {
     }
 
     pub fn units_or_default(&self) -> &str {
-        self.units.as_deref().unwrap_or("kip-in-F")
+        self.units.as_deref().unwrap_or("kip-ft-F")
+    }
+
+    pub fn shared_only(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            sidecar_path: None,
+            units: None,
+        }
+    }
+
+    pub fn local_only(&self) -> Self {
+        Self {
+            name: None,
+            sidecar_path: self.sidecar_path.clone(),
+            units: self.units.clone(),
+        }
     }
 }

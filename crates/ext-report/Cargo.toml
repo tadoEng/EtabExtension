@@ -1,0 +1,20 @@
+[package]
+name = "ext-report"
+version = "0.1.0"
+repository.workspace = true
+edition.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+ext-calc = { path = "../ext-calc" }
+ext-db = { path = "../ext-db" }
+ext-render = { path = "../ext-render" }
+serde_json = { workspace = true }
+typst = { workspace = true }
+typst-pdf = { workspace = true }
+walkdir = "2.5.0"
+
+[lints]
+workspace = true

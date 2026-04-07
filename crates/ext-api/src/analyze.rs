@@ -1,15 +1,38 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use ext_core::{
     sidecar::{ExtractResultsRequest, RunAnalysisData, TableSelection, TableSelections},
+    vcs::{current_branch, git_add, git_commit},
     version::{
-        AnalysisSummary,
+        AnalysisSummary, VersionManifest,
         manifest::{BaseReactionSummary, DriftSummary, ModalSummary},
     },
 };
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-use crate::context::AppContext;
+use crate::{
+    context::AppContext,
+    guards::{Command, GuardOutcome, check_state_guard},
+    status::resolve_working_file_status,
+};
+
+#[derive(Debug, Clone, Default)]
+pub struct AnalyzeOptions {
+    pub cases: Option<Vec<String>>,
+    pub force: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyzeResult {
+    pub version_id: String,
+    pub branch: String,
+    pub results_dir: PathBuf,
+    pub elapsed_ms: u64,
+    pub warning: Option<String>,
+    pub already_analyzed: bool,
+}
 
 #[derive(Debug, Clone)]
 pub struct AnalyzeSnapshotOutcome {
@@ -66,6 +89,82 @@ pub async fn analyze_snapshot(
         summary_path: version_dir.join("summary.json"),
         results_dir,
         extract_warning,
+    })
+}
+
+pub async fn analyze_version(
+    ctx: &AppContext,
+    version_ref: &str,
+    opts: AnalyzeOptions,
+) -> Result<AnalyzeResult> {
+    let t0 = std::time::Instant::now();
+    let state = ctx.load_state()?;
+    let status = resolve_working_file_status(&state, &ctx.project_root);
+    match check_state_guard(Command::Analyze, &status) {
+        GuardOutcome::Block(msg) => bail!("{msg}"),
+        GuardOutcome::Warn(_) | GuardOutcome::Allow => {}
+    }
+
+    let ext_dir = ctx.ext_dir();
+    let current = current_branch(&ext_dir)?;
+    let (branch, version_id) = if let Some((branch, version_id)) = version_ref.split_once('/') {
+        (branch.to_string(), version_id.to_string())
+    } else {
+        (current, version_ref.to_string())
+    };
+
+    let version_dir = ext_dir.join(&branch).join(&version_id);
+    if !version_dir.exists() {
+        bail!(
+            "✗ Version '{branch}/{version_id}' not found\n  Run: ext log to see available versions"
+        );
+    }
+    let edb = version_dir.join("model.edb");
+    if !edb.exists() {
+        bail!("✗ model.edb missing in version '{branch}/{version_id}'");
+    }
+
+    let mut manifest = VersionManifest::read_from(&version_dir)
+        .with_context(|| format!("Failed to read manifest for '{branch}/{version_id}'"))?;
+    if manifest.is_analyzed && !opts.force {
+        return Ok(AnalyzeResult {
+            version_id,
+            branch,
+            results_dir: version_dir.join("results"),
+            elapsed_ms: t0.elapsed().as_millis() as u64,
+            warning: Some("Version is already analyzed. Use --force to re-run.".to_string()),
+            already_analyzed: true,
+        });
+    }
+
+    let outcome = analyze_snapshot(ctx, &version_dir, opts.cases.as_deref()).await?;
+
+    manifest.is_analyzed = true;
+    manifest
+        .write_to(&version_dir)
+        .with_context(|| format!("Failed to rewrite manifest for '{branch}/{version_id}'"))?;
+
+    let manifest_path = version_dir.join("manifest.json");
+    git_add(&ext_dir, &[&manifest_path, &outcome.summary_path])
+        .with_context(|| "Failed to stage analysis metadata")?;
+
+    let author = ctx.config.git.author_or_default();
+    let email = ctx.config.git.email_or_default();
+    git_commit(
+        &ext_dir,
+        &format!("ext: analysis results {}", version_id),
+        author,
+        email,
+    )
+    .with_context(|| "Failed to commit analysis results")?;
+
+    Ok(AnalyzeResult {
+        version_id,
+        branch,
+        results_dir: outcome.results_dir,
+        elapsed_ms: t0.elapsed().as_millis() as u64,
+        warning: outcome.extract_warning,
+        already_analyzed: false,
     })
 }
 

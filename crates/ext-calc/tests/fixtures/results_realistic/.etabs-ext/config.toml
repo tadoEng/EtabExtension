@@ -1,0 +1,73 @@
+[calc]
+code = "ACI318-14"
+occupancy-category = "II"
+modal-case = "Modal-Rizt"
+drift-tracking-groups = ["Joint48"]
+
+[calc.modal]
+min-mass-participation = 0.90
+display-mode-limit = 20
+
+[calc.base-shear]
+elf-case-x = "ELF_X"
+elf-case-y = "ELF_Y"
+rsa-case-x = "RSA_X"
+rsa-case-y = "RSA_Y"
+rsa-scale-min = 1.0
+
+[[calc.base-shear.pie-groups]]
+label = "Dead"
+load-cases = ["Dead"]
+
+[[calc.base-shear.pie-groups]]
+label = "SDL"
+load-cases = ["SDL"]
+
+[[calc.base-shear.pie-groups]]
+label = "Live_red"
+load-cases = ["Live_red"]
+
+[[calc.base-shear.pie-groups]]
+label = "Live_unred"
+load-cases = ["Live_unred"]
+
+[calc.drift-wind]
+load-cases = ["Wind_10yr_Diagonal",]
+drift-limit = 0.0025
+
+[calc.drift-seismic]
+# The realistic fixture currently contains wind-only drift rows, so seismic
+# drift checks use the same extracted case until dedicated seismic drift
+# fixtures are added.
+load-cases = ["Wind_10yr_Diagonal"]
+drift-limit = 0.020
+
+[calc.displacement-wind]
+load-cases = ["Wind_10yr_Diagonal"]
+disp-limit-h = 400
+
+[calc.pier-shear-wind]
+# Wind LRFD strength combos — ϕ = 0.75 (ACI 318-14 §9.3.2.3)
+# NOTE: This fixture only contains EVN_LRFD_EQ in pier_forces.parquet.
+# In a real project config, replace with the actual wind LRFD combo name
+# (e.g. "EVN_LRFD_Wind") once that combo is extracted from ETABS.
+load-combos   = ["EVN_LRFD_EQ"]
+phi-v         = 0.75
+alpha-c       = 2.0    # psi-based coefficient for hw/lw ≥ 2.0 (ACI 318-14 §11.5.4.3)
+fy-ksi        = 60.0   # Grade 60
+rho-t         = 0.0025 # ACI 318-14 §11.6 minimum horizontal reinforcement ratio
+fc-default-ksi = 8.0   # fallback f'c when material join misses a pier/story
+
+[calc.pier-shear-seismic]
+# Seismic LRFD strength combos — ϕ = 0.60 (ACI 318-14 §21.2.4.1)
+load-combos   = ["EVN_LRFD_EQ"]
+phi-v         = 0.60
+alpha-c       = 2.0
+fy-ksi        = 60.0
+rho-t         = 0.0025
+fc-default-ksi = 8.0
+
+[calc.pier-axial]
+# Gravity + seismic combos for axial stress check (ACI 318-14 §22.4)
+load-combos = ["EVN_LRFD_EQ"]
+phi-axial   = 0.65   # ACI 318-14 §9.3.2.2 tied walls
