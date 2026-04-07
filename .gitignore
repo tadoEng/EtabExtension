@@ -24,3 +24,4 @@ EOF
 Cargo.lock
 pnpm-lock.yaml
 
+.vs/slnx.sqlite

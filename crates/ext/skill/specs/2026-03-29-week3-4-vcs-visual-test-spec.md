@@ -22,9 +22,9 @@ Primary implementation reference: `2026-03-29-week3-4-vcs-spec.md`.
 
 Use the exact environment captured during the deferred visual pass:
 
-- Sidecar: `D:\repo\EtabExtension.CLI\dist\etab-cli-x86_64-pc-windows-msvc.exe`
-- Model: `D:\repo\bookmarkr\Sample.edb`
-- Workspace: `D:\repo\bookmarkr\sidecar_test_output`
+- Sidecar: `C:\Work\Code\tadoEng\EtabExtension.CLI\dist\etab-cli-x86_64-pc-windows-msvc.exe`
+- Model: `C:\Work\Code\tadoEng\TestModel\1350_FS_OPT 4E_v1.0_MCE.edb`
+- Workspace: `C:\Work\Code\tadoEng\TestModel\sidecar_test_output`
 
 ---
 
