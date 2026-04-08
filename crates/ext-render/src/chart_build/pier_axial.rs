@@ -19,7 +19,10 @@ pub fn build(output: &PierAxialOutput, config: &RenderConfig) -> NamedChartSpec 
     // Group values by pier label: pier → { story → fa (ksi) }
     let mut pier_map: Vec<(String, HashMap<String, f64>)> = Vec::new();
     for row in &output.piers {
-        if let Some((_, map)) = pier_map.iter_mut().find(|(label, _)| label == &row.pier_label) {
+        if let Some((_, map)) = pier_map
+            .iter_mut()
+            .find(|(label, _)| label == &row.pier_label)
+        {
             // Keep the governing (max absolute) value per story per pier.
             let entry = map.entry(row.story.clone()).or_insert(row.fa.value);
             if row.fa.value.abs() > entry.abs() {
@@ -34,8 +37,7 @@ pub fn build(output: &PierAxialOutput, config: &RenderConfig) -> NamedChartSpec 
 
     // Build one Line series per pier.
     let palette = [
-        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
-        "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
     ];
     let mut series: Vec<CartesianSeries> = pier_map
         .iter()

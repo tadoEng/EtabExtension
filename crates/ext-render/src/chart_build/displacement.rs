@@ -26,7 +26,10 @@ pub fn build(displacement: &DisplacementOutput, config: &RenderConfig) -> NamedC
             width: config.width,
             height: config.height,
             kind: ChartKind::Cartesian {
-                categories: story_values.iter().map(|(story, _)| story.clone()).collect(),
+                categories: story_values
+                    .iter()
+                    .map(|(story, _)| story.clone())
+                    .collect(),
                 swap_axes: true,
                 series: vec![
                     CartesianSeries {

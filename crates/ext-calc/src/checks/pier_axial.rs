@@ -53,8 +53,11 @@ pub fn run(
 
     // Group forces by (story, pier, combo) and find the maximum compression demand.
     // Compression is negative per ETABS convention, so minimum P = largest compression.
-    let selected_combos: std::collections::HashSet<&str> =
-        axial_params.load_combos.iter().map(String::as_str).collect();
+    let selected_combos: std::collections::HashSet<&str> = axial_params
+        .load_combos
+        .iter()
+        .map(String::as_str)
+        .collect();
 
     // Store (max_abs_p, raw_p_for_min) per group.
     // We want the most compressive (most negative) P value as the demand.
@@ -106,26 +109,26 @@ pub fn run(
 
         // Nominal squash load (simplified, no rebar contribution):
         //   Po [kip] = 0.85 × fc' [ksi] × Ag [in²]
-        let po_kip     = 0.85 * fc_ksi * ag_in2;
+        let po_kip = 0.85 * fc_ksi * ag_in2;
         let phi_po_kip = phi_axial * po_kip;
 
-        let dcr      = pu_kip / phi_po_kip;
-        let fa_ksi   = pu_kip / ag_in2;
+        let dcr = pu_kip / phi_po_kip;
+        let fa_ksi = pu_kip / ag_in2;
         let fa_ratio = fa_ksi / (0.85 * fc_ksi);
 
         results.push(PierAxialResult {
             pier_label: pier.clone(),
-            story:      story.clone(),
-            combo:      combo.clone(),
-            pu:         uc.qty_force(pu_kip),
-            ag:         uc.qty_area_in2(ag_in2),
-            phi_po:     uc.qty_force(phi_po_kip),
-            fa:         crate::output::Quantity::new(fa_ksi, "ksi"),
+            story: story.clone(),
+            combo: combo.clone(),
+            pu: uc.qty_force(pu_kip),
+            ag: uc.qty_area_in2(ag_in2),
+            phi_po: uc.qty_force(phi_po_kip),
+            fa: crate::output::Quantity::new(fa_ksi, "ksi"),
             fa_ratio,
             dcr,
-            pass:       dcr <= 1.0,
+            pass: dcr <= 1.0,
             fc_ksi,
-            material:   section.material.clone(),
+            material: section.material.clone(),
         });
     }
 
@@ -135,13 +138,21 @@ pub fn run(
 
     let governing = results
         .iter()
-        .max_by(|a, b| a.dcr.partial_cmp(&b.dcr).unwrap_or(std::cmp::Ordering::Equal))
+        .max_by(|a, b| {
+            a.dcr
+                .partial_cmp(&b.dcr)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
         .cloned()
         .expect("results is non-empty");
 
     let pass = results.iter().all(|r| r.pass);
 
-    Ok(PierAxialOutput { piers: results, governing, pass })
+    Ok(PierAxialOutput {
+        piers: results,
+        governing,
+        pass,
+    })
 }
 
 #[cfg(test)]
@@ -172,37 +183,61 @@ mod tests {
 
     #[test]
     fn pier_axial_produces_results_and_governing_is_max_dcr() {
-        let dir      = fixture_dir();
-        let forces   = load_pier_forces(&dir).unwrap();
+        let dir = fixture_dir();
+        let forces = load_pier_forces(&dir).unwrap();
         let sections = load_pier_sections(&dir).unwrap();
-        let mat      = load_material_properties(&dir).unwrap();
-        let params   = fixture_params();
-        let fc_map   = build_pier_fc_map(&sections, &mat, params.pier_shear_seismic.fc_default_ksi);
+        let mat = load_material_properties(&dir).unwrap();
+        let params = fixture_params();
+        let fc_map = build_pier_fc_map(&sections, &mat, params.pier_shear_seismic.fc_default_ksi);
 
         let output = run(&forces, &sections, &fc_map, &params).unwrap();
 
         assert!(!output.piers.is_empty());
         assert!(output.governing.dcr > 0.0);
         // Governing must be the maximum DCR across all results.
-        let max_dcr = output.piers.iter().map(|r| r.dcr).fold(f64::NEG_INFINITY, f64::max);
+        let max_dcr = output
+            .piers
+            .iter()
+            .map(|r| r.dcr)
+            .fold(f64::NEG_INFINITY, f64::max);
         assert!((output.governing.dcr - max_dcr).abs() < 1e-9);
     }
 
     #[test]
     fn pier_axial_all_pu_and_phi_po_are_positive() {
-        let dir      = fixture_dir();
-        let forces   = load_pier_forces(&dir).unwrap();
+        let dir = fixture_dir();
+        let forces = load_pier_forces(&dir).unwrap();
         let sections = load_pier_sections(&dir).unwrap();
-        let mat      = load_material_properties(&dir).unwrap();
-        let params   = fixture_params();
-        let fc_map   = build_pier_fc_map(&sections, &mat, params.pier_shear_seismic.fc_default_ksi);
+        let mat = load_material_properties(&dir).unwrap();
+        let params = fixture_params();
+        let fc_map = build_pier_fc_map(&sections, &mat, params.pier_shear_seismic.fc_default_ksi);
 
         let output = run(&forces, &sections, &fc_map, &params).unwrap();
         for r in &output.piers {
-            assert!(r.pu.value >= 0.0, "Pu must be non-negative: {}/{}", r.pier_label, r.story);
-            assert!(r.phi_po.value > 0.0, "ϕPo must be positive: {}/{}", r.pier_label, r.story);
-            assert!(r.ag.value > 0.0, "Ag must be positive: {}/{}", r.pier_label, r.story);
-            assert!(r.fa_ratio >= 0.0, "fa_ratio must be non-negative: {}/{}", r.pier_label, r.story);
+            assert!(
+                r.pu.value >= 0.0,
+                "Pu must be non-negative: {}/{}",
+                r.pier_label,
+                r.story
+            );
+            assert!(
+                r.phi_po.value > 0.0,
+                "ϕPo must be positive: {}/{}",
+                r.pier_label,
+                r.story
+            );
+            assert!(
+                r.ag.value > 0.0,
+                "Ag must be positive: {}/{}",
+                r.pier_label,
+                r.story
+            );
+            assert!(
+                r.fa_ratio >= 0.0,
+                "fa_ratio must be non-negative: {}/{}",
+                r.pier_label,
+                r.story
+            );
         }
     }
 
@@ -221,14 +256,14 @@ mod tests {
 
     #[test]
     fn pier_axial_errors_when_combo_missing() {
-        let dir      = fixture_dir();
-        let forces   = load_pier_forces(&dir).unwrap();
+        let dir = fixture_dir();
+        let forces = load_pier_forces(&dir).unwrap();
         let sections = load_pier_sections(&dir).unwrap();
-        let mat      = load_material_properties(&dir).unwrap();
+        let mat = load_material_properties(&dir).unwrap();
         let mut config = Config::load(&fixture_dir()).unwrap();
         config.calc.pier_axial.load_combos = vec!["BAD_COMBO".into()];
-        let params   = CodeParams::from_config(&config).unwrap();
-        let fc_map   = build_pier_fc_map(&sections, &mat, params.pier_shear_seismic.fc_default_ksi);
+        let params = CodeParams::from_config(&config).unwrap();
+        let fc_map = build_pier_fc_map(&sections, &mat, params.pier_shear_seismic.fc_default_ksi);
 
         assert!(run(&forces, &sections, &fc_map, &params).is_err());
     }

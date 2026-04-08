@@ -25,7 +25,12 @@ fn build_pie_groups(base_shear: &BaseShearOutput, config: &RenderConfig) -> Vec<
             let total = base_shear
                 .rows
                 .iter()
-                .filter(|row| group.load_cases.iter().any(|case_name| case_name == &row.output_case))
+                .filter(|row| {
+                    group
+                        .load_cases
+                        .iter()
+                        .any(|case_name| case_name == &row.output_case)
+                })
                 .map(|row| row.fz_kip.abs())
                 .sum::<f64>();
             if total > 0.0 {
@@ -39,7 +44,10 @@ fn build_pie_groups(base_shear: &BaseShearOutput, config: &RenderConfig) -> Vec<
 
     let mut fallback: Vec<(String, f64)> = Vec::new();
     for row in &base_shear.rows {
-        if let Some((_, total)) = fallback.iter_mut().find(|(name, _)| name == &row.output_case) {
+        if let Some((_, total)) = fallback
+            .iter_mut()
+            .find(|(name, _)| name == &row.output_case)
+        {
             *total += row.fz_kip.abs();
         } else {
             fallback.push((row.output_case.clone(), row.fz_kip.abs()));

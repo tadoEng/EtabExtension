@@ -42,7 +42,8 @@ fn preview_report(options: PreviewOptions) -> Result<()> {
 
     let version_id = resolve_version_id(&results_dir, options.version_id.as_deref());
     let branch = resolve_branch(&results_dir, options.branch.as_deref());
-    let calc_output = load_or_build_calc_output(&input_path, &results_dir, &config, &version_id, &branch)?;
+    let calc_output =
+        load_or_build_calc_output(&input_path, &results_dir, &config, &version_id, &branch)?;
     let rendered = render_all_svg(&calc_output, &build_render_config(&config))?;
     let charts = rendered
         .assets
@@ -52,7 +53,11 @@ fn preview_report(options: PreviewOptions) -> Result<()> {
             caption: asset.caption.clone(),
         })
         .collect::<Vec<_>>();
-    let document = build_report_document(&calc_output, &charts, build_project_meta(&config, &version_id, &branch));
+    let document = build_report_document(
+        &calc_output,
+        &charts,
+        build_project_meta(&config, &version_id, &branch),
+    );
     let svg_map = rendered
         .assets
         .into_iter()
@@ -78,7 +83,9 @@ fn load_or_build_calc_output(
     version_id: &str,
     branch: &str,
 ) -> Result<CalcOutput> {
-    if input_path.is_file() && input_path.extension().and_then(|value| value.to_str()) == Some("json") {
+    if input_path.is_file()
+        && input_path.extension().and_then(|value| value.to_str()) == Some("json")
+    {
         return load_calc_output(input_path);
     }
 
@@ -88,8 +95,8 @@ fn load_or_build_calc_output(
 }
 
 fn load_calc_output(path: &Path) -> Result<CalcOutput> {
-    let text = fs::read_to_string(path)
-        .with_context(|| format!("Failed to read '{}'", path.display()))?;
+    let text =
+        fs::read_to_string(path).with_context(|| format!("Failed to read '{}'", path.display()))?;
     serde_json::from_str(&text).with_context(|| format!("Invalid JSON in '{}'", path.display()))
 }
 
@@ -352,10 +359,18 @@ fn resolve_branch(results_dir: &Path, override_branch: Option<&str>) -> String {
 }
 
 fn print_usage() {
-    println!("Usage: cargo run -p ext-report -- preview <path> [--config-root PATH] [--results-dir PATH] [--version-id ID] [--branch NAME] [--out FILE]");
+    println!(
+        "Usage: cargo run -p ext-report -- preview <path> [--config-root PATH] [--results-dir PATH] [--version-id ID] [--branch NAME] [--out FILE]"
+    );
     println!();
     println!("Examples:");
-    println!("  cargo run -p ext-report -- preview crates/ext-calc/tests/fixtures/results_realistic");
-    println!("  cargo run -p ext-report -- preview crates/ext-calc/tests/fixtures/results_realistic --out proofs/output/results_realistic_report.pdf");
-    println!("  cargo run -p ext-report -- preview crates/ext-calc/tests/fixtures/results_realistic/calc_output.json --config-root crates/ext-calc/tests/fixtures/results_realistic");
+    println!(
+        "  cargo run -p ext-report -- preview crates/ext-calc/tests/fixtures/results_realistic"
+    );
+    println!(
+        "  cargo run -p ext-report -- preview crates/ext-calc/tests/fixtures/results_realistic --out proofs/output/results_realistic_report.pdf"
+    );
+    println!(
+        "  cargo run -p ext-report -- preview crates/ext-calc/tests/fixtures/results_realistic/calc_output.json --config-root crates/ext-calc/tests/fixtures/results_realistic"
+    );
 }

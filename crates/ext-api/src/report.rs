@@ -199,7 +199,11 @@ fn calc_output_path(version: &VersionPaths) -> PathBuf {
     version.version_dir.join("results").join("calc_output.json")
 }
 
-fn report_output_dir(ctx: &AppContext, version: &VersionPaths, output_root: Option<&Path>) -> PathBuf {
+fn report_output_dir(
+    ctx: &AppContext,
+    version: &VersionPaths,
+    output_root: Option<&Path>,
+) -> PathBuf {
     resolve_reports_root(ctx, output_root)
         .join(&version.branch)
         .join(&version.version_id)
@@ -301,7 +305,8 @@ mod tests {
     use tempfile::TempDir;
 
     fn fixture_results_dir() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ext-calc/tests/fixtures/results_realistic")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../ext-calc/tests/fixtures/results_realistic")
     }
 
     fn copy_fixture_config(project_root: &Path) {
@@ -359,7 +364,11 @@ mod tests {
 
     fn copy_fixture_results(project_root: &Path, include_calc_output: bool) {
         let source = fixture_results_dir();
-        let target = project_root.join(".etabs-ext").join("main").join("v1").join("results");
+        let target = project_root
+            .join(".etabs-ext")
+            .join("main")
+            .join("v1")
+            .join("results");
         std::fs::create_dir_all(&target).unwrap();
 
         for entry in std::fs::read_dir(&source).unwrap() {

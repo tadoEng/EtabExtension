@@ -39,9 +39,9 @@ fn build_chart(
         .iter()
         .map(|row| {
             let label = format!("{} / {}", row.pier_label, row.story);
-            let demand = row.vu.value / row.acv.value;          // psi
+            let demand = row.vu.value / row.acv.value; // psi
             let fc_psi = row.fc_ksi * 1000.0;
-            let limit = 8.0 * fc_psi.sqrt();                    // ACI max psi
+            let limit = 8.0 * fc_psi.sqrt(); // ACI max psi
             (label, demand, limit)
         })
         .collect();
@@ -51,8 +51,8 @@ fn build_chart(
     let demands: Vec<f64> = entries.iter().map(|(_, d, _)| *d).collect();
     // All entries for one check share the same f'c; if mixed, each limit is correct
     // per-row but charming only supports one limit series — use the mean here.
-    let limit_val = entries.iter().map(|(_, _, l)| l).copied().sum::<f64>()
-        / entries.len().max(1) as f64;
+    let limit_val =
+        entries.iter().map(|(_, _, l)| l).copied().sum::<f64>() / entries.len().max(1) as f64;
     let limits: Vec<f64> = vec![limit_val; entries.len()];
 
     NamedChartSpec {

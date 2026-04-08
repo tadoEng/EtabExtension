@@ -94,8 +94,11 @@ pub fn run(
     // (Top/Bottom) and StepType (Max/Min/Step By Step) variants.
     // This ensures the governing shear is found regardless of how ETABS
     // reports the combination results.
-    let selected_combos: std::collections::HashSet<&str> =
-        shear_params.load_combos.iter().map(String::as_str).collect();
+    let selected_combos: std::collections::HashSet<&str> = shear_params
+        .load_combos
+        .iter()
+        .map(String::as_str)
+        .collect();
 
     let mut grouped: BTreeMap<(String, String, String), f64> = BTreeMap::new();
     for row in forces
@@ -114,10 +117,10 @@ pub fn run(
         bail!("No pier force rows matched the configured shear combos");
     }
 
-    let phi_v   = shear_params.phi_v;
+    let phi_v = shear_params.phi_v;
     let alpha_c = shear_params.alpha_c; // 2.0 psi-based
-    let fy_psi  = shear_params.fy_ksi * 1_000.0;
-    let rho_t   = shear_params.rho_t;
+    let fy_psi = shear_params.fy_ksi * 1_000.0;
+    let rho_t = shear_params.rho_t;
 
     let mut results: Vec<PierShearResult> = Vec::with_capacity(grouped.len());
 
@@ -149,25 +152,25 @@ pub fn run(
         // ACI 318-14 §11.5.4.3 (psi-based):
         //   Vn [lb] = Acv [in²] × (αc × √f'c [psi] + ρt × fy [psi])
         //   Vn [kip] = Vn [lb] / 1000
-        let vn_kip     = acv_in2 * (alpha_c * fc_psi.sqrt() + rho_t * fy_psi) / 1_000.0;
+        let vn_kip = acv_in2 * (alpha_c * fc_psi.sqrt() + rho_t * fy_psi) / 1_000.0;
         let phi_vn_kip = phi_v * vn_kip;
-        let dcr        = vu_kip / phi_vn_kip;
+        let dcr = vu_kip / phi_vn_kip;
 
         results.push(PierShearResult {
             pier_label: pier.clone(),
-            story:      story.clone(),
-            combo:      combo.clone(),
+            story: story.clone(),
+            combo: combo.clone(),
             // "envelope" because we already took max across Top/Bottom/Max/Min.
-            location:   "envelope".to_string(),
-            vu:         uc.qty_force(*vu_kip),
-            acv:        uc.qty_area_in2(acv_in2),
+            location: "envelope".to_string(),
+            vu: uc.qty_force(*vu_kip),
+            acv: uc.qty_area_in2(acv_in2),
             fc_ksi,
-            vn:         uc.qty_force(vn_kip),
-            phi_vn:     uc.qty_force(phi_vn_kip),
+            vn: uc.qty_force(vn_kip),
+            phi_vn: uc.qty_force(phi_vn_kip),
             dcr,
-            pass:       dcr <= 1.0,
+            pass: dcr <= 1.0,
             section_id: format!("{:.0}x{:.0}", section.width_bot_ft, section.thick_bot_ft),
-            material:   section.material.clone(),
+            material: section.material.clone(),
         });
     }
 
@@ -177,13 +180,22 @@ pub fn run(
 
     let governing = results
         .iter()
-        .max_by(|a, b| a.dcr.partial_cmp(&b.dcr).unwrap_or(std::cmp::Ordering::Equal))
+        .max_by(|a, b| {
+            a.dcr
+                .partial_cmp(&b.dcr)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
         .cloned()
         .expect("results is non-empty");
 
     let pass = results.iter().all(|r| r.pass);
 
-    Ok(PierShearOutput { phi_v, piers: results, governing, pass })
+    Ok(PierShearOutput {
+        phi_v,
+        piers: results,
+        governing,
+        pass,
+    })
 }
 
 // ── Hand-check reference values for C1Y1 at L20 ─────────────────────────────
@@ -195,8 +207,8 @@ pub fn run(
 // ϕVn (wind)    = 0.75 × 2083.9 ≈ 1562.9 kip
 // ϕVn (seismic) = 0.60 × 2083.9 ≈ 1250.3 kip
 pub const C1Y1_L20_ACV_IN2: f64 = 22.0 * 2.0 * 144.0; // 6336.0
-pub const C1Y1_L20_FC_PSI:  f64 = 8_000.0;
-pub const C1Y1_L20_VN_KIP:  f64 = 2_083.9;
+pub const C1Y1_L20_FC_PSI: f64 = 8_000.0;
+pub const C1Y1_L20_VN_KIP: f64 = 2_083.9;
 
 #[cfg(test)]
 mod tests {
@@ -209,9 +221,7 @@ mod tests {
 
     #[test]
     fn vn_formula_produces_correct_value_for_8000psi() {
-        let vn = C1Y1_L20_ACV_IN2
-            * (2.0 * C1Y1_L20_FC_PSI.sqrt() + 0.0025 * 60_000.0)
-            / 1_000.0;
+        let vn = C1Y1_L20_ACV_IN2 * (2.0 * C1Y1_L20_FC_PSI.sqrt() + 0.0025 * 60_000.0) / 1_000.0;
         assert!(
             (vn - C1Y1_L20_VN_KIP).abs() < 0.2,
             "Vn = {vn:.3} kip, expected ≈ {C1Y1_L20_VN_KIP} kip"
@@ -231,16 +241,16 @@ mod tests {
     #[test]
     fn build_pier_fc_map_uses_fallback_for_unknown_material() {
         let sections = vec![PierSectionRow {
-            story:        "L01".into(),
-            pier:         "P99".into(),
-            axis_angle:   0.0,
+            story: "L01".into(),
+            pier: "P99".into(),
+            axis_angle: 0.0,
             width_bot_ft: 10.0,
             thick_bot_ft: 1.0,
             width_top_ft: 10.0,
             thick_top_ft: 1.0,
-            material:     "UNKNOWN".into(),
-            acv_in2:      10.0 * 1.0 * 144.0,
-            ag_in2:       10.0 * 1.0 * 144.0,
+            material: "UNKNOWN".into(),
+            acv_in2: 10.0 * 1.0 * 144.0,
+            ag_in2: 10.0 * 1.0 * 144.0,
         }];
         let map = build_pier_fc_map(&sections, &HashMap::new(), 5.0);
         assert_eq!(
@@ -252,25 +262,25 @@ mod tests {
     #[test]
     fn build_pier_fc_map_uses_material_table_when_found() {
         let sections = vec![PierSectionRow {
-            story:        "L20".into(),
-            pier:         "C1Y1".into(),
-            axis_angle:   90.0,
+            story: "L20".into(),
+            pier: "C1Y1".into(),
+            axis_angle: 90.0,
             width_bot_ft: 22.0,
             thick_bot_ft: 2.0,
             width_top_ft: 22.0,
             thick_top_ft: 2.0,
-            material:     "8000Psi".into(),
-            acv_in2:      22.0 * 2.0 * 144.0,
-            ag_in2:       22.0 * 2.0 * 144.0,
+            material: "8000Psi".into(),
+            acv_in2: 22.0 * 2.0 * 144.0,
+            ag_in2: 22.0 * 2.0 * 144.0,
         }];
         let mut mat_props: HashMap<String, MaterialProp> = HashMap::new();
         mat_props.insert(
             "8000Psi".to_string(),
             MaterialProp {
-                name:         "8000Psi".into(),
-                fc_kipsft2:   1152.0,
-                fc_ksi:       8.0,
-                fc_psi:       8_000.0,
+                name: "8000Psi".into(),
+                fc_kipsft2: 1152.0,
+                fc_ksi: 8.0,
+                fc_psi: 8_000.0,
                 is_lightweight: false,
             },
         );

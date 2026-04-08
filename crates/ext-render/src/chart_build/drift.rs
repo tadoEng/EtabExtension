@@ -44,7 +44,10 @@ fn build_chart(
         (row.story.clone(), value)
     }));
 
-    let categories = story_values.iter().map(|(story, _)| story.clone()).collect();
+    let categories = story_values
+        .iter()
+        .map(|(story, _)| story.clone())
+        .collect();
     let values = story_values.iter().map(|(_, value)| *value).collect();
     let limits = vec![drift.allowable_ratio; story_values.len()];
 

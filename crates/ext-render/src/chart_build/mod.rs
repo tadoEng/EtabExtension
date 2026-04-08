@@ -84,13 +84,7 @@ fn build_cartesian(
 ) -> Chart {
     let mut chart = Chart::new()
         .title(Title::new().text(spec.title.as_str()).left("center"))
-        .grid(
-            Grid::new()
-                .left("10%")
-                .right("6%")
-                .top("16%")
-                .bottom("16%"),
-        )
+        .grid(Grid::new().left("10%").right("6%").top("16%").bottom("16%"))
         .tooltip(Tooltip::new().trigger(Trigger::Axis))
         .legend(Legend::new().top("6%"))
         .x_axis(if swap_axes {
@@ -119,7 +113,8 @@ fn build_cartesian(
                 };
                 let mut series_builder = Bar::new().name(entry.name.as_str()).data(data);
                 if let Some(color) = entry.color.as_deref() {
-                    series_builder = series_builder.item_style(ItemStyle::new().color(Color::Value(color.to_string())));
+                    series_builder = series_builder
+                        .item_style(ItemStyle::new().color(Color::Value(color.to_string())));
                 }
                 chart.series(series_builder)
             }
@@ -135,8 +130,8 @@ fn build_cartesian(
                     .show_symbol(!matches!(entry.line_style, Some(LinePattern::Dashed)))
                     .data(data);
                 if let Some(color) = entry.color.as_deref() {
-                    series_builder =
-                        series_builder.line_style(LineStyle::new().color(Color::Value(color.to_string())));
+                    series_builder = series_builder
+                        .line_style(LineStyle::new().color(Color::Value(color.to_string())));
                 }
                 if let Some(pattern) = entry.line_style {
                     let mut style = LineStyle::new();

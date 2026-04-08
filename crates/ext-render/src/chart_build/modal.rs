@@ -14,7 +14,11 @@ pub fn build(modal: &ModalOutput, config: &RenderConfig) -> NamedChartSpec {
             width: config.width,
             height: config.height,
             kind: ChartKind::Cartesian {
-                categories: modal.rows.iter().map(|row| format!("Mode {}", row.mode)).collect(),
+                categories: modal
+                    .rows
+                    .iter()
+                    .map(|row| format!("Mode {}", row.mode))
+                    .collect(),
                 swap_axes: false,
                 series: vec![
                     CartesianSeries {

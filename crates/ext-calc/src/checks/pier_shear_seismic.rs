@@ -60,12 +60,12 @@ mod tests {
 
     #[test]
     fn pier_shear_seismic_produces_results_with_correct_phi() {
-        let dir     = fixture_dir();
-        let forces  = load_pier_forces(&dir).unwrap();
+        let dir = fixture_dir();
+        let forces = load_pier_forces(&dir).unwrap();
         let sections = load_pier_sections(&dir).unwrap();
-        let mat     = load_material_properties(&dir).unwrap();
-        let params  = fixture_params();
-        let fc_map  = build_pier_fc_map(&sections, &mat, params.pier_shear_seismic.fc_default_ksi);
+        let mat = load_material_properties(&dir).unwrap();
+        let params = fixture_params();
+        let fc_map = build_pier_fc_map(&sections, &mat, params.pier_shear_seismic.fc_default_ksi);
 
         let output = run(&forces, &sections, &fc_map, &params).unwrap();
 
@@ -80,33 +80,38 @@ mod tests {
         // so seismic DCR = Vu/(0.60×Vn) > wind DCR = Vu/(0.75×Vn).
         // We verify the phi value is correct rather than comparing across
         // different combos (wind and seismic combos are different load cases).
-        let dir     = fixture_dir();
-        let forces  = load_pier_forces(&dir).unwrap();
+        let dir = fixture_dir();
+        let forces = load_pier_forces(&dir).unwrap();
         let sections = load_pier_sections(&dir).unwrap();
-        let mat     = load_material_properties(&dir).unwrap();
-        let params  = fixture_params();
-        let fc_map  = build_pier_fc_map(&sections, &mat, params.pier_shear_seismic.fc_default_ksi);
+        let mat = load_material_properties(&dir).unwrap();
+        let params = fixture_params();
+        let fc_map = build_pier_fc_map(&sections, &mat, params.pier_shear_seismic.fc_default_ksi);
 
         let seismic_out = run(&forces, &sections, &fc_map, &params).unwrap();
-        assert!((seismic_out.phi_v - 0.60).abs() < 1e-9,
-            "seismic phi should be 0.60, got {}", seismic_out.phi_v);
+        assert!(
+            (seismic_out.phi_v - 0.60).abs() < 1e-9,
+            "seismic phi should be 0.60, got {}",
+            seismic_out.phi_v
+        );
         // For any pier, ϕVn_seismic = 0.60/0.75 × ϕVn_wind  →  ϕVn_seismic < ϕVn_wind
         // Just verify governing ϕVn makes sense relative to ϕ
         assert!(seismic_out.governing.phi_vn.value > 0.0);
-        assert!(seismic_out.governing.vn.value > seismic_out.governing.phi_vn.value,
-            "Vn should be > ϕVn since ϕ < 1.0");
+        assert!(
+            seismic_out.governing.vn.value > seismic_out.governing.phi_vn.value,
+            "Vn should be > ϕVn since ϕ < 1.0"
+        );
     }
 
     #[test]
     fn pier_shear_seismic_errors_when_combo_missing() {
-        let dir     = fixture_dir();
-        let forces  = load_pier_forces(&dir).unwrap();
+        let dir = fixture_dir();
+        let forces = load_pier_forces(&dir).unwrap();
         let sections = load_pier_sections(&dir).unwrap();
-        let mat     = load_material_properties(&dir).unwrap();
+        let mat = load_material_properties(&dir).unwrap();
         let mut config = Config::load(&fixture_dir()).unwrap();
         config.calc.pier_shear_seismic.load_combos = vec!["BAD_COMBO".into()];
-        let params  = CodeParams::from_config(&config).unwrap();
-        let fc_map  = build_pier_fc_map(&sections, &mat, params.pier_shear_seismic.fc_default_ksi);
+        let params = CodeParams::from_config(&config).unwrap();
+        let fc_map = build_pier_fc_map(&sections, &mat, params.pier_shear_seismic.fc_default_ksi);
 
         assert!(run(&forces, &sections, &fc_map, &params).is_err());
     }

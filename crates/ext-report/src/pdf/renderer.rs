@@ -39,10 +39,7 @@ impl TypstWorld {
             library: LazyHash::new(Library::default()),
             book: LazyHash::new(book),
             fonts,
-            main: Source::new(
-                FileId::new(None, VirtualPath::new("main.typ")),
-                content,
-            ),
+            main: Source::new(FileId::new(None, VirtualPath::new("main.typ")), content),
             image_cache: images,
         })
     }

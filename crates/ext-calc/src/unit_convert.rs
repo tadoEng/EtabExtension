@@ -16,7 +16,9 @@ impl EtabsPreset {
             "kip-ft-f" | "us_kip_ft" | "kip_ft" => Ok(Self::KipFtF),
             "kip-in-f" | "us_kip_in" | "kip_in" | "kip/in/f" | "kip-in" => Ok(Self::KipInF),
             "kn-m-c" | "si_kn_m" | "kn_m" => Ok(Self::KnMC),
-            other => bail!("Unsupported unit preset '{other}'. Supported: kip-ft-F, kip-in-F, kN-m-C"),
+            other => {
+                bail!("Unsupported unit preset '{other}'. Supported: kip-ft-F, kip-in-F, kN-m-C")
+            }
         }
     }
 }

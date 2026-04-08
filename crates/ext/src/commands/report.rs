@@ -15,7 +15,10 @@ pub async fn execute(
     let result = report_version(&ctx, &args.version, args.output_root.as_deref(), &args.name)?;
 
     if out.is_human() {
-        println!("Report generated for {}/{}", result.branch, result.version_id);
+        println!(
+            "Report generated for {}/{}",
+            result.branch, result.version_id
+        );
         println!("  PDF    : {}", result.pdf_path.display());
         println!("  Images : {}", result.logical_images.len());
     }

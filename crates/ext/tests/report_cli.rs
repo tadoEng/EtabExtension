@@ -43,7 +43,11 @@ fn copy_fixture_config(project_root: &Path) {
 
 fn copy_fixture_results(project_root: &Path) {
     let source = fixture_results_dir();
-    let target = project_root.join(".etabs-ext").join("main").join("v1").join("results");
+    let target = project_root
+        .join(".etabs-ext")
+        .join("main")
+        .join("v1")
+        .join("results");
     std::fs::create_dir_all(&target).unwrap();
 
     for entry in std::fs::read_dir(&source).unwrap() {

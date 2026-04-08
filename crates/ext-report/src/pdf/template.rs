@@ -29,9 +29,7 @@ pub fn build_typst_document(document: &ReportDocument) -> String {
                 chart,
                 table,
                 table_emphasis,
-            } => {
-                sections::chart::render_chart_and_table_page(title, chart, table, *table_emphasis)
-            }
+            } => sections::chart::render_chart_and_table_page(title, chart, table, *table_emphasis),
             ReportSection::TableOnlyPage { title, table } => {
                 sections::table::render_table_page(title, table)
             }

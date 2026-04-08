@@ -49,6 +49,16 @@ pub fn sidecar_state_path(sidecar_path: &Path) -> PathBuf {
     sidecar_path.with_extension("state")
 }
 
+#[allow(dead_code)]
+pub fn extract_results_request_path(sidecar_path: &Path) -> PathBuf {
+    sidecar_path.with_extension("extract-results-request.json")
+}
+
+#[allow(dead_code)]
+pub fn read_extract_results_request(sidecar_path: &Path) -> String {
+    std::fs::read_to_string(extract_results_request_path(sidecar_path)).unwrap()
+}
+
 pub fn set_fake_sidecar_state(sidecar_path: &Path, state: &FakeSidecarState) {
     let path = sidecar_state_path(sidecar_path);
     let open_file = state
@@ -103,12 +113,14 @@ pub fn write_fake_sidecar(temp: &TempDir, mode: FakeSidecarMode) -> PathBuf {
 setlocal EnableDelayedExpansion
 set "mode=__MODE__"
 set "state_file=%~dpn0.state"
+set "request_file=%~dpn0.extract-results-request.json"
 call :load_state
 set "cmd=%~1"
 shift
 set "file="
 set "output="
 set "output_dir="
+set "request="
 set "save=0"
 set "new_instance=0"
 :parse
@@ -127,6 +139,12 @@ if /I "%~1"=="--output-dir" (
 )
 if /I "%~1"=="--output" (
   set "output=%~2"
+  shift
+  shift
+  goto parse
+)
+if /I "%~1"=="--request" (
+  set "request=%~2"
   shift
   shift
   goto parse
@@ -320,6 +338,9 @@ exit /b 0
 if not "!output_dir!"=="" (
   if not exist "!output_dir!" mkdir "!output_dir!" >nul 2>&1
   > "!output_dir!\base-reactions.parquet" echo parquet
+)
+if not "!request!"=="" (
+  > "!request_file!" echo(!request!
 )
 echo {"success":true,"data":{"filePath":"fake.edb","outputDir":"results","tables":{"baseReactions":{"success":true,"outputFile":"results/base-reactions.parquet","rowCount":12,"discardedRowCount":0,"error":null,"extractionTimeMs":120}},"totalRowCount":12,"succeededCount":1,"failedCount":0,"units":{"force":"kip","length":"ft","temperature":"F","isUs":true,"isMetric":false,"rawForce":1,"rawLength":2,"rawTemperature":3},"extractionTimeMs":120}}
 exit /b 0

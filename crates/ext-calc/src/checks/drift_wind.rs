@@ -158,21 +158,12 @@ pub(crate) fn story_order_lookup(stories: &[StoryDefRow]) -> HashMap<String, usi
         .collect()
 }
 
-pub(crate) fn sort_rows_by_story<T, F>(
-    stories: &[StoryDefRow],
-    rows: &mut [T],
-    story_name: F,
-)
+pub(crate) fn sort_rows_by_story<T, F>(stories: &[StoryDefRow], rows: &mut [T], story_name: F)
 where
     F: Fn(&T) -> &str,
 {
     let order = story_order_lookup(stories);
-    rows.sort_by_key(|row| {
-        order
-            .get(story_name(row))
-            .copied()
-            .unwrap_or(usize::MAX)
-    });
+    rows.sort_by_key(|row| order.get(story_name(row)).copied().unwrap_or(usize::MAX));
 }
 
 pub(crate) fn resolve_groups<'a>(
@@ -247,8 +238,14 @@ mod tests {
         assert_eq!(output.governing.direction, "Y");
         assert_eq!(output.governing.sense, "positive");
         assert!((output.governing.dcr - 0.4028).abs() < 1e-9);
-        assert_eq!(output.rows.first().map(|row| row.story.as_str()), Some("L01"));
-        assert_eq!(output.rows.last().map(|row| row.story.as_str()), Some("ROOF"));
+        assert_eq!(
+            output.rows.first().map(|row| row.story.as_str()),
+            Some("L01")
+        );
+        assert_eq!(
+            output.rows.last().map(|row| row.story.as_str()),
+            Some("ROOF")
+        );
         assert!(output.roof_disp_x.is_none());
         assert!(output.disp_limit.is_none());
     }

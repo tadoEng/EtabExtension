@@ -8,7 +8,9 @@ use ext_render::{
     PIER_AXIAL_IMAGE, PIER_SHEAR_SEISMIC_IMAGE, PIER_SHEAR_WIND_IMAGE,
 };
 
-use crate::report_types::{ChartRef, KeyValueTable, ReportDocument, ReportProjectMeta, ReportSection};
+use crate::report_types::{
+    ChartRef, KeyValueTable, ReportDocument, ReportProjectMeta, ReportSection,
+};
 
 pub fn build_report_document(
     calc: &CalcOutput,
@@ -133,7 +135,10 @@ fn build_summary_lines(calc: &CalcOutput) -> Vec<String> {
         format!("Active checks: {}", calc.summary.check_count),
         format!("Passed: {}", calc.summary.pass_count),
         format!("Failed: {}", calc.summary.fail_count),
-        format!("Branch/version: {}/{}", calc.meta.branch, calc.meta.version_id),
+        format!(
+            "Branch/version: {}/{}",
+            calc.meta.branch, calc.meta.version_id
+        ),
     ];
     for line in &calc.summary.lines {
         summary_lines.push(format!("{} [{}] {}", line.key, line.status, line.message));
@@ -384,10 +389,10 @@ fn build_pier_shear_table(pier: &PierShearOutput) -> KeyValueTable {
         .piers
         .iter()
         .map(|row| {
-            let vu_acv = row.vu.value / row.acv.value;          // psi
-            let phi_vn_acv = row.phi_vn.value / row.acv.value;  // psi
+            let vu_acv = row.vu.value / row.acv.value; // psi
+            let phi_vn_acv = row.phi_vn.value / row.acv.value; // psi
             let fc_psi = row.fc_ksi * 1000.0;
-            let limit_8sqrt_fc = 8.0 * fc_psi.sqrt();            // psi
+            let limit_8sqrt_fc = 8.0 * fc_psi.sqrt(); // psi
             vec![
                 row.story.clone(),
                 row.pier_label.clone(),
@@ -411,9 +416,13 @@ fn build_pier_shear_table(pier: &PierShearOutput) -> KeyValueTable {
         .iter()
         .map(|row| {
             let dcr = row[6].parse::<f64>().unwrap_or(0.0);
-            if dcr >= 1.0 { Some("fail".to_string()) }
-            else if dcr >= 0.85 { Some("warn".to_string()) }
-            else { None }
+            if dcr >= 1.0 {
+                Some("fail".to_string())
+            } else if dcr >= 0.85 {
+                Some("warn".to_string())
+            } else {
+                None
+            }
         })
         .collect();
     // Annotate the governing row explicitly.
@@ -512,9 +521,21 @@ mod tests {
         );
 
         assert_eq!(document.sections.len(), 9);
-        assert!(matches!(document.sections[0], ReportSection::SummaryPage { .. }));
-        assert!(matches!(document.sections[1], ReportSection::TableOnlyPage { .. }));
-        assert!(matches!(document.sections[2], ReportSection::ChartAndTablePage { .. }));
-        assert!(matches!(document.sections[5], ReportSection::ChartAndTablePage { .. }));
+        assert!(matches!(
+            document.sections[0],
+            ReportSection::SummaryPage { .. }
+        ));
+        assert!(matches!(
+            document.sections[1],
+            ReportSection::TableOnlyPage { .. }
+        ));
+        assert!(matches!(
+            document.sections[2],
+            ReportSection::ChartAndTablePage { .. }
+        ));
+        assert!(matches!(
+            document.sections[5],
+            ReportSection::ChartAndTablePage { .. }
+        ));
     }
 }

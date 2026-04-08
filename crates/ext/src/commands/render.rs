@@ -15,7 +15,12 @@ pub async fn execute(
     let result = render_version(&ctx, &args.version, args.output_root.as_deref())?;
 
     if out.is_human() {
-        println!("Rendered {} chart asset(s) for {}/{}", result.assets.len(), result.branch, result.version_id);
+        println!(
+            "Rendered {} chart asset(s) for {}/{}",
+            result.assets.len(),
+            result.branch,
+            result.version_id
+        );
         println!("  Output : {}", result.asset_dir.display());
         for asset in &result.assets {
             println!("  - {}", asset.path.display());

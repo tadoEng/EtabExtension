@@ -57,17 +57,23 @@ mod tests {
 
     #[test]
     fn pier_shear_wind_produces_results_for_all_configured_combos() {
-        let dir     = fixture_dir();
-        let forces  = load_pier_forces(&dir).unwrap();
+        let dir = fixture_dir();
+        let forces = load_pier_forces(&dir).unwrap();
         let sections = load_pier_sections(&dir).unwrap();
-        let mat     = load_material_properties(&dir).unwrap();
-        let params  = fixture_params();
-        let fc_map  = build_pier_fc_map(&sections, &mat, params.pier_shear_wind.fc_default_ksi);
+        let mat = load_material_properties(&dir).unwrap();
+        let params = fixture_params();
+        let fc_map = build_pier_fc_map(&sections, &mat, params.pier_shear_wind.fc_default_ksi);
 
         let output = run(&forces, &sections, &fc_map, &params).unwrap();
 
-        assert!(!output.piers.is_empty(), "expected at least one pier result");
-        assert!(output.governing.dcr > 0.0, "governing DCR should be positive");
+        assert!(
+            !output.piers.is_empty(),
+            "expected at least one pier result"
+        );
+        assert!(
+            output.governing.dcr > 0.0,
+            "governing DCR should be positive"
+        );
         assert_eq!(output.phi_v, 0.75, "wind check must use ϕ = 0.75");
         // Every result that passes must have DCR ≤ 1.0
         for r in &output.piers {
@@ -76,38 +82,57 @@ mod tests {
             }
         }
         // Governing is the row with the highest DCR
-        let max_dcr = output.piers.iter().map(|r| r.dcr).fold(f64::NEG_INFINITY, f64::max);
+        let max_dcr = output
+            .piers
+            .iter()
+            .map(|r| r.dcr)
+            .fold(f64::NEG_INFINITY, f64::max);
         assert!((output.governing.dcr - max_dcr).abs() < 1e-9);
     }
 
     #[test]
     fn pier_shear_wind_errors_when_combo_missing() {
-        let dir     = fixture_dir();
-        let forces  = load_pier_forces(&dir).unwrap();
+        let dir = fixture_dir();
+        let forces = load_pier_forces(&dir).unwrap();
         let sections = load_pier_sections(&dir).unwrap();
-        let mat     = load_material_properties(&dir).unwrap();
+        let mat = load_material_properties(&dir).unwrap();
         let mut config = Config::load(&fixture_dir()).unwrap();
         config.calc.pier_shear_wind.load_combos = vec!["NONEXISTENT_COMBO".into()];
-        let params  = CodeParams::from_config(&config).unwrap();
-        let fc_map  = build_pier_fc_map(&sections, &mat, params.pier_shear_wind.fc_default_ksi);
+        let params = CodeParams::from_config(&config).unwrap();
+        let fc_map = build_pier_fc_map(&sections, &mat, params.pier_shear_wind.fc_default_ksi);
 
         assert!(run(&forces, &sections, &fc_map, &params).is_err());
     }
 
     #[test]
     fn pier_shear_wind_acv_and_capacity_are_positive() {
-        let dir     = fixture_dir();
-        let forces  = load_pier_forces(&dir).unwrap();
+        let dir = fixture_dir();
+        let forces = load_pier_forces(&dir).unwrap();
         let sections = load_pier_sections(&dir).unwrap();
-        let mat     = load_material_properties(&dir).unwrap();
-        let params  = fixture_params();
-        let fc_map  = build_pier_fc_map(&sections, &mat, params.pier_shear_wind.fc_default_ksi);
+        let mat = load_material_properties(&dir).unwrap();
+        let params = fixture_params();
+        let fc_map = build_pier_fc_map(&sections, &mat, params.pier_shear_wind.fc_default_ksi);
 
         let output = run(&forces, &sections, &fc_map, &params).unwrap();
         for r in &output.piers {
-            assert!(r.acv.value > 0.0, "Acv must be positive for pier {}/{}", r.pier_label, r.story);
-            assert!(r.phi_vn.value > 0.0, "ϕVn must be positive for pier {}/{}", r.pier_label, r.story);
-            assert!(r.vu.value >= 0.0, "Vu must be non-negative for pier {}/{}", r.pier_label, r.story);
+            assert!(
+                r.acv.value > 0.0,
+                "Acv must be positive for pier {}/{}",
+                r.pier_label,
+                r.story
+            );
+            assert!(
+                r.phi_vn.value > 0.0,
+                "ϕVn must be positive for pier {}/{}",
+                r.pier_label,
+                r.story
+            );
+            assert!(
+                r.vu.value >= 0.0,
+                "Vu must be non-negative for pier {}/{}",
+                r.pier_label,
+                r.story
+            );
         }
     }
 
@@ -120,37 +145,51 @@ mod tests {
         //   Vn = 6336 × (2.0×√8000 + 0.0025×60000) / 1000 ≈ 2083.9 kip
         //   ϕVn (wind ϕ=0.75) = 0.75 × 2083.9 ≈ 1562.9 kip
         //   DCR = 159.533 / 1562.9 ≈ 0.102
-        let dir     = fixture_dir();
-        let forces  = load_pier_forces(&dir).unwrap();
+        let dir = fixture_dir();
+        let forces = load_pier_forces(&dir).unwrap();
         let sections = load_pier_sections(&dir).unwrap();
-        let mat     = load_material_properties(&dir).unwrap();
-        let params  = fixture_params();
-        let fc_map  = build_pier_fc_map(&sections, &mat, params.pier_shear_wind.fc_default_ksi);
+        let mat = load_material_properties(&dir).unwrap();
+        let params = fixture_params();
+        let fc_map = build_pier_fc_map(&sections, &mat, params.pier_shear_wind.fc_default_ksi);
 
         let output = run(&forces, &sections, &fc_map, &params).unwrap();
 
-        let r = output.piers.iter()
+        let r = output
+            .piers
+            .iter()
             .find(|r| r.pier_label == "C1Y1" && r.story == "L20")
             .expect("C1Y1 at L20 should be in output");
 
         // Acv check
         // qty_area_in2 converts 6336 in² back to ft²: 6336/144 = 44.0 ft²
-        assert!((r.acv.value - 44.0).abs() < 0.01,
-            "Acv = {:.3} ft², expected 44.0 ft²", r.acv.value);
+        assert!(
+            (r.acv.value - 44.0).abs() < 0.01,
+            "Acv = {:.3} ft², expected 44.0 ft²",
+            r.acv.value
+        );
         assert_eq!(r.acv.unit, "ft²");
 
         // fc_ksi check
-        assert!((r.fc_ksi - 8.0).abs() < 1e-9,
-            "fc_ksi = {:.3}, expected 8.0", r.fc_ksi);
+        assert!(
+            (r.fc_ksi - 8.0).abs() < 1e-9,
+            "fc_ksi = {:.3}, expected 8.0",
+            r.fc_ksi
+        );
 
         // ϕVn check: 0.75 × 2083.9 ≈ 1562.9 kip, displayed in kip
-        assert!((r.phi_vn.value - 1562.9).abs() < 1.5,
-            "ϕVn = {:.1} kip, expected ≈1562.9 kip", r.phi_vn.value);
+        assert!(
+            (r.phi_vn.value - 1562.9).abs() < 1.5,
+            "ϕVn = {:.1} kip, expected ≈1562.9 kip",
+            r.phi_vn.value
+        );
         assert_eq!(r.phi_vn.unit, "kip");
 
         // DCR check: 159.533 / 1562.9 ≈ 0.102
-        assert!((r.dcr - 0.102).abs() < 0.005,
-            "DCR = {:.4}, expected ≈0.102", r.dcr);
+        assert!(
+            (r.dcr - 0.102).abs() < 0.005,
+            "DCR = {:.4}, expected ≈0.102",
+            r.dcr
+        );
         assert!(r.pass, "C1Y1/L20 should pass at DCR ≈0.102");
     }
 }

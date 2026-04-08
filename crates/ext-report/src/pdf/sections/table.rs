@@ -5,13 +5,13 @@ use crate::report_types::KeyValueTable;
 /// Returns `"none"` when no fill is needed.
 fn annotation_fill(tag: &str) -> &'static str {
     match tag {
-        "ux_threshold" => "rgb(\"#cfe2ff\")",  // blue tint
-        "uy_threshold" => "rgb(\"#fff3cd\")",  // amber tint
+        "ux_threshold" => "rgb(\"#cfe2ff\")",    // blue tint
+        "uy_threshold" => "rgb(\"#fff3cd\")",    // amber tint
         "ux_uy_threshold" => "rgb(\"#d1c4e9\")", // purple tint
-        "high" => "rgb(\"#e8f5e9\")",           // light green – high participation
-        "pass" => "rgb(\"#d4edda\")",           // green
-        "warn" => "rgb(\"#fff3cd\")",           // amber
-        "fail" => "rgb(\"#f8d7da\")",           // red
+        "high" => "rgb(\"#e8f5e9\")",            // light green – high participation
+        "pass" => "rgb(\"#d4edda\")",            // green
+        "warn" => "rgb(\"#fff3cd\")",            // amber
+        "fail" => "rgb(\"#f8d7da\")",            // red
         _ => "none",
     }
 }
@@ -27,15 +27,23 @@ pub fn render_table(table: &KeyValueTable) -> String {
 
     let mut out = String::new();
     if let Some(title) = table.title.as_ref() {
-        out.push_str(&format!("#text(size: 9pt, weight: \"bold\")[{}]\n", escape_text(title)));
+        out.push_str(&format!(
+            "#text(size: 9pt, weight: \"bold\")[{}]\n",
+            escape_text(title)
+        ));
         out.push_str("#v(6pt)\n");
     }
-    out.push_str(&format!("#table(columns: ({column_spec}), stroke: 0.5pt + luma(180), inset: 5pt,\n"));
+    out.push_str(&format!(
+        "#table(columns: ({column_spec}), stroke: 0.5pt + luma(180), inset: 5pt,\n"
+    ));
 
     // Header row — always grey background
     out.push_str("  table.header(\n");
     for header in &table.headers {
-        out.push_str(&format!("    table.cell(fill: luma(220))[*{}*],\n", escape_text(header)));
+        out.push_str(&format!(
+            "    table.cell(fill: luma(220))[*{}*],\n",
+            escape_text(header)
+        ));
     }
     out.push_str("  ),\n");
 
@@ -80,7 +88,10 @@ pub fn render_table(table: &KeyValueTable) -> String {
 }
 
 pub fn render_table_page(title: &str, table: &KeyValueTable) -> String {
-    let mut out = format!("#text(size: 16pt, weight: \"bold\")[{}]\n", escape_text(title));
+    let mut out = format!(
+        "#text(size: 16pt, weight: \"bold\")[{}]\n",
+        escape_text(title)
+    );
     out.push_str("#v(10pt)\n");
     out.push_str(&render_table(table));
     out

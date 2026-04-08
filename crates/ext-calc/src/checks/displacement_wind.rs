@@ -172,8 +172,14 @@ mod tests {
         assert!((output.governing.displacement.value - 3.944_208).abs() < 1e-6);
         assert!((output.governing.dcr - 0.351_158_119_658_119_6).abs() < 1e-12);
         assert!((output.disp_limit.value - 11.232).abs() < 1e-9);
-        assert_eq!(output.rows.first().map(|row| row.story.as_str()), Some("L01"));
-        assert_eq!(output.rows.last().map(|row| row.story.as_str()), Some("ROOF"));
+        assert_eq!(
+            output.rows.first().map(|row| row.story.as_str()),
+            Some("L01")
+        );
+        assert_eq!(
+            output.rows.last().map(|row| row.story.as_str()),
+            Some("ROOF")
+        );
     }
 
     #[test]

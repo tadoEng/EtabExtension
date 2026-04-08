@@ -15,7 +15,10 @@ pub async fn execute(
     let result = run_calc(&ctx, &args.version)?;
 
     if out.is_human() {
-        println!("Calc artifact captured for {}/{}", result.branch, result.version_id);
+        println!(
+            "Calc artifact captured for {}/{}",
+            result.branch, result.version_id
+        );
         println!("  Results: {}", result.results_dir.display());
         println!("  Output : {}", result.calc_output_path.display());
     }

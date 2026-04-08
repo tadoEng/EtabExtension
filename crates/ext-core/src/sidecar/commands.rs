@@ -138,7 +138,7 @@ pub struct ExtractResultsData {
 
 // ── extract-results request shape ─────────────────────────────────────────
 // Serialised to JSON → passed as the single --request flag.
-// Mirrors TableSelections in ext-db::config exactly.
+// Keep this in sync with ext-db::config::TableSelections.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -158,6 +158,9 @@ pub struct TableSelections {
     pub joint_drifts: Option<TableSelection>,
     pub pier_forces: Option<TableSelection>,
     pub modal_participating_mass_ratios: Option<TableSelection>,
+    pub group_assignments: Option<TableSelection>,
+    pub material_properties_concrete_data: Option<TableSelection>,
+    pub material_list_by_story: Option<TableSelection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -233,7 +236,10 @@ impl SidecarClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExtractMaterialsData, GenerateE2kData, OpenModelData};
+    use super::{
+        ExtractMaterialsData, ExtractResultsRequest, GenerateE2kData, OpenModelData,
+        TableSelection, TableSelections,
+    };
 
     #[test]
     fn open_model_data_accepts_null_pid() {
@@ -339,6 +345,40 @@ mod tests {
         assert_eq!(data.row_count, 0);
         assert!(data.units.is_none());
         assert_eq!(data.extraction_time_ms, 180);
+    }
+
+    #[test]
+    fn extract_results_request_serializes_new_table_keys_in_camel_case() {
+        let request = ExtractResultsRequest {
+            units: "US_Kip_Ft".to_string(),
+            tables: TableSelections {
+                group_assignments: Some(TableSelection {
+                    load_cases: None,
+                    load_combos: None,
+                    groups: Some(vec!["Core".to_string()]),
+                    field_keys: None,
+                }),
+                material_properties_concrete_data: Some(TableSelection {
+                    load_cases: None,
+                    load_combos: None,
+                    groups: None,
+                    field_keys: Some(vec!["Fc".to_string(), "Ec".to_string()]),
+                }),
+                material_list_by_story: Some(TableSelection {
+                    load_cases: None,
+                    load_combos: None,
+                    groups: None,
+                    field_keys: Some(vec!["Story".to_string()]),
+                }),
+                ..TableSelections::default()
+            },
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+
+        assert!(json["tables"]["groupAssignments"].is_object());
+        assert!(json["tables"]["materialPropertiesConcreteData"].is_object());
+        assert!(json["tables"]["materialListByStory"].is_object());
     }
 }
 

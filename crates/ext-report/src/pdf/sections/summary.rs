@@ -26,7 +26,10 @@ pub fn render_summary_page(document: &ReportDocument, title: &str, lines: &[Stri
         escape_text(&document.overall_status),
     ));
     out.push_str("#v(12pt)\n");
-    out.push_str(&format!("#text(size: 16pt, weight: \"bold\")[{}]\n", escape_text(title)));
+    out.push_str(&format!(
+        "#text(size: 16pt, weight: \"bold\")[{}]\n",
+        escape_text(title)
+    ));
     out.push_str("#v(8pt)\n");
     for line in lines {
         out.push_str(&format!("- {}\n", escape_text(line)));

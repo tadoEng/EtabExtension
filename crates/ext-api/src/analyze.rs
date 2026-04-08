@@ -213,6 +213,15 @@ fn build_extract_request(config: &ext_db::TableSelections) -> TableSelections {
                 .modal_participating_mass_ratios
                 .clone()
                 .map(convert_table_config),
+            group_assignments: config.group_assignments.clone().map(convert_table_config),
+            material_properties_concrete_data: config
+                .material_properties_concrete_data
+                .clone()
+                .map(convert_table_config),
+            material_list_by_story: config
+                .material_list_by_story
+                .clone()
+                .map(convert_table_config),
         };
     }
 
@@ -239,6 +248,9 @@ fn build_extract_request(config: &ext_db::TableSelections) -> TableSelections {
         story_definitions: None,
         pier_section_properties: None,
         pier_forces: None,
+        group_assignments: None,
+        material_properties_concrete_data: None,
+        material_list_by_story: None,
     }
 }
 
@@ -279,7 +291,7 @@ fn build_summary(run_data: &RunAnalysisData) -> AnalysisSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ext_db::config::Config;
+    use ext_db::config::{Config, TableConfig, TableSelections as ConfigTableSelections};
 
     #[test]
     fn resolve_sidecar_units_accepts_legacy_project_units() {
@@ -287,5 +299,48 @@ mod tests {
         config.project.units = Some("kip-in-F".to_string());
         let ctx = AppContext::for_test(std::env::temp_dir(), config);
         assert_eq!(resolve_sidecar_units(&ctx).unwrap(), "US_Kip_In");
+    }
+
+    #[test]
+    fn build_extract_request_preserves_new_table_selectors() {
+        let config = ConfigTableSelections {
+            group_assignments: Some(TableConfig {
+                groups: Some(vec!["Core".to_string()]),
+                ..TableConfig::default()
+            }),
+            material_properties_concrete_data: Some(TableConfig {
+                field_keys: Some(vec!["Fc".to_string(), "Ec".to_string()]),
+                ..TableConfig::default()
+            }),
+            material_list_by_story: Some(TableConfig {
+                field_keys: Some(vec!["Story".to_string()]),
+                ..TableConfig::default()
+            }),
+            ..ConfigTableSelections::default()
+        };
+
+        let request = build_extract_request(&config);
+
+        assert_eq!(
+            request
+                .group_assignments
+                .as_ref()
+                .and_then(|table| table.groups.as_ref()),
+            Some(&vec!["Core".to_string()])
+        );
+        assert_eq!(
+            request
+                .material_properties_concrete_data
+                .as_ref()
+                .and_then(|table| table.field_keys.as_ref()),
+            Some(&vec!["Fc".to_string(), "Ec".to_string()])
+        );
+        assert_eq!(
+            request
+                .material_list_by_story
+                .as_ref()
+                .and_then(|table| table.field_keys.as_ref()),
+            Some(&vec!["Story".to_string()])
+        );
     }
 }

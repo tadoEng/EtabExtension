@@ -3,7 +3,10 @@ use crate::pdf::template::escape_text;
 use crate::report_types::{ChartRef, KeyValueTable};
 
 pub fn render_single_chart_page(title: &str, chart: &ChartRef) -> String {
-    let mut out = format!("#text(size: 16pt, weight: \"bold\")[{}]\n", escape_text(title));
+    let mut out = format!(
+        "#text(size: 16pt, weight: \"bold\")[{}]\n",
+        escape_text(title)
+    );
     out.push_str("#v(10pt)\n");
     out.push_str(&render_single_chart(chart, "6.8in"));
     out

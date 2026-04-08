@@ -195,10 +195,12 @@ async fn confirm_open_pid(
         return Ok(pid);
     }
 
-    let status = sidecar
-        .get_status()
-        .await
-        .with_context(|| format!("Failed to confirm ETABS status for {}", target_file.display()))?;
+    let status = sidecar.get_status().await.with_context(|| {
+        format!(
+            "Failed to confirm ETABS status for {}",
+            target_file.display()
+        )
+    })?;
 
     if sidecar_target_matches(&status, target_file) {
         if let Some(pid) = status.pid {
