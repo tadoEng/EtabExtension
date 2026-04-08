@@ -16,7 +16,7 @@ use chrono::Utc;
 use ext_core::{
     branch,
     fs::{atomic_copy, check_disk_space},
-    sidecar::{GetStatusData, GetStatusUnitSystem},
+    sidecar::{GetStatusData, GetStatusUnitSystem, OpenModelData, SidecarClient},
     state::WorkingFileStatus,
     vcs::current_branch,
 };
@@ -186,6 +186,32 @@ fn sidecar_target_matches(data: &GetStatusData, working_file: &Path) -> bool {
     data.is_running && data.is_model_open && paths_match(Path::new(open_file), working_file)
 }
 
+async fn confirm_open_pid(
+    sidecar: &SidecarClient,
+    target_file: &Path,
+    opened: &OpenModelData,
+) -> Result<u32> {
+    if let Some(pid) = opened.pid {
+        return Ok(pid);
+    }
+
+    let status = sidecar
+        .get_status()
+        .await
+        .with_context(|| format!("Failed to confirm ETABS status for {}", target_file.display()))?;
+
+    if sidecar_target_matches(&status, target_file) {
+        if let Some(pid) = status.pid {
+            return Ok(pid);
+        }
+    }
+
+    bail!(
+        "✗ ETABS opened but PID could not be confirmed\n  File: {}\n  Close ETABS and try again",
+        target_file.display()
+    );
+}
+
 fn resolve_version_model(
     ctx: &AppContext,
     current_branch_name: &str,
@@ -253,14 +279,15 @@ pub async fn etabs_open(ctx: &AppContext, version_ref: Option<&str>) -> Result<E
 
     let sidecar = ctx.require_sidecar()?;
     let opened = sidecar
-        .open_model(&target_file, false, false)
+        .open_model(&target_file, false, true)
         .await
         .with_context(|| format!("Failed to launch ETABS for {}", target_file.display()))?;
+    let confirmed_pid = confirm_open_pid(sidecar, &target_file, &opened).await?;
 
     // Record the mtime at open time so OPEN_CLEAN vs OPEN_MODIFIED detection
     // is accurate: ETABS saving a file bumps the mtime above this baseline.
     if let Some(wf) = state.working_file.as_mut() {
-        wf.etabs_pid = Some(opened.pid);
+        wf.etabs_pid = Some(confirmed_pid);
         wf.last_known_mtime = mtime(&target_file);
         wf.status = WorkingFileStatus::OpenClean;
         wf.status_changed_at = Utc::now();
@@ -270,7 +297,7 @@ pub async fn etabs_open(ctx: &AppContext, version_ref: Option<&str>) -> Result<E
 
     Ok(EtabsOpenResult {
         opened_file: normalize_display(&target_file),
-        pid: opened.pid,
+        pid: confirmed_pid,
         is_snapshot,
         warning,
     })
@@ -452,7 +479,7 @@ pub async fn etabs_unlock(ctx: &AppContext) -> Result<EtabsUnlockResult> {
             .with_context(|| format!("Failed to reopen {} for unlock", working_file.display()))?;
         reopened_for_unlock = true;
         if let Some(wf) = state.working_file.as_mut() {
-            wf.etabs_pid = Some(opened.pid);
+            wf.etabs_pid = opened.pid;
             wf.status = WorkingFileStatus::OpenClean;
             wf.status_changed_at = Utc::now();
         }

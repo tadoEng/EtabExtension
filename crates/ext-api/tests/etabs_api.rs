@@ -73,6 +73,8 @@ async fn etabs_open_updates_state_to_open_clean() {
 
     let fake_state_path = fake_sidecar::sidecar_state_path(&sidecar);
     assert!(fake_state_path.exists());
+    let fake_state_text = std::fs::read_to_string(fake_state_path).unwrap();
+    assert!(fake_state_text.contains("last_open_new_instance=1"));
 }
 
 #[tokio::test]
@@ -106,6 +108,44 @@ async fn etabs_open_snapshot_sets_warning_and_snapshot_flag() {
     let fake_state_text =
         std::fs::read_to_string(fake_sidecar::sidecar_state_path(&sidecar)).unwrap();
     assert!(fake_state_text.contains("is_model_open=1"));
+    assert!(fake_state_text.contains("last_open_new_instance=1"));
+}
+
+#[tokio::test]
+async fn etabs_open_fails_when_pid_cannot_be_confirmed() {
+    let temp = TempDir::new().unwrap();
+    let project_root = init_fixture(&temp).await;
+    let sidecar = configure_sidecar(&project_root, &temp);
+    let ctx = AppContext::new(&project_root).unwrap();
+
+    let state_before = ctx.load_state().unwrap();
+    let working_before = state_before.working_file.as_ref().unwrap().clone();
+
+    set_sidecar_state(
+        &sidecar,
+        fake_sidecar::FakeSidecarState {
+            pid: None,
+            ..Default::default()
+        },
+        &working_before.path,
+    );
+
+    let err = etabs_open(&ctx, None).await.unwrap_err();
+    assert!(
+        err.to_string().contains("PID could not be confirmed"),
+        "{}",
+        err
+    );
+
+    let state_after = ctx.load_state().unwrap();
+    let working_after = state_after.working_file.as_ref().unwrap();
+    assert_eq!(working_after.etabs_pid, working_before.etabs_pid);
+    assert_eq!(working_after.status, working_before.status);
+
+    let fake_state_text =
+        std::fs::read_to_string(fake_sidecar::sidecar_state_path(&sidecar)).unwrap();
+    assert!(fake_state_text.contains("is_model_open=1"));
+    assert!(fake_state_text.contains("last_open_new_instance=1"));
 }
 
 #[tokio::test]

@@ -123,6 +123,8 @@ async fn cli_etabs_open_human_json_and_shell() {
 
 "#]]
     );
+    let fake_state_text = std::fs::read_to_string(fake_sidecar::sidecar_state_path(&sidecar)).unwrap();
+    assert!(fake_state_text.contains("last_open_new_instance=1"));
 
     let close_working = run_ext(&["--project-path", project, "etabs", "close", "--no-save"]);
     assert!(

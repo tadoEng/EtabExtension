@@ -12,6 +12,7 @@ pub enum FakeSidecarMode {
 pub struct FakeSidecarState {
     pub is_running: bool,
     pub pid: Option<u32>,
+    pub last_open_new_instance: bool,
     pub etabs_version: Option<String>,
     pub open_file_path: Option<PathBuf>,
     pub is_model_open: bool,
@@ -29,6 +30,7 @@ impl Default for FakeSidecarState {
         Self {
             is_running: false,
             pid: Some(4242),
+            last_open_new_instance: false,
             etabs_version: Some("ETABS 22.0".to_string()),
             open_file_path: None,
             is_model_open: false,
@@ -68,6 +70,10 @@ pub fn set_fake_sidecar_state(sidecar_path: &Path, state: &FakeSidecarState) {
     let lines = [
         format!("is_running={}", if state.is_running { 1 } else { 0 }),
         format!("pid={pid}"),
+        format!(
+            "last_open_new_instance={}",
+            if state.last_open_new_instance { 1 } else { 0 }
+        ),
         format!("etabs_version={etabs_version}"),
         format!("open_file_path={open_file}"),
         format!("is_model_open={}", if state.is_model_open { 1 } else { 0 }),
@@ -101,6 +107,7 @@ call :load_state
 set "cmd=%~1"
 shift
 set "file="
+set "output="
 set "output_dir="
 set "save=0"
 set "new_instance=0"
@@ -114,6 +121,12 @@ if /I "%~1"=="--file" (
 )
 if /I "%~1"=="--output-dir" (
   set "output_dir=%~2"
+  shift
+  shift
+  goto parse
+)
+if /I "%~1"=="--output" (
+  set "output=%~2"
   shift
   shift
   goto parse
@@ -140,7 +153,9 @@ if /I "%cmd%"=="get-status" goto get_status
 if /I "%cmd%"=="open-model" goto open_model
 if /I "%cmd%"=="close-model" goto close_model
 if /I "%cmd%"=="unlock-model" goto unlock_model
+if /I "%cmd%"=="generate-e2k" goto generate_e2k
 if /I "%cmd%"=="run-analysis" goto run_analysis
+if /I "%cmd%"=="extract-materials" goto extract_materials
 if /I "%cmd%"=="extract-results" goto extract_results
 echo {"success":false,"error":"unsupported command"}
 exit /b 0
@@ -148,6 +163,7 @@ exit /b 0
 :default_state
 set "is_running=0"
 set "pid=4242"
+set "last_open_new_instance=0"
 set "etabs_version=ETABS 22.0"
 set "open_file_path="
 set "is_model_open=0"
@@ -172,6 +188,7 @@ goto :eof
 (
   echo is_running=!is_running!
   echo pid=!pid!
+  echo last_open_new_instance=!last_open_new_instance!
   echo etabs_version=!etabs_version!
   echo open_file_path=!open_file_path!
   echo is_model_open=!is_model_open!
@@ -227,7 +244,7 @@ exit /b 0
 :open_model
 call :nullable_string "!open_file_path!" previous_file_json
 set "is_running=1"
-if "!pid!"=="" set "pid=4242"
+set "last_open_new_instance=!new_instance!"
 set "open_file_path=!file!"
 set "is_model_open=1"
 if "!is_locked!"=="" set "is_locked=0"
@@ -269,12 +286,34 @@ call :nullable_bool "!was_locked!" was_locked_json
 echo {"success":true,"data":{"filePath":!file_json!,"wasLocked":!was_locked_json!}}
 exit /b 0
 
+:generate_e2k
+if not "!output!"=="" (
+  for %%I in ("!output!") do if not exist "%%~dpI" mkdir "%%~dpI" >nul 2>&1
+  > "!output!" echo e2k
+)
+call :nullable_string "!file!" input_file_json
+call :nullable_string "!output!" output_file_json
+echo {"success":true,"data":{"inputFile":!input_file_json!,"outputFile":!output_file_json!,"fileSizeBytes":4,"generationTimeMs":75}}
+exit /b 0
+
 :run_analysis
 if /I "!mode!"=="analysis-fail" (
   echo {"success":false,"error":"simulated analysis failure"}
   exit /b 0
 )
 echo {"success":true,"data":{"filePath":"fake.edb","casesRequested":null,"caseCount":2,"finishedCaseCount":2,"analysisTimeMs":1234,"units":{"force":"kip","length":"ft","temperature":"F","isUs":true,"isMetric":false,"rawForce":1,"rawLength":2,"rawTemperature":3}}}
+exit /b 0
+
+:extract_materials
+set "materials_output="
+if not "!output_dir!"=="" (
+  if not exist "!output_dir!" mkdir "!output_dir!" >nul 2>&1
+  set "materials_output=!output_dir!\material_list_by_story.parquet"
+  > "!materials_output!" echo parquet
+)
+call :nullable_string "!file!" materials_file_json
+call :nullable_string "!materials_output!" materials_output_json
+echo {"success":true,"data":{"filePath":!materials_file_json!,"outputFile":!materials_output_json!,"tableKey":"Material List by Story","rowCount":12,"discardedRowCount":2,"units":{"force":"kip","length":"ft","temperature":"F","isUs":true,"isMetric":false,"rawForce":1,"rawLength":2,"rawTemperature":3},"extractionTimeMs":120}}
 exit /b 0
 
 :extract_results

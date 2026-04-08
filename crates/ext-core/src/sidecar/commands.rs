@@ -55,7 +55,7 @@ pub struct GetStatusData {
 pub struct OpenModelData {
     pub file_path: String,
     pub previous_file_path: Option<String>,
-    pub pid: u32,
+    pub pid: Option<u32>,
     pub opened_in_new_instance: bool,
 }
 
@@ -78,8 +78,10 @@ pub struct UnlockModelData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerateE2kData {
-    pub output_path: String,
+    #[serde(alias = "outputPath")]
+    pub output_file: String,
     pub file_size_bytes: u64,
+    pub generation_time_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,9 +98,14 @@ pub struct RunAnalysisData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractMaterialsData {
-    pub output_path: String,
+    pub file_path: String,
+    #[serde(alias = "outputPath")]
+    pub output_file: Option<String>,
+    pub table_key: String,
     pub row_count: u64,
-    pub units: UnitInfo,
+    pub discarded_row_count: u64,
+    pub units: Option<UnitInfo>,
+    pub extraction_time_ms: u64,
 }
 
 /// Per-table outcome inside ExtractResultsData.
@@ -221,6 +228,117 @@ impl SidecarClient {
         resp.data.ok_or_else(|| {
             ext_error::ExtError::SidecarParse("unlock-model returned no data".into())
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ExtractMaterialsData, GenerateE2kData, OpenModelData};
+
+    #[test]
+    fn open_model_data_accepts_null_pid() {
+        let data: OpenModelData = serde_json::from_str(
+            r#"{
+                "filePath":"C:\\Models\\tower.edb",
+                "previousFilePath":null,
+                "pid":null,
+                "openedInNewInstance":true
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(data.file_path, r"C:\Models\tower.edb");
+        assert_eq!(data.pid, None);
+        assert!(data.opened_in_new_instance);
+    }
+
+    #[test]
+    fn generate_e2k_data_accepts_current_output_file() {
+        let data: GenerateE2kData = serde_json::from_str(
+            r#"{
+                "inputFile":"C:\\Models\\tower.edb",
+                "outputFile":"C:\\Models\\tower.e2k",
+                "fileSizeBytes":2048,
+                "generationTimeMs":120
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(data.output_file, r"C:\Models\tower.e2k");
+        assert_eq!(data.file_size_bytes, 2048);
+        assert_eq!(data.generation_time_ms, Some(120));
+    }
+
+    #[test]
+    fn generate_e2k_data_accepts_legacy_output_path_alias() {
+        let data: GenerateE2kData = serde_json::from_str(
+            r#"{
+                "outputPath":"C:\\Models\\tower.e2k",
+                "fileSizeBytes":2048
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(data.output_file, r"C:\Models\tower.e2k");
+        assert_eq!(data.file_size_bytes, 2048);
+        assert_eq!(data.generation_time_ms, None);
+    }
+
+    #[test]
+    fn extract_materials_data_accepts_output_file() {
+        let data: ExtractMaterialsData = serde_json::from_str(
+            r#"{
+                "filePath":"C:\\Models\\tower.edb",
+                "outputFile":"C:\\Temp\\material_list_by_story.parquet",
+                "tableKey":"Material List by Story",
+                "rowCount":12,
+                "discardedRowCount":2,
+                "units":{
+                    "force":"kip",
+                    "length":"ft",
+                    "temperature":"F",
+                    "isUs":true,
+                    "isMetric":false,
+                    "rawForce":1,
+                    "rawLength":2,
+                    "rawTemperature":3
+                },
+                "extractionTimeMs":300
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(data.file_path, r"C:\Models\tower.edb");
+        assert_eq!(
+            data.output_file.as_deref(),
+            Some(r"C:\Temp\material_list_by_story.parquet")
+        );
+        assert_eq!(data.table_key, "Material List by Story");
+        assert_eq!(data.row_count, 12);
+        assert_eq!(data.discarded_row_count, 2);
+        assert!(data.units.is_some());
+        assert_eq!(data.extraction_time_ms, 300);
+    }
+
+    #[test]
+    fn extract_materials_data_accepts_null_output_file() {
+        let data: ExtractMaterialsData = serde_json::from_str(
+            r#"{
+                "filePath":"C:\\Models\\tower.edb",
+                "outputFile":null,
+                "tableKey":"Material List by Story",
+                "rowCount":0,
+                "discardedRowCount":0,
+                "units":null,
+                "extractionTimeMs":180
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(data.output_file, None);
+        assert_eq!(data.row_count, 0);
+        assert!(data.units.is_none());
+        assert_eq!(data.extraction_time_ms, 180);
     }
 }
 
