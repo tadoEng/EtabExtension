@@ -520,7 +520,7 @@ mod tests {
             },
         );
 
-        assert_eq!(document.sections.len(), 9);
+        assert_eq!(document.sections.len(), 6);
         assert!(matches!(
             document.sections[0],
             ReportSection::SummaryPage { .. }

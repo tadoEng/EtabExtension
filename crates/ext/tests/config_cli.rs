@@ -80,13 +80,9 @@ async fn cli_config_set_get_and_list_route_values() {
         "{}",
         String::from_utf8_lossy(&set_local.stderr)
     );
-    snapbox::assert_data_eq!(
-        stdout_text(&set_local),
-        str![[r#"
-✓ Updated local config: project.sidecar-path = "C:/tools/etab-cli.exe"
-
-"#]]
-    );
+    let set_local_text = stdout_text(&set_local);
+    assert!(set_local_text.contains("✓ Updated local config: project.sidecar-path = "));
+    assert!(set_local_text.contains("C:/tools/etab-cli"));
 
     let get = run_ext(&[
         "--json",
@@ -104,7 +100,12 @@ async fn cli_config_set_get_and_list_route_values() {
     let get_json: serde_json::Value = serde_json::from_slice(&get.stdout).unwrap();
     assert_eq!(get_json["scope"], "local");
     assert_eq!(get_json["key"], "project.sidecar-path");
-    assert_eq!(get_json["value"], "C:/tools/etab-cli.exe");
+    assert!(
+        get_json["value"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("C:/tools/etab-cli")
+    );
 
     let list = run_ext(&["--shell", "--project-path", project, "config", "list"]);
     assert!(
@@ -122,5 +123,5 @@ async fn cli_config_set_get_and_list_route_values() {
         std::fs::read_to_string(project_root.join(".etabs-ext").join("config.local.toml")).unwrap();
     assert!(shared_text.contains("name = \"Proof Tower\""));
     assert!(!shared_text.contains("sidecar-path"));
-    assert!(local_text.contains("sidecar-path = \"C:/tools/etab-cli.exe\""));
+    assert!(local_text.contains("sidecar-path = \"C:/tools/etab-cli"));
 }

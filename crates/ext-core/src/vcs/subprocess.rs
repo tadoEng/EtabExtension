@@ -50,7 +50,9 @@ pub fn git_add(repo: &Path, paths: &[&Path]) -> Result<()> {
         .iter()
         .map(|p| p.to_string_lossy().into_owned())
         .collect();
-    let mut args = vec!["add", "--"];
+    // ext stages explicit generated artifacts, including versioned parquet files
+    // that may still match broad ignore patterns in older repos.
+    let mut args = vec!["add", "-f", "--"];
     let borrowed: Vec<&str> = path_strs.iter().map(|s| s.as_str()).collect();
     args.extend_from_slice(&borrowed);
     run_git(repo, &args)?;
