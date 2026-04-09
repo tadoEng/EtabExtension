@@ -287,10 +287,9 @@ async fn analyze_version_default_request_and_summary_cover_current_pipeline() {
     assert!(request.contains("materialPropertiesConcreteData"));
     assert!(request.contains("materialListByStory"));
 
-    let summary = AnalysisSummary::read_from(
-        &project_root.join(".etabs-ext").join("main").join("v1"),
-    )
-    .unwrap();
+    let summary =
+        AnalysisSummary::read_from(&project_root.join(".etabs-ext").join("main").join("v1"))
+            .unwrap();
     assert_eq!(summary.case_count, 2);
     assert_eq!(summary.finished_case_count, 2);
     assert_eq!(summary.analysis_time_ms, 1234);

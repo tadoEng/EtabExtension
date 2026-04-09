@@ -30,7 +30,9 @@ pub mod status;
 pub mod switch;
 
 pub use analyze::{AnalyzeOptions, AnalyzeResult, analyze_version};
-pub use config_cmd::{ConfigEntry, ConfigListResult, ConfigSetResult, get_config, list_config, set_config};
+pub use config_cmd::{
+    ConfigEntry, ConfigListResult, ConfigSetResult, get_config, list_config, set_config,
+};
 pub use context::AppContext;
 pub use etabs::{
     CloseMode, EtabsCloseConflict, EtabsCloseResult, EtabsOpenResult, EtabsRecoverConflict,

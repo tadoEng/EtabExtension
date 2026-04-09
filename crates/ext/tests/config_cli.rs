@@ -83,7 +83,7 @@ async fn cli_config_set_get_and_list_route_values() {
     snapbox::assert_data_eq!(
         stdout_text(&set_local),
         str![[r#"
-✓ Updated local config: project.sidecar_path = "C:/tools/etab-cli.exe"
+✓ Updated local config: project.sidecar-path = "C:/tools/etab-cli.exe"
 
 "#]]
     );
@@ -103,7 +103,7 @@ async fn cli_config_set_get_and_list_route_values() {
     );
     let get_json: serde_json::Value = serde_json::from_slice(&get.stdout).unwrap();
     assert_eq!(get_json["scope"], "local");
-    assert_eq!(get_json["key"], "project.sidecar_path");
+    assert_eq!(get_json["key"], "project.sidecar-path");
     assert_eq!(get_json["value"], "C:/tools/etab-cli.exe");
 
     let list = run_ext(&["--shell", "--project-path", project, "config", "list"]);
@@ -114,7 +114,7 @@ async fn cli_config_set_get_and_list_route_values() {
     );
     let list_text = stdout_text(&list);
     assert!(list_text.contains("project.name"));
-    assert!(list_text.contains("project.sidecar_path"));
+    assert!(list_text.contains("project.sidecar-path"));
 
     let shared_text =
         std::fs::read_to_string(project_root.join(".etabs-ext").join("config.toml")).unwrap();

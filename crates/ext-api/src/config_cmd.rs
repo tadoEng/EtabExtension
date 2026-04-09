@@ -48,7 +48,7 @@ pub fn get_config(ctx: &AppContext, key: &str) -> Result<ConfigEntry> {
         .ok_or_else(|| anyhow::anyhow!("Unknown config key: {key}"))?;
 
     Ok(ConfigEntry {
-        key: canonical_path.join("."),
+        key: display_key(&canonical_path),
         scope: scope_for_path(&canonical_path).to_string(),
         value,
     })
@@ -94,7 +94,9 @@ fn flatten_entries(
                     None => key.clone(),
                 };
                 let nested_current = match current {
-                    Value::Object(current_object) => current_object.get(key).unwrap_or(&Value::Null),
+                    Value::Object(current_object) => {
+                        current_object.get(key).unwrap_or(&Value::Null)
+                    }
                     _ => &Value::Null,
                 };
                 flatten_entries(nested_schema, nested_current, Some(&next_prefix), entries)?;
@@ -103,7 +105,11 @@ fn flatten_entries(
         leaf => {
             let key = prefix.unwrap_or_default().to_string();
             entries.push(ConfigEntry {
-                key: key.clone(),
+                key: display_key(
+                    &key.split('.')
+                        .map(|segment| segment.to_string())
+                        .collect::<Vec<_>>(),
+                ),
                 scope: scope_for_key(&key).to_string(),
                 value: if current.is_null() {
                     leaf.clone()
@@ -124,8 +130,9 @@ fn resolve_path(schema: &Value, raw_key: &str) -> Result<Vec<String>> {
         let object = current
             .as_object()
             .ok_or_else(|| anyhow::anyhow!("Config key '{raw_key}' descends into a non-object"))?;
-        let actual = resolve_segment(object, segment)
-            .ok_or_else(|| anyhow::anyhow!("Unknown config key segment '{segment}' in '{raw_key}'"))?;
+        let actual = resolve_segment(object, segment).ok_or_else(|| {
+            anyhow::anyhow!("Unknown config key segment '{segment}' in '{raw_key}'")
+        })?;
         resolved.push(actual.clone());
         current = object
             .get(&actual)
@@ -149,6 +156,37 @@ fn normalize_segment(segment: &str) -> String {
         .filter(|ch| ch.is_ascii_alphanumeric())
         .flat_map(|ch| ch.to_lowercase())
         .collect()
+}
+
+fn display_key(path: &[String]) -> String {
+    path.iter()
+        .map(|segment| display_segment(segment))
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
+fn display_segment(segment: &str) -> String {
+    let mut rendered = String::new();
+    let mut previous_was_lower_or_digit = false;
+
+    for ch in segment.chars() {
+        if ch == '_' || ch == '-' {
+            if !rendered.ends_with('-') {
+                rendered.push('-');
+            }
+            previous_was_lower_or_digit = false;
+            continue;
+        }
+
+        if ch.is_ascii_uppercase() && previous_was_lower_or_digit && !rendered.ends_with('-') {
+            rendered.push('-');
+        }
+
+        rendered.push(ch.to_ascii_lowercase());
+        previous_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+    }
+
+    rendered
 }
 
 fn scope_for_key(key: &str) -> &'static str {
@@ -197,12 +235,9 @@ fn toml_to_json(value: &toml::Value) -> Result<Value> {
             .ok_or_else(|| anyhow::anyhow!("Invalid floating-point config value"))?,
         toml::Value::Boolean(flag) => Value::Bool(*flag),
         toml::Value::Datetime(datetime) => Value::String(datetime.to_string()),
-        toml::Value::Array(array) => Value::Array(
-            array
-                .iter()
-                .map(toml_to_json)
-                .collect::<Result<Vec<_>>>()?,
-        ),
+        toml::Value::Array(array) => {
+            Value::Array(array.iter().map(toml_to_json).collect::<Result<Vec<_>>>()?)
+        }
         toml::Value::Table(table) => Value::Object(
             table
                 .iter()
@@ -227,17 +262,17 @@ fn get_path_value<'a>(value: &'a Value, path: &[String]) -> Result<Option<&'a Va
 fn set_path_value(value: &mut Value, path: &[String], replacement: Value) -> Result<()> {
     let mut current = value;
     for segment in &path[..path.len().saturating_sub(1)] {
-        let object = current
-            .as_object_mut()
-            .ok_or_else(|| anyhow::anyhow!("Config key '{}' descends into a non-object", path.join(".")))?;
+        let object = current.as_object_mut().ok_or_else(|| {
+            anyhow::anyhow!("Config key '{}' descends into a non-object", path.join("."))
+        })?;
         current = object
             .get_mut(segment)
             .ok_or_else(|| anyhow::anyhow!("Unknown config key '{}'", path.join(".")))?;
     }
 
-    let object = current
-        .as_object_mut()
-        .ok_or_else(|| anyhow::anyhow!("Config key '{}' descends into a non-object", path.join(".")))?;
+    let object = current.as_object_mut().ok_or_else(|| {
+        anyhow::anyhow!("Config key '{}' descends into a non-object", path.join("."))
+    })?;
     let leaf = path
         .last()
         .ok_or_else(|| anyhow::anyhow!("Config key cannot be empty"))?;
@@ -263,16 +298,31 @@ mod tests {
         let (_dir, ctx) = test_ctx();
         let result = list_config(&ctx).unwrap();
 
-        assert!(result.entries.iter().any(|entry| entry.key == "project.name"));
         assert!(
             result
                 .entries
                 .iter()
-                .any(|entry| entry.key == "project.sidecar_path")
+                .any(|entry| entry.key == "project.name")
         );
-        assert!(result.entries.iter().any(|entry| entry.key == "extract.units"));
+        assert!(
+            result
+                .entries
+                .iter()
+                .any(|entry| entry.key == "project.sidecar-path")
+        );
+        assert!(
+            result
+                .entries
+                .iter()
+                .any(|entry| entry.key == "extract.units")
+        );
         assert!(result.entries.iter().any(|entry| entry.key == "calc.code"));
-        assert!(result.entries.iter().any(|entry| entry.key == "paths.one_drive_dir"));
+        assert!(
+            result
+                .entries
+                .iter()
+                .any(|entry| entry.key == "paths.one-drive-dir")
+        );
     }
 
     #[test]
@@ -307,7 +357,7 @@ mod tests {
 
         let entry = get_config(&ctx, "paths.one-drive-dir").unwrap();
         assert_eq!(entry.scope, "local");
-        assert_eq!(entry.key, "paths.one_drive_dir");
+        assert_eq!(entry.key, "paths.one-drive-dir");
         assert_eq!(entry.value, Value::String("D:/Reports".to_string()));
     }
 }

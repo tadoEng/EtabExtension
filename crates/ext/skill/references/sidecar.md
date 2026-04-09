@@ -1,5 +1,56 @@
 # ETABS Extension — Sidecar CLI Development Guide
 
+> Current note: the sections below contain older design exploration. The
+> active Rust-side contract has moved on in a few important ways. Use the
+> summary in this note as the source of truth unless you are intentionally
+> reviewing historical ideas.
+
+## Current Contract Summary
+
+- Rust does not use a composite `save-snapshot` sidecar command today.
+- `ext commit` currently orchestrates `generate-e2k` and `extract-materials`
+  directly.
+- `ext analyze vN` currently orchestrates `run-analysis` and
+  `extract-results` directly.
+- `ext etabs open` now requests `open-model --new-instance` and requires a
+  confirmed PID before Rust writes OPEN state.
+- `open-model` payload shape is:
+
+```json
+{
+  "filePath": "C:\\path\\model.edb",
+  "previousFilePath": null,
+  "pid": 12345,
+  "openedInNewInstance": true
+}
+```
+
+- `generate-e2k` now uses `outputFile` as the canonical field name. Rust still
+  accepts legacy `outputPath` for backward compatibility.
+- `extract-materials` now uses `outputFile`, `tableKey`, `rowCount`,
+  `discardedRowCount`, `units`, and `extractionTimeMs`. Rust must not assume
+  `materials/takeoff.parquet`; it stages every generated parquet file under
+  `materials/`.
+- `extract-results` request defaults now cover the full current `ext-calc`
+  parquet input set:
+  - `storyDefinitions`
+  - `pierSectionProperties`
+  - `baseReactions`
+  - `storyForces`
+  - `jointDrifts`
+  - `pierForces`
+  - `modalParticipatingMassRatios`
+  - `groupAssignments`
+  - `materialPropertiesConcreteData`
+  - `materialListByStory`
+- `ext analyze` still means ETABS analysis plus parquet extraction only. It
+  does not run calc, render, or report.
+
+## Read This File Carefully
+
+Anything below that still mentions `save-snapshot`, `takeoff.parquet`, or the
+older 7-table result set is historical and should not be implemented as-is.
+
 Architecture, connection strategy, command contracts, and implementation
 patterns for `etab-cli.exe` — the C# .NET 10 sidecar that owns all ETABS
 COM interaction.

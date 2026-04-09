@@ -56,7 +56,11 @@ fn git_tracked_paths(ext_dir: &std::path::Path, rev: &str) -> Vec<String> {
         .current_dir(ext_dir)
         .output()
         .unwrap();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     String::from_utf8_lossy(&output.stdout)
         .lines()
         .map(str::to_owned)

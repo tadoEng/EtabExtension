@@ -1,5 +1,38 @@
 # ETABS Extension — Developer Workflow Map
 
+> Current note: this file mixes active workflow rules with older design notes.
+> Use the summary below as the current implementation baseline.
+
+## Current Workflow Summary
+
+- `ext etabs *` commands are the live-session controls:
+  - `ext etabs open`
+  - `ext etabs close`
+  - `ext etabs status`
+  - `ext etabs unlock`
+  - `ext etabs recover`
+- `ext analyze vN` currently means snapshot analysis plus parquet extraction
+  only.
+- `ext calc`, `ext render`, and `ext report` are still separate commands.
+- Default `extract-results` behavior now requests the full parquet table set
+  required by `ext-calc`, not the older minimal subset.
+- `ext commit` stages every parquet file generated under `vN/materials/`; it
+  no longer assumes `materials/takeoff.parquet`.
+- `summary.json` is still intentionally light, but it now records truthful
+  `caseCount`, `finishedCaseCount`, and `analysisTimeMs`.
+- Config is split intentionally:
+  - shared: `config.toml` for `project.name`, `extract.*`, `calc.*`
+  - local: `config.local.toml` for `project.sidecar-path`, `project.units`,
+    `llm.*`, `git.*`, `paths.*`, `onedrive.*`
+- `ext config list|get|set` is now part of the CLI surface and should be used
+  instead of hand-editing TOML for routine changes.
+
+## Historical Sections Below
+
+Anything below that describes `ext analyze` as a full reporting pipeline, or
+that still assumes old materials/result artifact names, should be treated as
+historical design context rather than the exact current implementation.
+
 Complete state-by-state guide to expected system behavior.
 Use this as the implementation contract for `ext-api` and `ext-core`.
 
