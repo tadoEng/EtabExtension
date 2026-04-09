@@ -13,6 +13,7 @@ use crate::output::OutputFormat;
 pub mod analyze;
 pub mod branch;
 pub mod calc;
+pub mod config;
 pub mod checkout;
 pub mod commit;
 pub mod diff;

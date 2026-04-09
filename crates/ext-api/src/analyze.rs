@@ -226,31 +226,34 @@ fn build_extract_request(config: &ext_db::TableSelections) -> TableSelections {
     }
 
     TableSelections {
-        base_reactions: Some(TableSelection {
-            load_cases: Some(vec!["*".to_string()]),
-            load_combos: Some(vec!["*".to_string()]),
-            groups: None,
-            field_keys: None,
-        }),
-        story_forces: Some(TableSelection {
-            load_cases: Some(vec!["*".to_string()]),
-            load_combos: Some(vec!["*".to_string()]),
-            groups: None,
-            field_keys: None,
-        }),
-        joint_drifts: None,
-        modal_participating_mass_ratios: Some(TableSelection {
-            load_cases: None,
-            load_combos: None,
-            groups: None,
-            field_keys: None,
-        }),
-        story_definitions: None,
-        pier_section_properties: None,
-        pier_forces: None,
-        group_assignments: None,
-        material_properties_concrete_data: None,
-        material_list_by_story: None,
+        story_definitions: Some(default_geometry_table()),
+        pier_section_properties: Some(default_geometry_table()),
+        base_reactions: Some(default_results_table()),
+        story_forces: Some(default_results_table()),
+        joint_drifts: Some(default_results_table()),
+        pier_forces: Some(default_results_table()),
+        modal_participating_mass_ratios: Some(default_geometry_table()),
+        group_assignments: Some(default_geometry_table()),
+        material_properties_concrete_data: Some(default_geometry_table()),
+        material_list_by_story: Some(default_geometry_table()),
+    }
+}
+
+fn default_geometry_table() -> TableSelection {
+    TableSelection {
+        load_cases: None,
+        load_combos: None,
+        groups: None,
+        field_keys: None,
+    }
+}
+
+fn default_results_table() -> TableSelection {
+    TableSelection {
+        load_cases: Some(vec!["*".to_string()]),
+        load_combos: Some(vec!["*".to_string()]),
+        groups: None,
+        field_keys: None,
     }
 }
 
@@ -270,6 +273,9 @@ fn build_summary(run_data: &RunAnalysisData) -> AnalysisSummary {
             .cases_requested
             .clone()
             .unwrap_or_else(|| vec!["*".to_string()]),
+        case_count: run_data.case_count,
+        finished_case_count: run_data.finished_case_count,
+        analysis_time_ms: run_data.analysis_time_ms,
         modal: ModalSummary {
             num_modes: 0,
             dominant_period_x: None,
@@ -342,5 +348,21 @@ mod tests {
                 .and_then(|table| table.field_keys.as_ref()),
             Some(&vec!["Story".to_string()])
         );
+    }
+
+    #[test]
+    fn build_extract_request_defaults_cover_all_calc_tables() {
+        let request = build_extract_request(&ConfigTableSelections::default());
+
+        assert!(request.story_definitions.is_some());
+        assert!(request.pier_section_properties.is_some());
+        assert!(request.base_reactions.is_some());
+        assert!(request.story_forces.is_some());
+        assert!(request.joint_drifts.is_some());
+        assert!(request.pier_forces.is_some());
+        assert!(request.modal_participating_mass_ratios.is_some());
+        assert!(request.group_assignments.is_some());
+        assert!(request.material_properties_concrete_data.is_some());
+        assert!(request.material_list_by_story.is_some());
     }
 }

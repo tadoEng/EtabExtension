@@ -25,6 +25,7 @@ pub struct Cli {
 pub enum Command {
     Init(InitArgs),
     Status(StatusArgs),
+    Config(ConfigArgs),
     Commit(CommitArgs),
     Analyze(AnalyzeArgs),
     Calc(CalcArgs),
@@ -38,6 +39,30 @@ pub enum Command {
     Stash(StashArgs),
     Diff(DiffArgs),
     Etabs(EtabsArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ConfigArgs {
+    #[command(subcommand)]
+    pub command: ConfigSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigSubcommand {
+    List,
+    Get(ConfigGetArgs),
+    Set(ConfigSetArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ConfigGetArgs {
+    pub key: String,
+}
+
+#[derive(Debug, Args)]
+pub struct ConfigSetArgs {
+    pub key: String,
+    pub value: String,
 }
 
 #[derive(Debug, Args)]

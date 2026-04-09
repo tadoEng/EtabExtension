@@ -5,7 +5,7 @@
 //
 // Resolution order: config.local.toml → config.toml → built-in defaults
 //
-// AI keys (ai.apiKey) MUST ONLY appear in config.local.toml.
+// LLM keys (llm.api-key) MUST ONLY appear in config.local.toml.
 // config.toml is git-tracked and pushed to OneDrive — never write secrets there.
 
 pub mod calc;
@@ -92,8 +92,10 @@ struct LocalConfigFile {
 impl Config {
     /// Load and merge config.toml + config.local.toml from project root.
     ///
-    /// config.local.toml keys win over config.toml keys on every field
-    /// via the merge() impl on each sub-config struct.
+    /// Merge policy is section-aware:
+    /// - project: merged field-by-field (local overrides shared)
+    /// - extract, calc: shared only
+    /// - llm, git, paths, onedrive: local only
     pub fn load(project_root: &Path) -> Result<Self> {
         let config_dir = project_root.join(CONFIG_DIR);
         let base =

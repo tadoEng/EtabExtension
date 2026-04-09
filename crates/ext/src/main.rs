@@ -18,6 +18,9 @@ async fn main() -> Result<()> {
         Command::Status(args) => {
             commands::status::execute(&out, cli.project_path.as_ref(), args).await
         }
+        Command::Config(args) => {
+            commands::config::execute(&out, cli.project_path.as_ref(), args).await
+        }
         Command::Commit(args) => {
             commands::commit::execute(&out, cli.project_path.as_ref(), args).await
         }

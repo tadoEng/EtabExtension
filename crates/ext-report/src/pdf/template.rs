@@ -3,7 +3,7 @@ use crate::report_types::{ReportDocument, ReportSection};
 
 pub fn build_typst_document(document: &ReportDocument) -> String {
     let mut doc = String::new();
-    doc.push_str("#set text(font: \"Arial\", size: 9pt)\n");
+    doc.push_str("#set text(font: \"Libertinus Serif\", size: 9pt)\n");
     doc.push_str("#set page(width: 17in, height: 11in, margin: (top: 0.5in, left: 1.0in, right: 0.5in, bottom: 0.5in))\n");
     doc.push_str("#set par(justify: false)\n\n");
     doc.push_str(&title_block_fn());
@@ -48,13 +48,15 @@ pub(crate) fn escape_text(text: &str) -> String {
         .replace('[', "\\[")
         .replace(']', "\\]")
         .replace('#', "\\#")
+        .replace('"', "\\\"")
+        .replace('@', "\\@")
 }
 
 fn title_block_fn() -> String {
     r##"
 #let title_block(project, proj_num, reference, engineer, checker, date, subject, scale, sheet, revision) = {
   place(bottom + left)[
-    #set text(font: "Arial")
+    #set text(font: "Libertinus Serif")
     #table(
       columns: (1.35in, 3.2in, 4.0in, 1.6in, 2.0in, 3.35in),
       stroke: 1pt + black,
@@ -195,5 +197,12 @@ mod tests {
         assert!(source.contains("left: 1.0in"));
         assert!(source.contains("bottom: 0.5in"));
         assert!(source.contains("#let title_block("));
+        assert!(source.contains("font: \"Libertinus Serif\""));
+    }
+
+    #[test]
+    fn escape_text_handles_quotes_and_mentions() {
+        let escaped = super::escape_text("Tower \"A\" @ Main");
+        assert_eq!(escaped, "Tower \\\"A\\\" \\@ Main");
     }
 }

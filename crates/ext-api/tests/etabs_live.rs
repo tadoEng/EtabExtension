@@ -54,6 +54,22 @@ impl LiveProject {
     }
 }
 
+fn materials_dir_has_parquet(materials_dir: &Path) -> bool {
+    std::fs::read_dir(materials_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .any(|path| {
+            path.is_file()
+                && path
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("parquet"))
+        })
+}
+
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -236,12 +252,7 @@ async fn live_week34_vcs_and_commit_analyze_cycle() {
     assert!(main_v1_dir.join("manifest.json").exists());
     if hidden_mode {
         assert!(main_v1_dir.join("model.e2k").exists());
-        assert!(
-            main_v1_dir
-                .join("materials")
-                .join("takeoff.parquet")
-                .exists()
-        );
+        assert!(materials_dir_has_parquet(&main_v1_dir.join("materials")));
     }
 
     let shown_v1 = log::show_version(ctx, "main/v1")
@@ -309,12 +320,7 @@ async fn live_week34_vcs_and_commit_analyze_cycle() {
     assert!(steel_v2_dir.join("manifest.json").exists());
     if hidden_mode {
         assert!(steel_v2_dir.join("model.e2k").exists());
-        assert!(
-            steel_v2_dir
-                .join("materials")
-                .join("takeoff.parquet")
-                .exists()
-        );
+        assert!(materials_dir_has_parquet(&steel_v2_dir.join("materials")));
         assert!(steel_v2_dir.join("summary.json").exists());
         assert!(steel_v2_dir.join("results").exists());
     }

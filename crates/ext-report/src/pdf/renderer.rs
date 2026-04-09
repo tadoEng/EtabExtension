@@ -27,9 +27,12 @@ impl TypstWorld {
         let mut fonts = Vec::new();
         let mut book = FontBook::new();
 
+        Self::load_bundled_fonts(&mut fonts, &mut book);
         let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         Self::search_fonts(&current_dir.join("fonts"), &mut fonts, &mut book);
-        Self::search_fonts(Path::new(r"C:\Windows\Fonts"), &mut fonts, &mut book);
+        if cfg!(windows) {
+            Self::search_fonts(Path::new(r"C:\Windows\Fonts"), &mut fonts, &mut book);
+        }
 
         if fonts.is_empty() {
             bail!("No readable fonts found for Typst compilation");
@@ -73,6 +76,16 @@ impl TypstWorld {
                 continue;
             };
             let bytes = Bytes::new(buffer);
+            for font in Font::iter(bytes) {
+                book.push(font.info().clone());
+                fonts.push(font);
+            }
+        }
+    }
+
+    fn load_bundled_fonts(fonts: &mut Vec<Font>, book: &mut FontBook) {
+        for bytes in typst_assets::fonts() {
+            let bytes = Bytes::new(bytes.to_vec());
             for font in Font::iter(bytes) {
                 book.push(font.info().clone());
                 fonts.push(font);
@@ -219,6 +232,22 @@ mod tests {
         );
 
         let pdf = render_pdf(&sample_document(), svgs).unwrap();
+        assert!(pdf.starts_with(b"%PDF"));
+    }
+
+    #[test]
+    fn render_pdf_handles_metadata_with_quotes_and_mentions() {
+        let mut svgs = HashMap::new();
+        svgs.insert(
+            "images/sample.svg".to_string(),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"120\"><rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/><text x=\"20\" y=\"60\">proof</text></svg>".to_string(),
+        );
+
+        let mut document = sample_document();
+        document.project.project_name = "Proof \"Tower\"".to_string();
+        document.project.engineer = "QA @ Desk".to_string();
+
+        let pdf = render_pdf(&document, svgs).unwrap();
         assert!(pdf.starts_with(b"%PDF"));
     }
 

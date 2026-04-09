@@ -84,6 +84,9 @@ pub struct DriftSummary {
 pub struct AnalysisSummary {
     pub analyzed_at: DateTime<Utc>,
     pub load_cases: Vec<String>,
+    pub case_count: u64,
+    pub finished_case_count: u64,
+    pub analysis_time_ms: u64,
     pub modal: ModalSummary,
     pub base_reaction: BaseReactionSummary,
     pub drift: DriftSummary,

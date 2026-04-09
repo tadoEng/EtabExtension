@@ -7,6 +7,7 @@ use ext_api::analyze::{AnalyzeOptions, analyze_version};
 use ext_api::commit::{self, CommitOptions};
 use ext_api::init::{InitRequest, init_project};
 use ext_core::version::VersionManifest;
+use ext_core::version::manifest::AnalysisSummary;
 use ext_db::config::{Config, TableConfig};
 use std::process::Command;
 use tempfile::TempDir;
@@ -249,4 +250,48 @@ async fn analyze_version_forwards_new_extract_table_selectors_to_sidecar() {
     assert!(request.contains("Fc"));
     assert!(request.contains("Ec"));
     assert!(request.contains("Story"));
+}
+
+#[tokio::test]
+async fn analyze_version_default_request_and_summary_cover_current_pipeline() {
+    let temp = TempDir::new().unwrap();
+    let project_root = init_fixture(&temp).await;
+    let sidecar = fake_sidecar::write_fake_sidecar(&temp, fake_sidecar::FakeSidecarMode::Success);
+    fake_sidecar::configure_fake_sidecar(&project_root, &sidecar);
+    let ctx = AppContext::new(&project_root).unwrap();
+
+    commit::commit_version(
+        &ctx,
+        "Initial",
+        CommitOptions {
+            no_e2k: true,
+            analyze: false,
+        },
+    )
+    .await
+    .unwrap();
+
+    analyze_version(&ctx, "v1", AnalyzeOptions::default())
+        .await
+        .unwrap();
+
+    let request = fake_sidecar::read_extract_results_request(&sidecar);
+    assert!(request.contains("storyDefinitions"));
+    assert!(request.contains("pierSectionProperties"));
+    assert!(request.contains("baseReactions"));
+    assert!(request.contains("storyForces"));
+    assert!(request.contains("jointDrifts"));
+    assert!(request.contains("pierForces"));
+    assert!(request.contains("modalParticipatingMassRatios"));
+    assert!(request.contains("groupAssignments"));
+    assert!(request.contains("materialPropertiesConcreteData"));
+    assert!(request.contains("materialListByStory"));
+
+    let summary = AnalysisSummary::read_from(
+        &project_root.join(".etabs-ext").join("main").join("v1"),
+    )
+    .unwrap();
+    assert_eq!(summary.case_count, 2);
+    assert_eq!(summary.finished_case_count, 2);
+    assert_eq!(summary.analysis_time_ms, 1234);
 }

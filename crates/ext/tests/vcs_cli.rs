@@ -50,6 +50,19 @@ fn normalize_output(text: &str, project_root: &std::path::Path) -> String {
         .replace(&slash, "<PROJECT>")
 }
 
+fn git_tracked_paths(ext_dir: &std::path::Path, rev: &str) -> Vec<String> {
+    let output = Command::new("git")
+        .args(["ls-tree", "-r", "--name-only", rev])
+        .current_dir(ext_dir)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::to_owned)
+        .collect()
+}
+
 #[tokio::test]
 async fn cli_vcs_smoke_json_and_human() {
     let temp = TempDir::new().unwrap();
@@ -426,5 +439,29 @@ async fn cli_commit_analyze_warning_snapshot() {
   Analysis: requested, but not finalized
 
 "#]]
+    );
+}
+
+#[tokio::test]
+async fn cli_commit_tracks_generated_material_parquet_files() {
+    let temp = TempDir::new().unwrap();
+    let project_root = init_fixture(&temp).await;
+    let sidecar = fake_sidecar::write_fake_sidecar(&temp, fake_sidecar::FakeSidecarMode::Success);
+    fake_sidecar::configure_fake_sidecar(&project_root, &sidecar);
+    let project = project_root.to_str().unwrap();
+
+    let output = run_ext(&["--project-path", project, "commit", "Initial model"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let tracked = git_tracked_paths(&project_root.join(".etabs-ext"), "HEAD");
+    assert!(tracked.iter().any(|path| path == "main/v1/model.e2k"));
+    assert!(
+        tracked
+            .iter()
+            .any(|path| path == "main/v1/materials/material_list_by_story.parquet")
     );
 }

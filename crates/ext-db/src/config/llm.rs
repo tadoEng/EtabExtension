@@ -2,7 +2,7 @@
 //
 // SECURITY: ALL llm fields belong in config.local.toml ONLY.
 // config.toml is git-tracked and pushed to OneDrive.
-// ext config set ai.* routing must enforce this.
+// ext config set llm.* routing must enforce this.
 
 use serde::{Deserialize, Serialize};
 

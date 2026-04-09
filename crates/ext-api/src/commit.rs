@@ -218,10 +218,9 @@ pub async fn commit_version(
         paths_to_add.push(&e2k_path);
     }
 
-    // Add materials parquet if it exists
-    let materials_path = version_dir.join("materials").join("takeoff.parquet");
-    if materials_path.exists() {
-        paths_to_add.push(&materials_path);
+    let material_paths = collect_material_paths(&version_dir);
+    for path in &material_paths {
+        paths_to_add.push(path.as_path());
     }
 
     git_add(&ext_dir, &paths_to_add).with_context(|| "Failed to stage files for commit")?;
@@ -315,6 +314,19 @@ pub async fn commit_version(
         elapsed_ms: t0.elapsed().as_millis() as u64,
         warning,
     })
+}
+
+fn collect_material_paths(version_dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let materials_dir = version_dir.join("materials");
+    let Ok(entries) = std::fs::read_dir(&materials_dir) else {
+        return Vec::new();
+    };
+
+    entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .collect()
 }
 
 fn push_warning(warning: &mut Option<String>, next: impl Into<String>) {

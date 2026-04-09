@@ -14,6 +14,7 @@ ext-render = { path = "../ext-render" }
 serde_json = { workspace = true }
 typst = { workspace = true }
 typst-pdf = { workspace = true }
+typst-assets = { version = "0.14.2", features = ["fonts"] }
 walkdir = "2.5.0"
 
 [lints]

@@ -292,12 +292,6 @@ fn build_summary(
         status: "loaded".to_string(),
         message: format!("{group_count} group mappings available"),
     });
-    // Torsional irregularity check is deferred until the formula is confirmed.
-    lines.push(SummaryLine {
-        key: "torsional".to_string(),
-        status: "pending".to_string(),
-        message: "torsional irregularity check not implemented yet".to_string(),
-    });
     if let Some(shear_wind) = pier_shear_wind {
         check_count += 1;
         if shear_wind.pass {

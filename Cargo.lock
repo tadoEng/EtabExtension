@@ -2547,6 +2547,7 @@ dependencies = [
  "ext-render",
  "serde_json",
  "typst",
+ "typst-assets",
  "typst-pdf",
  "walkdir",
 ]
