@@ -246,6 +246,9 @@ async fn analyze_version_forwards_new_extract_table_selectors_to_sidecar() {
     assert!(request.contains("groupAssignments"));
     assert!(request.contains("materialPropertiesConcreteData"));
     assert!(request.contains("materialListByStory"));
+    assert!(request.contains("storyDefinitions"));
+    assert!(request.contains("baseReactions"));
+    assert!(request.contains("jointDrifts"));
     assert!(request.contains("Core"));
     assert!(request.contains("Fc"));
     assert!(request.contains("Ec"));

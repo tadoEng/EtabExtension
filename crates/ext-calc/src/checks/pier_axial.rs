@@ -99,6 +99,9 @@ pub fn run(
         let fc_ksi = fc_map
             .get(&(pier.clone(), story.clone()))
             .copied()
+            // Axial currently shares the same fallback f'c as the seismic pier-shear path.
+            // This keeps the material lookup unified until axial gets its own explicit
+            // fallback config field.
             .unwrap_or(params.pier_shear_seismic.fc_default_ksi);
 
         // Ag = lw × t × 144 [in²] — gross section, same as Acv for a solid wall.

@@ -198,44 +198,35 @@ pub fn resolve_sidecar_units(ctx: &AppContext) -> Result<String> {
 }
 
 fn build_extract_request(config: &ext_db::TableSelections) -> TableSelections {
-    if !config.is_empty() {
-        return TableSelections {
-            story_definitions: config.story_definitions.clone().map(convert_table_config),
-            pier_section_properties: config
-                .pier_section_properties
-                .clone()
-                .map(convert_table_config),
-            base_reactions: config.base_reactions.clone().map(convert_table_config),
-            story_forces: config.story_forces.clone().map(convert_table_config),
-            joint_drifts: config.joint_drifts.clone().map(convert_table_config),
-            pier_forces: config.pier_forces.clone().map(convert_table_config),
-            modal_participating_mass_ratios: config
-                .modal_participating_mass_ratios
-                .clone()
-                .map(convert_table_config),
-            group_assignments: config.group_assignments.clone().map(convert_table_config),
-            material_properties_concrete_data: config
-                .material_properties_concrete_data
-                .clone()
-                .map(convert_table_config),
-            material_list_by_story: config
-                .material_list_by_story
-                .clone()
-                .map(convert_table_config),
-        };
-    }
-
     TableSelections {
-        story_definitions: Some(default_geometry_table()),
-        pier_section_properties: Some(default_geometry_table()),
-        base_reactions: Some(default_results_table()),
-        story_forces: Some(default_results_table()),
-        joint_drifts: Some(default_results_table()),
-        pier_forces: Some(default_results_table()),
-        modal_participating_mass_ratios: Some(default_geometry_table()),
-        group_assignments: Some(default_geometry_table()),
-        material_properties_concrete_data: Some(default_geometry_table()),
-        material_list_by_story: Some(default_geometry_table()),
+        story_definitions: merge_table_selection(
+            config.story_definitions.clone(),
+            default_geometry_table(),
+        ),
+        pier_section_properties: merge_table_selection(
+            config.pier_section_properties.clone(),
+            default_geometry_table(),
+        ),
+        base_reactions: merge_table_selection(config.base_reactions.clone(), default_results_table()),
+        story_forces: merge_table_selection(config.story_forces.clone(), default_results_table()),
+        joint_drifts: merge_table_selection(config.joint_drifts.clone(), default_results_table()),
+        pier_forces: merge_table_selection(config.pier_forces.clone(), default_results_table()),
+        modal_participating_mass_ratios: merge_table_selection(
+            config.modal_participating_mass_ratios.clone(),
+            default_geometry_table(),
+        ),
+        group_assignments: merge_table_selection(
+            config.group_assignments.clone(),
+            default_geometry_table(),
+        ),
+        material_properties_concrete_data: merge_table_selection(
+            config.material_properties_concrete_data.clone(),
+            default_geometry_table(),
+        ),
+        material_list_by_story: merge_table_selection(
+            config.material_list_by_story.clone(),
+            default_geometry_table(),
+        ),
     }
 }
 
@@ -257,12 +248,18 @@ fn default_results_table() -> TableSelection {
     }
 }
 
-fn convert_table_config(config: ext_db::TableConfig) -> TableSelection {
-    TableSelection {
-        load_cases: config.load_cases,
-        load_combos: config.load_combos,
-        groups: config.groups,
-        field_keys: config.field_keys,
+fn merge_table_selection(
+    config: Option<ext_db::TableConfig>,
+    default: TableSelection,
+) -> Option<TableSelection> {
+    match config {
+        Some(config) => Some(TableSelection {
+            load_cases: config.load_cases.or(default.load_cases),
+            load_combos: config.load_combos.or(default.load_combos),
+            groups: config.groups.or(default.groups),
+            field_keys: config.field_keys.or(default.field_keys),
+        }),
+        None => Some(default),
     }
 }
 
@@ -347,6 +344,14 @@ mod tests {
                 .as_ref()
                 .and_then(|table| table.field_keys.as_ref()),
             Some(&vec!["Story".to_string()])
+        );
+        assert!(request.base_reactions.is_some());
+        assert_eq!(
+            request
+                .base_reactions
+                .as_ref()
+                .and_then(|table| table.load_cases.as_ref()),
+            Some(&vec!["*".to_string()])
         );
     }
 

@@ -9,7 +9,7 @@ use ext_render::{
 };
 
 use crate::report_types::{
-    ChartRef, KeyValueTable, ReportDocument, ReportProjectMeta, ReportSection,
+    CalculationBlock, ChartRef, KeyValueTable, ReportDocument, ReportProjectMeta, ReportSection,
 };
 
 pub fn build_report_document(
@@ -114,6 +114,17 @@ pub fn build_report_document(
         sections.push(ReportSection::SingleChartPage {
             title: "Pier Axial Review".to_string(),
             chart,
+        });
+        sections.push(ReportSection::CalculationPage {
+            title: "Pier Axial Assumptions".to_string(),
+            blocks: vec![CalculationBlock {
+                heading: "Conservative Capacity Basis".to_string(),
+                lines: vec![
+                    "Nominal capacity uses Po = 0.85f'cAg and ϕPo = ϕ × Po.".to_string(),
+                    "Rebar contribution is intentionally excluded from this preliminary axial check.".to_string(),
+                    "Fallback f'c currently reuses the seismic pier-shear default when pier/story material matching is unavailable.".to_string(),
+                ],
+            }],
         });
     }
 

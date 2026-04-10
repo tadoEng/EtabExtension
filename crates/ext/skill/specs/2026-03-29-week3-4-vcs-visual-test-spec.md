@@ -15,9 +15,12 @@ the older deferred note and reflects the latest behavior:
 
 - `ext etabs open` now launches ETABS in a new instance by default
 - open now fails closed if the PID cannot be confirmed
-- `extract-results` now forwards the newer table selectors all the way through
-  to the CLI sidecar
+- `extract-results` now merges user table filters over the full default table
+  set, so partial `[extract.tables.*]` config no longer disables the other
+  required parquet outputs
 - materials extraction writes `{table_slug}.parquet`, not `takeoff.parquet`
+- `ext calc` still requires explicit engineering `[calc]` config; `ext init`
+  does not generate defaults for those values
 
 Primary implementation reference: `2026-03-29-week3-4-vcs-spec.md`.
 
@@ -72,7 +75,7 @@ Expect:
 - `.etabs-ext\main\working\model.edb` is created
 - the hint suggests `ext commit "Initial model"`
 
-### 3. Configure the real sidecar and extraction tables
+### 3. Configure the real sidecar
 
 Edit:
 
@@ -97,12 +100,81 @@ Then edit:
 
 `D:\Work\EtabExtension\proofs\week3-4-visual-pass\.etabs-ext\config.toml`
 
-Add a focused extract-results contract check:
+Set:
 
 ```toml
 [extract]
 units = "US_Kip_Ft"
+```
 
+Leave `[extract.tables.*]` empty for the default manual pass. That path now
+extracts the full parquet set `ext-calc` needs with no extra filters.
+
+### 4. Add minimum calc config before running `ext calc`
+
+Append a project-specific `[calc]` section to the same `config.toml` before the
+calc/render/report steps:
+
+```toml
+[calc]
+code = "ACI318-14"
+occupancy-category = "II"
+modal-case = "Modal-Rizt"
+drift-tracking-groups = ["Joint48"]
+
+[calc.modal]
+min-mass-participation = 0.90
+display-mode-limit = 20
+
+[calc.base-shear]
+elf-case-x = "ELF_X"
+elf-case-y = "ELF_Y"
+rsa-case-x = "RSA_X"
+rsa-case-y = "RSA_Y"
+rsa-scale-min = 1.0
+
+[calc.drift-wind]
+load-cases = ["Wind_10yr_Diagonal"]
+drift-limit = 0.0025
+
+[calc.drift-seismic]
+load-cases = ["RSA_Y_Drift"]
+drift-limit = 0.020
+
+[calc.displacement-wind]
+load-cases = ["Wind_10yr_Diagonal"]
+disp-limit-h = 400
+
+[calc.pier-shear-wind]
+load-combos = ["EVN_LRFD_WIND"]
+phi-v = 0.75
+alpha-c = 2.0
+fy-ksi = 60.0
+rho-t = 0.0025
+fc-default-ksi = 8.0
+
+[calc.pier-shear-seismic]
+load-combos = ["EVN_LRFD_EQ"]
+phi-v = 0.60
+alpha-c = 2.0
+fy-ksi = 60.0
+rho-t = 0.0025
+fc-default-ksi = 8.0
+
+[calc.pier-axial]
+load-combos = ["EVN_LRFD_EQ"]
+phi-axial = 0.65
+```
+
+Replace the case/combo names with the actual names from your model. `ext calc`
+will fail fast if any required `[calc]` entry is missing.
+
+### 5. Optional focused filter pass-through check
+
+If you specifically want to verify that the Rust side preserves table filters,
+add them only after the default pass is healthy:
+
+```toml
 [extract.tables.groupAssignments]
 groups = ["Core"]
 
@@ -113,8 +185,8 @@ fieldKeys = ["Fc", "Ec"]
 fieldKeys = ["Story"]
 ```
 
-These three selectors are the latest contract-fix target and should no longer be
-dropped by Rust before reaching the sidecar.
+This is no longer expected to suppress the other seven default tables, but the
+baseline pass should still be run without filters first.
 
 ---
 
@@ -125,17 +197,19 @@ If you only want the highest-signal checks, do these first:
 1. Baseline `commit` creates `v1`, `model.e2k`, and `materials\material_list_by_story.parquet`
 2. `ext etabs open` opens the working file in a new ETABS instance and prints a real PID
 3. `ext etabs open v1` shows the snapshot warning
-4. `commit --analyze` or `analyze v2` creates a `results\` directory containing:
+4. `commit "Steel option" --analyze` creates `v2/results\` containing:
    - `group_assignments.parquet`
    - `material_properties_concrete_data.parquet`
    - `material_list_by_story.parquet`
-5. `ext log` hides internal `ext:` commits while raw `git log` still shows them
+5. `ext analyze steel-columns/v2` also works if `v2` already exists from an
+   earlier non-analyzed commit
+6. `ext log` hides internal `ext:` commits while raw `git log` still shows them
 
 ---
 
 ## Full Manual Flow
 
-### 4. Baseline commit with real sidecar export
+### 6. Baseline commit with real sidecar export
 
 Run:
 
@@ -150,7 +224,7 @@ Expect:
 - `.etabs-ext\main\v1\model.e2k`
 - `.etabs-ext\main\v1\materials\material_list_by_story.parquet`
 
-### 5. `show` and `log` spot-checks
+### 7. `show` and `log` spot-checks
 
 Run:
 
@@ -168,7 +242,7 @@ Expect:
 - `gitCommitHash` populated
 - JSON shape remains stable
 
-### 6. `etabs open` working-file flow
+### 8. `etabs open` working-file flow
 
 Run:
 
@@ -188,7 +262,7 @@ Expect:
   - `pid` populated
   - `workingFileStatus = "openClean"` or equivalent open state
 
-### 7. `etabs open` snapshot flow
+### 9. `etabs open` snapshot flow
 
 Run:
 
@@ -205,7 +279,7 @@ Expect:
   - `warning = "Opening a snapshot — changes will be discarded"`
   - `pid` populated
 
-### 8. Branch create + switch
+### 10. Branch create + switch
 
 Run:
 
@@ -221,7 +295,7 @@ Expect:
 - working path becomes `.etabs-ext\steel-columns\working\model.edb`
 - active branch becomes `steel-columns`
 
-### 9. Real ETABS edit on branch working model
+### 11. Real ETABS edit on branch working model
 
 Open this file directly in ETABS:
 
@@ -240,7 +314,7 @@ Expect:
 - status reflects an open model state
 - after save, a later close with `--save` should land in `Modified`
 
-### 10. Close prompt and modified-state landing
+### 12. Close prompt and modified-state landing
 
 Run:
 
@@ -256,7 +330,7 @@ Expect:
 - close succeeds
 - human output includes `Working Status: Modified` after a saved edit
 
-### 11. `commit --analyze`
+### 13. `commit --analyze`
 
 Run:
 
@@ -273,13 +347,27 @@ Expect:
 - `.etabs-ext\steel-columns\v2\model.e2k`
 - `.etabs-ext\steel-columns\v2\materials\material_list_by_story.parquet`
 
-### 12. Extract-results contract spot-check
+### 14. Extract-results contract spot-check
 
 Inspect:
 
 `D:\Work\EtabExtension\proofs\week3-4-visual-pass\.etabs-ext\steel-columns\v2\results`
 
-Expect the normal analysis outputs plus the three contract-fix outputs:
+Expect the normal analysis outputs plus at least these current downstream
+inputs:
+
+- `story_definitions.parquet`
+- `joint_drifts.parquet`
+- `modal_participating_mass_ratios.parquet`
+- `base_reactions.parquet`
+- `story_forces.parquet`
+- `pier_forces.parquet`
+- `pier_section_properties.parquet`
+- `group_assignments.parquet`
+- `material_properties_concrete_data.parquet`
+- `material_list_by_story.parquet`
+
+For the contract-fix spot-check, these three are the most important:
 
 - `group_assignments.parquet`
 - `material_properties_concrete_data.parquet`
@@ -288,7 +376,33 @@ Expect the normal analysis outputs plus the three contract-fix outputs:
 If those three files are missing while analysis otherwise succeeded, the
 request contract likely regressed again.
 
-### 13. Analyzed-version verification
+### 15. Configure drift groups against extracted ETABS group names
+
+Before running `ext calc`, inspect `group_assignments.parquet` and make sure
+`[calc].drift-tracking-groups` matches real ETABS group names exactly. If the
+config says `"Core"` but the parquet only contains `"Core_Walls"`, drift checks
+will fail by design.
+
+### 16. `calc`, `render`, and `report`
+
+Run:
+
+```powershell
+.\target\debug\ext.exe --project-path "D:\Work\EtabExtension\proofs\week3-4-visual-pass" calc steel-columns/v2
+.\target\debug\ext.exe --project-path "D:\Work\EtabExtension\proofs\week3-4-visual-pass" render steel-columns/v2
+.\target\debug\ext.exe --project-path "D:\Work\EtabExtension\proofs\week3-4-visual-pass" report steel-columns/v2
+```
+
+Expect:
+
+- `calc` succeeds only after the `[calc]` section is configured with real model
+  case/combo names
+- `render` writes SVG/chart assets
+- `report` writes a PDF successfully
+- the pier axial report content includes a note that the current axial check is
+  conservative and excludes rebar contribution
+
+### 17. Analyzed-version verification
 
 Run:
 
@@ -302,7 +416,7 @@ Expect:
 - `ext log` shows only user-visible commits
 - `show` reports `isAnalyzed = true`
 
-### 14. Raw git log vs `ext log`
+### 18. Raw git log vs `ext log`
 
 Run:
 
@@ -315,7 +429,7 @@ Expect:
 - raw git log includes internal commits such as `ext: analysis results v2`
 - `ext log` continues to hide those internal commits
 
-### 15. `diff`
+### 19. `diff`
 
 Run:
 
@@ -328,7 +442,7 @@ Expect:
 - real diff text
 - no `No E2K generated` warning if both versions exported E2K successfully
 
-### 16. `checkout`
+### 20. `checkout`
 
 Run:
 
@@ -343,7 +457,7 @@ Expect:
 - working file is based on `v1`
 - status is `Clean`
 
-### 17. `stash save` / `stash pop`
+### 21. `stash save` / `stash pop`
 
 Modify `main\working\model.edb` so status becomes `Modified`, then run:
 
@@ -367,7 +481,7 @@ Expect:
 - `stash list` is empty afterward
 - status becomes `Modified`
 
-### 18. JSON smoke checks
+### 22. JSON smoke checks
 
 Run:
 
@@ -409,9 +523,18 @@ The visual pass is successful when all of the following are true:
 - snapshot open returns the discard-warning flow
 - analyzed branch version contains manifest, summary, results, E2K, and materials output
 - `results\` contains:
+  - `story_definitions.parquet`
+  - `joint_drifts.parquet`
+  - `modal_participating_mass_ratios.parquet`
+  - `base_reactions.parquet`
+  - `story_forces.parquet`
+  - `pier_forces.parquet`
+  - `pier_section_properties.parquet`
   - `group_assignments.parquet`
   - `material_properties_concrete_data.parquet`
   - `material_list_by_story.parquet`
+- `ext calc`, `ext render`, and `ext report` succeed once real `[calc]`
+  values are configured
 - `ext log` hides internal `ext:` commits while raw git log shows them
 - `ext diff` produces a real diff between `main/v1` and `steel-columns/v2`
 - `checkout`, `stash save`, and `stash pop` behave correctly in human mode
@@ -424,4 +547,10 @@ The visual pass is successful when all of the following are true:
 - Run the CLI as `.\target\debug\ext.exe` from `D:\Work\EtabExtension`.
 - If the `dist` sidecar is stale, use the debug sidecar exe from the CLI repo instead.
 - If ETABS opens but `ext etabs open` fails with a PID-confirmation error, treat that as a bug and capture the exact console output.
+- `ext analyze steel-columns/v2` is a valid command only after `steel-columns/v2`
+  already exists. `commit "Steel option" --analyze` is the one-step path that
+  both creates and analyzes `v2`.
+- Partial `[extract.tables.*]` config is now merged over defaults. It should no
+  longer suppress the other seven required result tables, but the baseline
+  manual pass should still start with no filters.
 

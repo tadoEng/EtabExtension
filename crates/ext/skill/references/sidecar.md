@@ -43,6 +43,9 @@
   - `groupAssignments`
   - `materialPropertiesConcreteData`
   - `materialListByStory`
+- Rust now merges partial `[extract.tables.*]` config over that default set.
+  Supplying one focused filter should not implicitly disable the other result
+  tables.
 - `ext analyze` still means ETABS analysis plus parquet extraction only. It
   does not run calc, render, or report.
 

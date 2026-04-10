@@ -64,8 +64,11 @@ pub fn set_config(ctx: &AppContext, key: &str, raw_value: &str) -> Result<Config
     set_path_value(&mut current, &canonical_path, parsed_value)?;
     config = serde_json::from_value(current).context("Deserialize updated config")?;
 
-    Config::write_shared(&ctx.project_root, &config)?;
-    Config::write_local(&ctx.project_root, &config)?;
+    match scope_for_path(&canonical_path) {
+        "shared" => Config::write_shared(&ctx.project_root, &config)?,
+        "local" => Config::write_local(&ctx.project_root, &config)?,
+        other => bail!("Unknown config scope '{other}'"),
+    }
 
     let entry = get_config(ctx, &canonical_path.join("."))?;
     let config_dir = Config::config_dir(&ctx.project_root);

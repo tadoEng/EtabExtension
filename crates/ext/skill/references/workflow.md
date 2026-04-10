@@ -14,8 +14,14 @@
 - `ext analyze vN` currently means snapshot analysis plus parquet extraction
   only.
 - `ext calc`, `ext render`, and `ext report` are still separate commands.
+- `ext calc` intentionally has no generated defaults; it requires explicit
+  project `[calc]` config for modal cases, drift groups, load cases, and
+  design combos before it can run.
 - Default `extract-results` behavior now requests the full parquet table set
   required by `ext-calc`, not the older minimal subset.
+- Partial `[extract.tables.*]` config is merged over those defaults instead of
+  replacing them, so adding one focused filter should not suppress the rest of
+  the extraction pipeline.
 - `ext commit` stages every parquet file generated under `vN/materials/`; it
   no longer assumes `materials/takeoff.parquet`.
 - `summary.json` is still intentionally light, but it now records truthful
