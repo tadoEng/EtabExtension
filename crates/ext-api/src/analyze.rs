@@ -1,7 +1,9 @@
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use ext_core::{
-    sidecar::{ExtractResultsRequest, RunAnalysisData, TableSelection, TableSelections},
+    sidecar::{
+        ExtractResultsRequest, RunAnalysisData, SidecarClient, TableSelection, TableSelections,
+    },
     vcs::{current_branch, git_add, git_commit},
     version::{
         AnalysisSummary, VersionManifest,
@@ -14,6 +16,7 @@ use std::path::{Path, PathBuf};
 use crate::{
     context::AppContext,
     guards::{Command, GuardOutcome, check_state_guard},
+    path_utils::normalize_path,
     status::resolve_working_file_status,
 };
 
@@ -41,6 +44,28 @@ pub struct AnalyzeSnapshotOutcome {
     pub extract_warning: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyzeFileResult {
+    pub file_path: PathBuf,
+    pub case_count: u64,
+    pub finished_case_count: u64,
+    pub analysis_time_ms: u64,
+    pub units: Option<ext_core::sidecar::types::UnitInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportResultsResult {
+    pub file_path: PathBuf,
+    pub output_dir: PathBuf,
+    pub total_row_count: u64,
+    pub succeeded_count: u64,
+    pub failed_count: u64,
+    pub extraction_time_ms: u64,
+    pub units: Option<ext_core::sidecar::types::UnitInfo>,
+}
+
 pub async fn analyze_snapshot(
     ctx: &AppContext,
     version_dir: &Path,
@@ -54,6 +79,12 @@ pub async fn analyze_snapshot(
         .run_analysis(&edb, cases, &units)
         .await
         .with_context(|| format!("run-analysis failed for {}", edb.display()))?;
+    if run_data.finished_case_count == 0 {
+        bail!(
+            "Analysis completed, but no cases were marked finished for {}\n  Check ETABS run-case selections and try again",
+            edb.display()
+        );
+    }
 
     let results_dir = version_dir.join("results");
     std::fs::create_dir_all(&results_dir)
@@ -169,14 +200,96 @@ pub async fn analyze_version(
 }
 
 pub fn resolve_sidecar_units(ctx: &AppContext) -> Result<String> {
-    let raw = ctx
-        .config
-        .extract
-        .units
-        .as_deref()
-        .or(ctx.config.project.units.as_deref());
+    resolve_sidecar_units_from(
+        ctx.config.extract.units.as_deref(),
+        ctx.config.project.units.as_deref(),
+        None,
+    )
+}
 
-    let key = raw.unwrap_or("US_Kip_Ft").trim().to_ascii_uppercase();
+pub async fn analyze_file(
+    project_root: Option<&Path>,
+    file: &Path,
+    units_override: Option<&str>,
+    cases: Option<&[String]>,
+) -> Result<AnalyzeFileResult> {
+    if !file.exists() {
+        bail!("File not found: {}", file.display());
+    }
+
+    let sidecar = resolve_sidecar_for(project_root)?;
+    let config = load_optional_config(project_root)?;
+    let units = resolve_sidecar_units_from(
+        config.extract.units.as_deref(),
+        config.project.units.as_deref(),
+        units_override,
+    )?;
+    let run_data = sidecar
+        .run_analysis(file, cases, &units)
+        .await
+        .with_context(|| format!("run-analysis failed for {}", file.display()))?;
+    ensure_finished_cases(file, &run_data)?;
+
+    Ok(AnalyzeFileResult {
+        file_path: normalize_path(file),
+        case_count: run_data.case_count,
+        finished_case_count: run_data.finished_case_count,
+        analysis_time_ms: run_data.analysis_time_ms,
+        units: run_data.units,
+    })
+}
+
+pub async fn export_results_file(
+    project_root: Option<&Path>,
+    file: &Path,
+    output_dir: &Path,
+    units_override: Option<&str>,
+) -> Result<ExportResultsResult> {
+    if !file.exists() {
+        bail!("File not found: {}", file.display());
+    }
+
+    std::fs::create_dir_all(output_dir)
+        .with_context(|| format!("Create output dir {}", output_dir.display()))?;
+
+    let sidecar = resolve_sidecar_for(project_root)?;
+    let config = load_optional_config(project_root)?;
+    let units = resolve_sidecar_units_from(
+        config.extract.units.as_deref(),
+        config.project.units.as_deref(),
+        units_override,
+    )?;
+    let request = ExtractResultsRequest {
+        units,
+        tables: build_extract_request(&config.extract.tables),
+    };
+    let data = sidecar
+        .extract_results(file, output_dir, &request)
+        .await
+        .with_context(|| format!("extract-results failed for {}", file.display()))?;
+
+    Ok(ExportResultsResult {
+        file_path: normalize_path(file),
+        output_dir: normalize_path(output_dir),
+        total_row_count: data.total_row_count,
+        succeeded_count: data.succeeded_count,
+        failed_count: data.failed_count,
+        extraction_time_ms: data.extraction_time_ms,
+        units: data.units,
+    })
+}
+
+fn resolve_sidecar_units_from(
+    extract_units: Option<&str>,
+    project_units: Option<&str>,
+    override_units: Option<&str>,
+) -> Result<String> {
+    let key = override_units
+        .or(extract_units)
+        .or(project_units)
+        .unwrap_or("US_Kip_Ft")
+        .trim()
+        .to_ascii_uppercase();
     let canonical = match key.as_str() {
         "US_KIP_FT" | "KIP_FT" | "KIP-FT-F" | "KIP/FT/F" => "US_Kip_Ft",
         "US_KIP_IN" | "KIP_IN" | "KIP-IN-F" | "KIP/IN/F" | "KIP-IN" => "US_Kip_In",
@@ -195,6 +308,50 @@ pub fn resolve_sidecar_units(ctx: &AppContext) -> Result<String> {
     };
 
     Ok(canonical.to_string())
+}
+
+fn ensure_finished_cases(file: &Path, run_data: &RunAnalysisData) -> Result<()> {
+    if run_data.finished_case_count == 0 {
+        bail!(
+            "Analysis completed, but no cases were marked finished for {}\n  Check ETABS run-case selections and try again",
+            file.display()
+        );
+    }
+    Ok(())
+}
+
+fn load_optional_config(project_root: Option<&Path>) -> Result<ext_db::config::Config> {
+    if let Some(root) = project_root {
+        if ext_db::config::Config::config_dir(root).is_dir() {
+            return ext_db::config::Config::load(root);
+        }
+        return Ok(ext_db::config::Config::default());
+    }
+
+    let cwd = std::env::current_dir().context("Failed to get current directory")?;
+    match AppContext::locate(&cwd) {
+        Ok(root) => ext_db::config::Config::load(&root),
+        Err(_) => Ok(ext_db::config::Config::default()),
+    }
+}
+
+fn resolve_sidecar_for(project_root: Option<&Path>) -> Result<SidecarClient> {
+    let config = load_optional_config(project_root)?;
+    let base = match project_root {
+        Some(root) => root.to_path_buf(),
+        None => std::env::current_dir().context("Failed to get current directory")?,
+    };
+
+    let path =
+        config
+            .resolve_sidecar_path(&base)
+            .with_context(|| {
+                "etab-cli sidecar not found.\n  \
+                 Set project.sidecar-path in .etabs-ext/config.local.toml or config.toml\n  \
+                 or set ETABS_SIDECAR_PATH environment variable"
+            })?;
+
+    Ok(SidecarClient::new(path))
 }
 
 fn build_extract_request(config: &ext_db::TableSelections) -> TableSelections {
@@ -369,5 +526,12 @@ mod tests {
         assert!(request.group_assignments.is_some());
         assert!(request.material_properties_concrete_data.is_some());
         assert!(request.material_list_by_story.is_some());
+    }
+
+    #[test]
+    fn resolve_sidecar_units_override_wins() {
+        let units = resolve_sidecar_units_from(Some("SI_kN_m"), Some("US_Kip_Ft"), Some("US_Lb_In"))
+            .unwrap();
+        assert_eq!(units, "US_Lb_In");
     }
 }

@@ -105,6 +105,96 @@ fn atomic_copy(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
+fn shared_config_template(project_name: &str) -> String {
+    let quoted_name = toml::Value::String(project_name.to_string()).to_string();
+    format!(
+        r#"[project]
+name = {quoted_name}
+
+# Shared ETABS extraction settings used by `ext analyze <version>` and
+# `ext etabs export-results --file ... --output-dir ...`.
+[extract]
+units = "US_Kip_Ft"
+
+# Leave [extract.tables] empty to request the full default table set that
+# ext-calc consumes. Add per-table filters only when you want to narrow output.
+#
+# Capability notes:
+# - result tables honor loadCases + loadCombos
+# - geometry/material tables ignore loadCases + loadCombos
+# - groups only affect extractors that support group filtering
+# - fieldKeys only affect extractors that support column filtering
+#
+#[extract.tables.baseReactions]
+#loadCases = ["DEAD", "LIVE"]
+#loadCombos = ["COMB-ULS"]
+#
+#[extract.tables.groupAssignments]
+#groups = ["Core"]
+#
+#[extract.tables.materialPropertiesConcreteData]
+#fieldKeys = ["Fc", "Ec"]
+
+# Minimum engineering config required before `ext calc`.
+[calc]
+code = "ACI318-14"
+occupancy-category = "II"
+modal-case = "MODAL"
+drift-tracking-groups = ["Core"]
+
+[calc.modal]
+min-mass-participation = 0.9
+display-mode-limit = 12
+
+[calc.base-shear]
+elf-case-x = "EQX"
+elf-case-y = "EQY"
+rsa-case-x = "RSX"
+rsa-case-y = "RSY"
+rsa-scale-min = 0.85
+
+[[calc.base-shear.pie-groups]]
+label = "Gravity"
+load-cases = ["DEAD", "SDL", "LIVE"]
+
+[calc.drift-wind]
+load-cases = ["WINDX", "WINDY"]
+drift-limit = 0.0025
+
+[calc.drift-seismic]
+load-cases = ["EQX", "EQY"]
+drift-limit = 0.02
+
+[calc.displacement-wind]
+load-cases = ["WINDX", "WINDY"]
+disp-limit-h = 500
+
+[calc.pier-shear-wind]
+load-combos = ["WIND-ULS"]
+phi-v = 0.75
+alpha-c = 2.0
+fy-ksi = 60.0
+rho-t = 0.0025
+fc-default-ksi = 8.0
+
+[calc.pier-shear-seismic]
+load-combos = ["SEISMIC-ULS"]
+phi-v = 0.75
+alpha-c = 2.0
+fy-ksi = 60.0
+rho-t = 0.0025
+fc-default-ksi = 8.0
+
+[calc.pier-axial]
+load-combos = ["GRAVITY-ULS"]
+phi-axial = 0.65
+
+# Note: drift-tracking-groups must match names extracted into
+# results/group_assignments.parquet after analysis.
+"#
+    )
+}
+
 pub fn is_onedrive_path(path: &Path) -> bool {
     let markers = ["OneDrive", "OneDrive - ", "SharePoint"];
     path.ancestors().any(|p| {
@@ -161,9 +251,11 @@ pub async fn init_project(req: InitRequest) -> Result<InitResult> {
         &ext_dir,
     )?;
 
-    let mut shared = Config::default();
-    shared.project.name = Some(req.name.clone());
-    Config::write_shared(&project_root, &shared)?;
+    let config_dir = Config::config_dir(&project_root);
+    std::fs::create_dir_all(&config_dir)
+        .with_context(|| format!("Failed to create {}", config_dir.display()))?;
+    std::fs::write(config_dir.join("config.toml"), shared_config_template(&req.name))
+        .with_context(|| "Failed to write shared config template".to_string())?;
 
     let mut local = Config::default();
     local.git = GitConfig {

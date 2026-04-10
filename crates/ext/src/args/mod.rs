@@ -121,7 +121,10 @@ pub struct AnalyzeArgs {
 
 #[derive(Debug, Args)]
 pub struct CalcArgs {
-    pub version: String,
+    pub version: Option<String>,
+
+    #[arg(long, conflicts_with = "version")]
+    pub results_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -228,6 +231,8 @@ pub struct EtabsArgs {
 pub enum EtabsSubcommand {
     Open(EtabsOpenArgs),
     Close(EtabsCloseArgs),
+    Analyze(EtabsAnalyzeArgs),
+    ExportResults(EtabsExportResultsArgs),
     Status,
     Unlock,
     Recover,
@@ -245,4 +250,28 @@ pub struct EtabsCloseArgs {
 
     #[arg(long, conflicts_with = "save")]
     pub no_save: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct EtabsAnalyzeArgs {
+    #[arg(long)]
+    pub file: PathBuf,
+
+    #[arg(long)]
+    pub units: Option<String>,
+
+    #[arg(long, value_delimiter = ',')]
+    pub cases: Option<Vec<String>>,
+}
+
+#[derive(Debug, Args)]
+pub struct EtabsExportResultsArgs {
+    #[arg(long)]
+    pub file: PathBuf,
+
+    #[arg(long)]
+    pub output_dir: PathBuf,
+
+    #[arg(long)]
+    pub units: Option<String>,
 }

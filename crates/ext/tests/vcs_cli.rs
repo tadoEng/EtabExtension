@@ -224,7 +224,7 @@ async fn cli_branch_json_snapshot() {
     {
       "name": "steel-columns",
       "versionCount": 1,
-      "latestVersion": "v1",
+      "latestVersion": null,
       "createdFrom": "main/v1",
       "isActive": false
     }
@@ -468,4 +468,77 @@ async fn cli_commit_tracks_generated_material_parquet_files() {
             .iter()
             .any(|path| path == "main/v1/materials/material_list_by_story.parquet")
     );
+}
+
+#[tokio::test]
+async fn cli_new_branch_first_commit_starts_at_v1() {
+    let temp = TempDir::new().unwrap();
+    let project_root = init_fixture(&temp).await;
+    let project = project_root.to_str().unwrap();
+
+    let commit_main = run_ext(&[
+        "--project-path",
+        project,
+        "commit",
+        "Initial model",
+        "--no-e2k",
+    ]);
+    assert!(
+        commit_main.status.success(),
+        "{}",
+        String::from_utf8_lossy(&commit_main.stderr)
+    );
+
+    let create_branch = run_ext(&[
+        "--project-path",
+        project,
+        "branch",
+        "steel-columns",
+        "--from",
+        "main/v1",
+    ]);
+    assert!(
+        create_branch.status.success(),
+        "{}",
+        String::from_utf8_lossy(&create_branch.stderr)
+    );
+
+    let switch_branch = run_ext(&["--project-path", project, "switch", "steel-columns"]);
+    assert!(
+        switch_branch.status.success(),
+        "{}",
+        String::from_utf8_lossy(&switch_branch.stderr)
+    );
+
+    let branch_commit = run_ext(&[
+        "--json",
+        "--project-path",
+        project,
+        "commit",
+        "Steel option",
+        "--no-e2k",
+    ]);
+    assert!(
+        branch_commit.status.success(),
+        "{}",
+        String::from_utf8_lossy(&branch_commit.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&branch_commit.stdout).unwrap();
+    assert_eq!(json["branch"], "steel-columns");
+    assert_eq!(json["versionId"], "v1");
+}
+
+#[tokio::test]
+async fn init_writes_commented_calc_and_extract_template() {
+    let temp = TempDir::new().unwrap();
+    let project_root = init_fixture(&temp).await;
+    let config_text =
+        std::fs::read_to_string(project_root.join(".etabs-ext").join("config.toml")).unwrap();
+
+    assert!(config_text.contains("[extract]"));
+    assert!(config_text.contains("Capability notes"));
+    assert!(config_text.contains("[calc]"));
+    assert!(config_text.contains("[[calc.base-shear.pie-groups]]"));
+    assert!(config_text.contains("drift-tracking-groups"));
+    assert!(config_text.contains("results/group_assignments.parquet"));
 }

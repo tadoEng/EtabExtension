@@ -20,8 +20,8 @@ struct VersionPaths {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CalcArtifacts {
-    pub version_id: String,
-    pub branch: String,
+    pub version_id: Option<String>,
+    pub branch: Option<String>,
     pub results_dir: PathBuf,
     pub calc_output_path: PathBuf,
 }
@@ -87,9 +87,33 @@ pub fn run_calc(ctx: &AppContext, version_ref: &str) -> Result<CalcArtifacts> {
         .with_context(|| format!("Failed to write {}", calc_output_path.display()))?;
 
     Ok(CalcArtifacts {
-        version_id: version.version_id,
-        branch: version.branch,
+        version_id: Some(version.version_id),
+        branch: Some(version.branch),
         results_dir,
+        calc_output_path,
+    })
+}
+
+pub fn run_calc_for_results_dir(ctx: &AppContext, results_dir: &Path) -> Result<CalcArtifacts> {
+    if !results_dir.is_dir() {
+        bail!("Results directory not found: {}", results_dir.display());
+    }
+
+    let params = CodeParams::from_config(&ctx.config)?;
+    let calc_output =
+        CalcRunner::run_all(results_dir, results_dir, &params, "direct", "direct").with_context(
+            || format!("Failed to run calculations for {}", results_dir.display()),
+        )?;
+
+    let calc_output_path = results_dir.join("calc_output.json");
+    let json = serde_json::to_string_pretty(&calc_output)?;
+    std::fs::write(&calc_output_path, json)
+        .with_context(|| format!("Failed to write {}", calc_output_path.display()))?;
+
+    Ok(CalcArtifacts {
+        version_id: None,
+        branch: None,
+        results_dir: results_dir.to_path_buf(),
         calc_output_path,
     })
 }
@@ -297,7 +321,7 @@ fn default_base_reaction_groups() -> Vec<BaseReactionGroup> {
 
 #[cfg(test)]
 mod tests {
-    use super::{load_calc_output, render_version, report_version, run_calc};
+    use super::{load_calc_output, render_version, report_version, run_calc, run_calc_for_results_dir};
     use crate::AppContext;
     use crate::commit::{CommitOptions, commit_version};
     use crate::init::{InitRequest, init_project};
@@ -395,6 +419,25 @@ mod tests {
         let ctx = AppContext::new(&project_root).unwrap();
 
         let result = run_calc(&ctx, "v1").unwrap();
+        assert!(result.calc_output_path.exists());
+    }
+
+    #[tokio::test]
+    async fn run_calc_for_results_dir_writes_calc_output_json() {
+        let temp = TempDir::new().unwrap();
+        let project_root = init_version_fixture(&temp).await;
+        copy_fixture_results(&project_root, false);
+        let ctx = AppContext::new(&project_root).unwrap();
+        let results_dir = project_root
+            .join(".etabs-ext")
+            .join("main")
+            .join("v1")
+            .join("results");
+
+        let result = run_calc_for_results_dir(&ctx, &results_dir).unwrap();
+
+        assert_eq!(result.version_id, None);
+        assert_eq!(result.branch, None);
         assert!(result.calc_output_path.exists());
     }
 

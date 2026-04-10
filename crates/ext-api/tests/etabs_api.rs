@@ -112,6 +112,31 @@ async fn etabs_open_snapshot_sets_warning_and_snapshot_flag() {
 }
 
 #[tokio::test]
+async fn etabs_open_blocks_when_etabs_is_already_running() {
+    let temp = TempDir::new().unwrap();
+    let project_root = init_fixture(&temp).await;
+    let sidecar = configure_sidecar(&project_root, &temp);
+    let ctx = AppContext::new(&project_root).unwrap();
+
+    let state = ctx.load_state().unwrap();
+    let working = state.working_file.as_ref().unwrap();
+    set_sidecar_state(
+        &sidecar,
+        fake_sidecar::FakeSidecarState {
+            is_running: true,
+            pid: Some(std::process::id()),
+            open_file_path: Some(working.path.clone()),
+            is_model_open: true,
+            ..Default::default()
+        },
+        &working.path,
+    );
+
+    let err = etabs_open(&ctx, None).await.unwrap_err();
+    assert!(err.to_string().contains("already running"), "{err}");
+}
+
+#[tokio::test]
 async fn etabs_open_fails_when_pid_cannot_be_confirmed() {
     let temp = TempDir::new().unwrap();
     let project_root = init_fixture(&temp).await;

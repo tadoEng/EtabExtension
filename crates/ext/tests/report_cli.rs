@@ -138,3 +138,34 @@ fn cli_calc_render_report_json_outputs() {
     assert!(asset_dir.exists());
     assert!(!render_json["assets"].as_array().unwrap().is_empty());
 }
+
+#[test]
+fn cli_calc_supports_results_dir_mode() {
+    let temp = TempDir::new().unwrap();
+    let project_root = init_fixture(&temp);
+    let project = project_root.to_str().unwrap();
+    let results_dir = project_root
+        .join(".etabs-ext")
+        .join("main")
+        .join("v1")
+        .join("results");
+
+    let calc = run_ext(&[
+        "--json",
+        "--project-path",
+        project,
+        "calc",
+        "--results-dir",
+        results_dir.to_str().unwrap(),
+    ]);
+    assert!(
+        calc.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&calc.stderr)
+    );
+    let calc_json: serde_json::Value = serde_json::from_slice(&calc.stdout).unwrap();
+    assert!(calc_json["versionId"].is_null());
+    assert!(calc_json["branch"].is_null());
+    let calc_output = PathBuf::from(calc_json["calcOutputPath"].as_str().unwrap());
+    assert!(calc_output.exists());
+}

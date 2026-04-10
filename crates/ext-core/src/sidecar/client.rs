@@ -4,8 +4,10 @@ use crate::sidecar::types::SidecarResponse;
 use ext_error::{ExtError, ExtResult};
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
+use tokio::time::timeout;
 
 /// Spawns etab-cli.exe and captures the single JSON result from stdout.
 ///
@@ -22,6 +24,18 @@ pub struct SidecarClient {
 }
 
 impl SidecarClient {
+    fn timeout_for(command_name: &str) -> Duration {
+        match command_name {
+            "get-status" => Duration::from_secs(15),
+            "open-model" => Duration::from_secs(120),
+            "close-model" => Duration::from_secs(30),
+            "generate-e2k" => Duration::from_secs(300),
+            "extract-results" => Duration::from_secs(300),
+            "run-analysis" => Duration::from_secs(1800),
+            _ => Duration::from_secs(60),
+        }
+    }
+
     /// Create a client pointing at an already-resolved sidecar path.
     /// Call SidecarClient::locate() in ext-api to get the path first.
     pub fn new(path: PathBuf) -> Self {
@@ -37,6 +51,9 @@ impl SidecarClient {
     where
         T: serde::de::DeserializeOwned,
     {
+        let command_name = args.first().copied().unwrap_or("unknown");
+        let timeout_window = Self::timeout_for(command_name);
+
         if !self.path.exists() {
             return Err(ExtError::SidecarNotFound {
                 path: self.path.display().to_string(),
@@ -72,19 +89,38 @@ impl SidecarClient {
         // full payload rather than keeping only the last non-empty line.
         let stdout = child.stdout.take().expect("stdout was piped");
         let mut stdout_reader = BufReader::new(stdout);
-        let mut json_payload = String::new();
-        stdout_reader
-            .read_to_string(&mut json_payload)
-            .await
-            .map_err(|e| ExtError::SidecarFailed {
+        let (json_payload, status) = match timeout(timeout_window, async {
+            let mut json_payload = String::new();
+            stdout_reader
+                .read_to_string(&mut json_payload)
+                .await
+                .map_err(|e| ExtError::SidecarFailed {
+                    code: -1,
+                    stderr: e.to_string(),
+                })?;
+
+            let status = child.wait().await.map_err(|e| ExtError::SidecarFailed {
                 code: -1,
                 stderr: e.to_string(),
             })?;
 
-        let status = child.wait().await.map_err(|e| ExtError::SidecarFailed {
-            code: -1,
-            stderr: e.to_string(),
-        })?;
+            Ok::<_, ExtError>((json_payload, status))
+        })
+        .await
+        {
+            Ok(result) => result?,
+            Err(_) => {
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                return Err(ExtError::SidecarFailed {
+                    code: -1,
+                    stderr: format!(
+                        "Sidecar command '{command_name}' timed out after {}s",
+                        timeout_window.as_secs()
+                    ),
+                });
+            }
+        };
 
         let json_payload = json_payload.trim();
 
@@ -109,5 +145,30 @@ impl SidecarClient {
         }
 
         Ok(response)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SidecarClient;
+    use std::time::Duration;
+
+    #[test]
+    fn timeout_mapping_matches_manual_test_budget() {
+        assert_eq!(SidecarClient::timeout_for("get-status"), Duration::from_secs(15));
+        assert_eq!(SidecarClient::timeout_for("open-model"), Duration::from_secs(120));
+        assert_eq!(SidecarClient::timeout_for("close-model"), Duration::from_secs(30));
+        assert_eq!(
+            SidecarClient::timeout_for("generate-e2k"),
+            Duration::from_secs(300)
+        );
+        assert_eq!(
+            SidecarClient::timeout_for("extract-results"),
+            Duration::from_secs(300)
+        );
+        assert_eq!(
+            SidecarClient::timeout_for("run-analysis"),
+            Duration::from_secs(1800)
+        );
     }
 }

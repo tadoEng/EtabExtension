@@ -78,6 +78,7 @@ pub struct UnlockModelData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerateE2kData {
+    pub input_file: String,
     #[serde(alias = "outputPath")]
     pub output_file: String,
     pub file_size_bytes: u64,
@@ -270,6 +271,7 @@ mod tests {
         )
         .unwrap();
 
+        assert_eq!(data.input_file, r"C:\Models\tower.edb");
         assert_eq!(data.output_file, r"C:\Models\tower.e2k");
         assert_eq!(data.file_size_bytes, 2048);
         assert_eq!(data.generation_time_ms, Some(120));
@@ -279,12 +281,14 @@ mod tests {
     fn generate_e2k_data_accepts_legacy_output_path_alias() {
         let data: GenerateE2kData = serde_json::from_str(
             r#"{
+                "inputFile":"C:\\Models\\tower.edb",
                 "outputPath":"C:\\Models\\tower.e2k",
                 "fileSizeBytes":2048
             }"#,
         )
         .unwrap();
 
+        assert_eq!(data.input_file, r"C:\Models\tower.edb");
         assert_eq!(data.output_file, r"C:\Models\tower.e2k");
         assert_eq!(data.file_size_bytes, 2048);
         assert_eq!(data.generation_time_ms, None);

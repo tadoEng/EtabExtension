@@ -3,7 +3,7 @@ mod fake_sidecar;
 
 use chrono::Utc;
 use ext_api::AppContext;
-use ext_api::analyze::{AnalyzeOptions, analyze_version};
+use ext_api::analyze::{AnalyzeOptions, analyze_file, analyze_version};
 use ext_api::commit::{self, CommitOptions};
 use ext_api::init::{InitRequest, init_project};
 use ext_core::version::VersionManifest;
@@ -296,4 +296,46 @@ async fn analyze_version_default_request_and_summary_cover_current_pipeline() {
     assert_eq!(summary.case_count, 2);
     assert_eq!(summary.finished_case_count, 2);
     assert_eq!(summary.analysis_time_ms, 1234);
+}
+
+#[tokio::test]
+async fn analyze_version_fails_when_zero_cases_finish() {
+    let temp = TempDir::new().unwrap();
+    let project_root = init_fixture(&temp).await;
+    let sidecar = fake_sidecar::write_fake_sidecar(&temp, fake_sidecar::FakeSidecarMode::ZeroFinished);
+    fake_sidecar::configure_fake_sidecar(&project_root, &sidecar);
+    let ctx = AppContext::new(&project_root).unwrap();
+
+    commit::commit_version(
+        &ctx,
+        "Initial",
+        CommitOptions {
+            no_e2k: true,
+            analyze: false,
+        },
+    )
+    .await
+    .unwrap();
+
+    let err = analyze_version(&ctx, "v1", AnalyzeOptions::default())
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("no cases were marked finished"), "{err}");
+}
+
+#[tokio::test]
+async fn analyze_file_supports_direct_sidecar_workflow() {
+    let temp = TempDir::new().unwrap();
+    let project_root = init_fixture(&temp).await;
+    let sidecar = fake_sidecar::write_fake_sidecar(&temp, fake_sidecar::FakeSidecarMode::Success);
+    fake_sidecar::configure_fake_sidecar(&project_root, &sidecar);
+    let model = project_root.join(".etabs-ext").join("main").join("working").join("model.edb");
+
+    let result = analyze_file(Some(&project_root), &model, Some("US_Kip_Ft"), None)
+        .await
+        .unwrap();
+
+    assert_eq!(result.case_count, 2);
+    assert_eq!(result.finished_case_count, 2);
+    assert_eq!(result.file_path, model);
 }

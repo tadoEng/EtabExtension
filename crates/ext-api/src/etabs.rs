@@ -280,6 +280,22 @@ pub async fn etabs_open(ctx: &AppContext, version_ref: Option<&str>) -> Result<E
     };
 
     let sidecar = ctx.require_sidecar()?;
+    let preflight = sidecar
+        .get_status()
+        .await
+        .context("Failed to check ETABS status before opening")?;
+    if preflight.is_running {
+        let detail = preflight
+            .open_file_path
+            .as_deref()
+            .map(|path| format!("\n  Open file: {}", normalize_display(Path::new(path)).display()))
+            .unwrap_or_default();
+        bail!(
+            "✗ ETABS is already running\n  Close the existing session first with: ext etabs close{}",
+            detail
+        );
+    }
+
     let opened = sidecar
         .open_model(&target_file, false, true)
         .await

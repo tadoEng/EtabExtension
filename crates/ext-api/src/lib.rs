@@ -29,7 +29,10 @@ pub mod stash;
 pub mod status;
 pub mod switch;
 
-pub use analyze::{AnalyzeOptions, AnalyzeResult, analyze_version};
+pub use analyze::{
+    AnalyzeFileResult, AnalyzeOptions, AnalyzeResult, ExportResultsResult, analyze_file,
+    analyze_version, export_results_file,
+};
 pub use config_cmd::{
     ConfigEntry, ConfigListResult, ConfigSetResult, get_config, list_config, set_config,
 };
@@ -41,5 +44,5 @@ pub use etabs::{
 };
 pub use report::{
     CalcArtifacts, RenderArtifact, RenderArtifacts, ReportArtifacts, load_calc_output,
-    render_version, report_version, run_calc,
+    render_version, report_version, run_calc, run_calc_for_results_dir,
 };

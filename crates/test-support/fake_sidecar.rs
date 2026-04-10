@@ -6,6 +6,7 @@ use tempfile::TempDir;
 pub enum FakeSidecarMode {
     Success,
     AnalysisFail,
+    ZeroFinished,
 }
 
 #[derive(Debug, Clone)]
@@ -106,6 +107,7 @@ pub fn write_fake_sidecar(temp: &TempDir, mode: FakeSidecarMode) -> PathBuf {
     let (name, mode_token) = match mode {
         FakeSidecarMode::Success => ("fake-sidecar-success.cmd", "success"),
         FakeSidecarMode::AnalysisFail => ("fake-sidecar-analysis-fail.cmd", "analysis-fail"),
+        FakeSidecarMode::ZeroFinished => ("fake-sidecar-zero-finished.cmd", "zero-finished"),
     };
 
     let path = temp.path().join(name);
@@ -277,7 +279,7 @@ exit /b 0
 :close_model
 call :nullable_string "!open_file_path!" closed_file_json
 call :nullable_bool "!save!" was_saved_json
-set "is_running=1"
+set "is_running=0"
 set "is_model_open=0"
 set "open_file_path="
 set "is_locked="
@@ -317,6 +319,10 @@ exit /b 0
 :run_analysis
 if /I "!mode!"=="analysis-fail" (
   echo {"success":false,"error":"simulated analysis failure"}
+  exit /b 0
+)
+if /I "!mode!"=="zero-finished" (
+  echo {"success":true,"data":{"filePath":"fake.edb","casesRequested":null,"caseCount":2,"finishedCaseCount":0,"analysisTimeMs":1234,"units":{"force":"kip","length":"ft","temperature":"F","isUs":true,"isMetric":false,"rawForce":1,"rawLength":2,"rawTemperature":3}}}
   exit /b 0
 )
 echo {"success":true,"data":{"filePath":"fake.edb","casesRequested":null,"caseCount":2,"finishedCaseCount":2,"analysisTimeMs":1234,"units":{"force":"kip","length":"ft","temperature":"F","isUs":true,"isMetric":false,"rawForce":1,"rawLength":2,"rawTemperature":3}}}

@@ -1,5 +1,5 @@
-use anyhow::Result;
-use ext_api::run_calc;
+use anyhow::{Result, bail};
+use ext_api::{run_calc, run_calc_for_results_dir};
 
 use crate::args::CalcArgs;
 use crate::output::OutputChannel;
@@ -12,13 +12,18 @@ pub async fn execute(
     args: CalcArgs,
 ) -> Result<()> {
     let ctx = ctx_from(global_project_path)?;
-    let result = run_calc(&ctx, &args.version)?;
+    let result = match (&args.version, &args.results_dir) {
+        (Some(version), None) => run_calc(&ctx, version)?,
+        (None, Some(results_dir)) => run_calc_for_results_dir(&ctx, results_dir)?,
+        _ => bail!("Specify either <version> or --results-dir <dir>"),
+    };
 
     if out.is_human() {
-        println!(
-            "Calc artifact captured for {}/{}",
-            result.branch, result.version_id
-        );
+        if let (Some(branch), Some(version_id)) = (&result.branch, &result.version_id) {
+            println!("Calc artifact captured for {}/{}", branch, version_id);
+        } else {
+            println!("Calc artifact captured for direct results directory");
+        }
         println!("  Results: {}", result.results_dir.display());
         println!("  Output : {}", result.calc_output_path.display());
     }

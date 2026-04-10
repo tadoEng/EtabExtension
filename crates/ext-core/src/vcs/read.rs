@@ -75,7 +75,7 @@ fn branch_exists(repo: &Path, branch: &str) -> bool {
 ///
 /// Uses `git ls-tree -r` to list all blobs, then `git show` to read any
 /// manifest.json found.  Returns None on any error.
-fn version_id_from_commit(repo: &Path, commit_hash: &str) -> Option<String> {
+fn version_id_from_commit(repo: &Path, branch: &str, commit_hash: &str) -> Option<String> {
     // List all blobs in the commit tree recursively.
     let output = Command::new("git")
         .args(["ls-tree", "-r", "--name-only", commit_hash])
@@ -87,7 +87,12 @@ fn version_id_from_commit(repo: &Path, commit_hash: &str) -> Option<String> {
 
     let mut max_version: Option<u32> = None;
 
-    for manifest_path in listing.lines().filter(|l| l.ends_with("manifest.json")) {
+    let branch_prefix = format!("{branch}/");
+    for manifest_path in listing
+        .lines()
+        .filter(|l| l.ends_with("manifest.json"))
+        .filter(|l| l.starts_with(&branch_prefix))
+    {
         let blob_ref = format!("{commit_hash}:{manifest_path}");
         let content = Command::new("git")
             .args(["show", &blob_ref])
@@ -142,7 +147,7 @@ pub fn list_commits(
         }
 
         let timestamp = DateTime::from_timestamp(ts, 0).unwrap_or_default();
-        let version_id = version_id_from_commit(repo_dir, parts[0]);
+        let version_id = version_id_from_commit(repo_dir, branch, parts[0]);
 
         commits.push(CommitInfo {
             hash,
@@ -194,7 +199,7 @@ pub fn latest_version_number(repo_dir: &Path, branch: &str) -> Result<u32> {
         if hash.is_empty() {
             continue;
         }
-        if let Some(id_str) = version_id_from_commit(repo_dir, hash) {
+        if let Some(id_str) = version_id_from_commit(repo_dir, branch, hash) {
             if let Some(n) = parse_version_number(&id_str) {
                 max = max.max(n);
             }
@@ -410,5 +415,28 @@ mod tests {
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].message, "user commit");
         assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn next_version_id_starts_at_v1_for_new_branch() {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path();
+        init_repo(repo);
+
+        write_and_commit(
+            repo,
+            "main/v1/manifest.json",
+            r#"{"id":"v1","branch":"main","message":"a","author":"A","timestamp":"2026-01-01T00:00:00Z","isAnalyzed":false,"e2kGenerated":true,"materialsExtracted":false,"edbSizeBytes":1}"#,
+            "v1 commit",
+        );
+
+        Command::new("git")
+            .args(["checkout", "-b", "steel-columns"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        assert_eq!(latest_version_number(repo, "steel-columns").unwrap(), 0);
+        assert_eq!(next_version_id(repo, "steel-columns").unwrap(), "v1");
     }
 }
