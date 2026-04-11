@@ -245,7 +245,11 @@ fn resolve_version_model(
 ///
 /// `version_ref` — if None, opens the working file. If Some("v3") or
 /// Some("main/v3"), opens that committed snapshot (read-only recommended).
-pub async fn etabs_open(ctx: &AppContext, version_ref: Option<&str>) -> Result<EtabsOpenResult> {
+pub async fn etabs_open(
+    ctx: &AppContext,
+    version_ref: Option<&str>,
+    new_instance: bool,
+) -> Result<EtabsOpenResult> {
     let ext_dir = ctx.ext_dir();
     let mut state = ctx.load_state()?;
     let working_status = resolve_working_file_status(&state, &ctx.project_root);
@@ -285,19 +289,39 @@ pub async fn etabs_open(ctx: &AppContext, version_ref: Option<&str>) -> Result<E
         .await
         .context("Failed to check ETABS status before opening")?;
     if preflight.is_running {
-        let detail = preflight
-            .open_file_path
-            .as_deref()
-            .map(|path| format!("\n  Open file: {}", normalize_display(Path::new(path)).display()))
-            .unwrap_or_default();
-        bail!(
-            "✗ ETABS is already running\n  Close the existing session first with: ext etabs close{}",
-            detail
-        );
+        // Distinguish between ext-managed ETABS (state has PID) and out-of-band ETABS (manual)
+        let is_ext_managed = state
+            .working_file
+            .as_ref()
+            .and_then(|wf| wf.etabs_pid)
+            .is_some();
+
+        if is_ext_managed {
+            // ETABS was opened through ext — user can close it with ext etabs close
+            let detail = preflight
+                .open_file_path
+                .as_deref()
+                .map(|path| {
+                    format!(
+                        "\n  Open file: {}",
+                        normalize_display(Path::new(path)).display()
+                    )
+                })
+                .unwrap_or_default();
+            bail!(
+                "✗ ETABS is already running in this project\n  Close it with: ext etabs close{}",
+                detail
+            );
+        } else {
+            // ETABS is running but was opened outside ext — user must close manually
+            bail!(
+                "✗ ETABS is already running (started outside ext)\n  Close ETABS manually and try again"
+            );
+        }
     }
 
     let opened = sidecar
-        .open_model(&target_file, false, true)
+        .open_model(&target_file, false, new_instance)
         .await
         .with_context(|| format!("Failed to launch ETABS for {}", target_file.display()))?;
     let confirmed_pid = confirm_open_pid(sidecar, &target_file, &opened).await?;
@@ -355,7 +379,10 @@ pub async fn etabs_close(ctx: &AppContext, mode: CloseMode) -> Result<EtabsClose
         }
         (WorkingFileStatus::OpenModified, CloseMode::Save) => true,
         (WorkingFileStatus::OpenModified, CloseMode::NoSave) => false,
-        // ANALYZED / LOCKED / OPEN_CLEAN — nothing to save
+        // Analyzed/Locked: No prompt in Interactive mode. These states result from prior analysis
+        // runs. The contract is that the user should commit those analysis results before closing.
+        // Closing in Interactive mode just discloses analysis without saving.
+        // OpenClean: No unsaved changes to prompt about.
         _ => false,
     };
 

@@ -13,7 +13,7 @@ pub async fn execute(
     args: EtabsOpenArgs,
 ) -> Result<()> {
     let ctx = ctx_from(global_project_path)?;
-    let result = etabs_open(&ctx, args.version.as_deref()).await?;
+    let result = etabs_open(&ctx, args.version.as_deref(), args.new_instance).await?;
 
     if let Some(warning) = result.warning.as_deref() {
         out.human_line(format!("⚠ {warning}"));

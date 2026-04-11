@@ -241,6 +241,10 @@ pub enum EtabsSubcommand {
 #[derive(Debug, Args)]
 pub struct EtabsOpenArgs {
     pub version: Option<String>,
+
+    /// Launch ETABS in a new instance instead of attaching to existing ETABS
+    #[arg(long)]
+    pub new_instance: bool,
 }
 
 #[derive(Debug, Args)]

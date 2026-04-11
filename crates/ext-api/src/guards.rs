@@ -58,7 +58,7 @@ pub fn check_state_guard(command: Command, status: &WorkingFileStatus) -> GuardO
             Block("✗ Close ETABS before committing\n  Run: ext etabs close".into())
         }
         (Commit, Orphaned) => {
-            Block("✗ Working file state unknown\n  Run: ext etabs recover".into())
+            Block("✗ ETABS may have closed unexpectedly\n  Run: ext etabs recover".into())
         }
         (Commit, Missing) => Block("✗ Working file missing\n  Run: ext checkout vN".into()),
         (Commit, Analyzed | Locked) => Warn(
@@ -71,7 +71,7 @@ pub fn check_state_guard(command: Command, status: &WorkingFileStatus) -> GuardO
             Block("✗ Close ETABS before committing\n  Run: ext etabs close".into())
         }
         (CommitAnalyze, Orphaned) => {
-            Block("✗ Working file state unknown\n  Run: ext etabs recover".into())
+            Block("✗ ETABS may have closed unexpectedly\n  Run: ext etabs recover".into())
         }
         (CommitAnalyze, Missing) => Block("✗ Working file missing\n  Run: ext checkout vN".into()),
         (CommitAnalyze, Locked) => {
@@ -84,7 +84,7 @@ pub fn check_state_guard(command: Command, status: &WorkingFileStatus) -> GuardO
             Block("✗ Close ETABS before switching branches\n  Run: ext etabs close".into())
         }
         (Switch, Orphaned) => {
-            Block("✗ Working file state unknown\n  Run: ext etabs recover".into())
+            Block("✗ ETABS may have closed unexpectedly\n  Run: ext etabs recover".into())
         }
         (Switch, Modified | Analyzed | Locked) => {
             Warn("⚠ Leaving branch with uncommitted changes".into())
@@ -101,7 +101,7 @@ pub fn check_state_guard(command: Command, status: &WorkingFileStatus) -> GuardO
             "✗ Close ETABS and commit analysis results first\n  Run: ext commit --analyze".into(),
         ),
         (Checkout, Orphaned) => {
-            Block("✗ Working file state unknown\n  Run: ext etabs recover".into())
+            Block("✗ ETABS may have closed unexpectedly\n  Run: ext etabs recover".into())
         }
         (Checkout, _) => Allow,
 
@@ -119,7 +119,7 @@ pub fn check_state_guard(command: Command, status: &WorkingFileStatus) -> GuardO
             Block("✗ Close ETABS before restoring stash\n  Run: ext etabs close".into())
         }
         (StashPop, Orphaned) => {
-            Block("✗ Working file state unknown\n  Run: ext etabs recover".into())
+            Block("✗ ETABS may have closed unexpectedly\n  Run: ext etabs recover".into())
         }
         (StashPop, Analyzed | Locked) => {
             Block("✗ Commit or discard analysis results before restoring stash".into())
