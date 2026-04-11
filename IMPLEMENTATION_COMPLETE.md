@@ -1,12 +1,29 @@
 # ETABS Open Lifecycle Fix - Implementation Complete ✅
 
 **Date:** April 11, 2026  
-**Status:** All 6 issues implemented and verified
+**Status:** All 7 issues implemented and verified
 **Build Status:** ✅ `cargo check --all` passed
 
 ---
 
-## Summary of Changes
+## Critical Bug Found & Fixed During Testing
+
+### Snapshot Open State Poisoning (CRITICAL)
+
+**Bug:** When opening a snapshot (e.g., `ext etabs open v1 --new-instance`), the code was incorrectly writing the ETABS PID to `state.working_file`, poisoning it for subsequent commands.
+
+**Impact:**
+- Opening snapshots causes false "Orphaned" state
+- Guards block all commands after snapshot browsing
+- Users get contradictory error messages
+
+**Fix:** Guard state write behind `if !is_snapshot` — snapshots should never modify working file state because the working file is untouched when viewing a snapshot.
+
+**File:** `crates/ext-api/src/etabs.rs` - `etabs_open()` function
+
+**Details:** See [CRITICAL_BUG_SNAPSHOT_STATE_POISONING.md](CRITICAL_BUG_SNAPSHOT_STATE_POISONING.md)
+
+---
 
 ### Critical Path (Issues #1-2)
 These fixes restore functionality and enable Mode A (attach to existing ETABS).
@@ -423,6 +440,7 @@ ext.exe commit "Updated"
 
 - `crates/ext-api/src/etabs.rs`
   - Added `new_instance` parameter to `etabs_open()` signature
+  - Guarded snapshot state write behind `if !is_snapshot` (Critical Bug Fix)
   - Improved preflight error message (distinguish ext-managed vs manual)
   - Added comment to `etabs_close()` explaining Analyzed/Locked logic
   - Changed sidecar call from hardcoded `true` to `new_instance` parameter
@@ -433,6 +451,20 @@ ext.exe commit "Updated"
 
 - `crates/ext/src/commands/etabs_open.rs`
   - Wired `args.new_instance` through to `etabs_open()` function
+
+---
+
+## Summary of All 7 Fixes
+
+| # | Severity | Issue | File | Fix | Impact |
+|---|----------|-------|------|-----|--------|
+| 1 | **CRITICAL** | app?.Dispose() kills ETABS in Mode B | OpenModelService.cs | Remove disposal | ETABS stays alive |
+| 2 | **HIGH** | --new-instance flag missing; Mode A unreachable | args/mod.rs, etabs.rs, commands/etabs_open.rs | Add flag, wire through | Users can choose Mode A vs Mode B |
+| 3 | MEDIUM | Redundant preflight + confusing error | etabs.rs | Better error messages | Distinguish ext-managed vs manual ETABS |
+| 4 | LOW | Missing comment on close logic | etabs.rs | Add comment | Code clarity |
+| 5 | LOW | Mode A has no PID retry loop | OpenModelService.cs | Add retry loop | Hardened race condition handling |
+| 6 | LOW | Vague Orphaned error message | guards.rs | Better message | Users understand ETABS crashed |
+| **7** | **CRITICAL** | Snapshot open poisons working file state | etabs.rs | Guard with `if !is_snapshot` | Snapshots don't corrupt state |
 
 ---
 

@@ -328,14 +328,19 @@ pub async fn etabs_open(
 
     // Record the mtime at open time so OPEN_CLEAN vs OPEN_MODIFIED detection
     // is accurate: ETABS saving a file bumps the mtime above this baseline.
-    if let Some(wf) = state.working_file.as_mut() {
-        wf.etabs_pid = Some(confirmed_pid);
-        wf.last_known_mtime = mtime(&target_file);
-        wf.status = WorkingFileStatus::OpenClean;
-        wf.status_changed_at = Utc::now();
+    // IMPORTANT: Only record state for the actual working file, not for snapshots.
+    // Opening a snapshot should not poison the working file state. When is_snapshot=true,
+    // the user is viewing a read-only model; the working file remains untouched.
+    if !is_snapshot {
+        if let Some(wf) = state.working_file.as_mut() {
+            wf.etabs_pid = Some(confirmed_pid);
+            wf.last_known_mtime = mtime(&target_file);
+            wf.status = WorkingFileStatus::OpenClean;
+            wf.status_changed_at = Utc::now();
+        }
+        state.updated_at = Utc::now();
+        ctx.save_state(&state)?;
     }
-    state.updated_at = Utc::now();
-    ctx.save_state(&state)?;
 
     Ok(EtabsOpenResult {
         opened_file: normalize_display(&target_file),
