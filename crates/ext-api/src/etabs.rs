@@ -288,7 +288,9 @@ pub async fn etabs_open(
         .get_status()
         .await
         .context("Failed to check ETABS status before opening")?;
-    if preflight.is_running {
+    if preflight.is_running && new_instance {
+        // User asked for a new instance but ETABS is already running — block.
+        // Mode A (no --new-instance) skips this: a running ETABS is what it needs.
         // Distinguish between ext-managed ETABS (state has PID) and out-of-band ETABS (manual)
         let is_ext_managed = state
             .working_file
