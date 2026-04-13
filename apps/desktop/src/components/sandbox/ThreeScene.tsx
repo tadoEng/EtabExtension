@@ -78,7 +78,7 @@ function Scene() {
 }
 
 export function ThreeScene() {
-    // FIX: defer Canvas mount by one rAF tick so the container div has been
+    // Defer Canvas mount by one rAF tick so the container div has been
     // painted and has real pixel dimensions before WebGL context creation.
     // Without this, Canvas initialises with 0×0 on first React.lazy() load.
     const [ready, setReady] = useState(false);
