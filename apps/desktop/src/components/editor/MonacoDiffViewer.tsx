@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { DiffEditor } from '@monaco-editor/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { GitCompare } from 'lucide-react';
@@ -16,7 +17,22 @@ const MODIFIED_CODE = `function calculateSum(a, b) {
 const result = calculateSum(10, 20);
 console.log(\`Result: \${result}\`);`;
 
-export function MonacoDiffViewer() {
+export function MonacoDiffViewer({
+    original = ORIGINAL_CODE,
+    modified = MODIFIED_CODE,
+    language = 'javascript'
+}: {
+    original?: string;
+    modified?: string;
+    language?: string;
+}) {
+    const [ready, setReady] = useState(false);
+
+    useEffect(() => {
+        const id = requestAnimationFrame(() => setReady(true));
+        return () => cancelAnimationFrame(id);
+    }, []);
+
     return (
         <Card className="h-full border-border/50 flex flex-col">
             <CardHeader>
@@ -29,23 +45,29 @@ export function MonacoDiffViewer() {
                 </div>
             </CardHeader>
             <CardContent className="flex-1 p-0 border-t border-border/50">
-                <DiffEditor
-                    height="100%"
-                    original={ORIGINAL_CODE}
-                    modified={MODIFIED_CODE}
-                    language="javascript"
-                    theme="vs-dark"
-                    options={{
-                        minimap: { enabled: false },
-                        fontSize: 14,
-                        fontFamily: 'Fira Code, Courier New',
-                        lineNumbers: 'on',
-                        scrollBeyondLastLine: false,
-                        automaticLayout: true,
-                        padding: { top: 16, bottom: 16 },
-                        renderSideBySide: true,
-                    }}
-                />
+                {!ready ? (
+                    <div className="flex items-center justify-center h-full bg-[#1e1e1e] text-xs text-slate-500">
+                        Initialising Monaco…
+                    </div>
+                ) : (
+                    <DiffEditor
+                        height="100%"
+                        original={original}
+                        modified={modified}
+                        language={language}
+                        theme="vs-dark"
+                        options={{
+                            minimap: { enabled: false },
+                            fontSize: 14,
+                            fontFamily: 'Fira Code, Courier New',
+                            lineNumbers: 'on',
+                            scrollBeyondLastLine: false,
+                            automaticLayout: true,
+                            padding: { top: 16, bottom: 16 },
+                            renderSideBySide: true,
+                        }}
+                    />
+                )}
             </CardContent>
         </Card>
     );
