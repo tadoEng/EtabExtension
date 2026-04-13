@@ -419,14 +419,15 @@ fn build_pier_shear_table(pier: &PierShearStressOutput) -> KeyValueTable {
         .per_pier
         .iter()
         .map(|row| {
+            let dcr = row.stress_ratio / row.limit_individual;
             vec![
                 row.story.clone(),
                 row.pier.clone(),
                 row.combo.clone(),
                 format!("{:.1}", row.stress_psi),
                 format!("{:.1}", row.limit_individual),
-                format!("{:.3}", row.stress_ratio), // replacing phi_vn with stress ratio directly
-                format!("{:.3}", row.stress_ratio), // DCR
+                format!("{:.3}", row.stress_ratio),
+                format!("{:.3}", dcr),
                 pass_fail(row.pass),
             ]
         })
@@ -466,8 +467,8 @@ fn build_pier_shear_table(pier: &PierShearStressOutput) -> KeyValueTable {
             "Pier".to_string(),
             "Combo".to_string(),
             "Vu/Acv (psi)".to_string(),
-            "8\u{221A}f'c (psi)".to_string(),
-            "\u{03C6}Vn/Acv (psi)".to_string(),
+            "Limit (n\u{221A}f'c)".to_string(),
+            "Stress Ratio".to_string(),
             "DCR".to_string(),
             "Status".to_string(),
         ],

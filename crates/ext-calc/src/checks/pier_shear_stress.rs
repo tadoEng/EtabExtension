@@ -51,7 +51,10 @@ pub fn run(
         let is_x = is_x_dir(axis_angle);
         let orientation = if is_x { "X" } else { "Y" };
         
-        let fc_ksi = pier_fc_map.get(&(row.pier.clone(), row.story.clone())).copied().unwrap_or(4.0);
+        let fc_ksi = pier_fc_map
+            .get(&(row.pier.clone(), row.story.clone()))
+            .copied()
+            .unwrap_or(p_params.fc_default_ksi);
         let fc_psi = fc_ksi * 1000.0;
         let fc_sqrt = fc_psi.sqrt();
         

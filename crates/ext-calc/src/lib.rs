@@ -182,9 +182,19 @@ fn build_summary(
         lines.push(SummaryLine { key: "modal".to_string(), status: if modal.pass { "pass" } else { "fail" }.to_string(), message: "Modal check".to_string(), });
     }
 
-    if let Some(_base_reactions) = &output.base_reactions {
-        check_count += 1; pass_count += 1;
-        lines.push(SummaryLine { key: "baseReactions".to_string(), status: "pass".to_string(), message: "Base reactions review".to_string() });
+    if let Some(base_reactions) = &output.base_reactions {
+        check_count += 1;
+        let pass = base_reactions.direction_x.pass && base_reactions.direction_y.pass;
+        if pass { pass_count += 1; } else { fail_count += 1; }
+        lines.push(SummaryLine {
+            key: "baseReactions".to_string(),
+            status: if pass { "pass" } else { "fail" }.to_string(),
+            message: format!(
+                "Base reactions review (X {:.2}, Y {:.2})",
+                base_reactions.direction_x.ratio,
+                base_reactions.direction_y.ratio
+            ),
+        });
     }
 
     if let Some(_sf) = &output.story_forces {

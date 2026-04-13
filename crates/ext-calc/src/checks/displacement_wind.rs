@@ -134,16 +134,9 @@ pub(crate) fn build_displacement_output_directional(
         .unwrap();
 
     let governing_row = rows_out[governing_index].clone();
-    
-    // Find the height of the governing story.
-    // Stories are ordered internally by sort_rows_by_story which uses order map.
-    // The closest to story_idx height should be looked up.
-    let story_height = stories.iter()
-        .find(|s| s.story == governing_row.story)
-        .map(|s| s.elevation_ft)
-        .unwrap_or(0.0);
-        
-    // Roof elevation is max elevation.
+
+    // Wind displacement limit is based on total building height H, not the
+    // elevation of the governing story.
     let mut max_elev = 0.0;
     for s in stories {
         if s.elevation_ft > max_elev {
@@ -151,9 +144,7 @@ pub(crate) fn build_displacement_output_directional(
         }
     }
 
-    // Usually limit is Height / divisor at that specific story. 
-    // Wait, the specification logic usually calculates `allowable = elev / limit`.
-    let limit_val = story_height / (disp_limit_h as f64);
+    let limit_val = max_elev / (disp_limit_h as f64);
     let dcr = if limit_val > 1e-9 { max_disp_val / limit_val } else { 0.0 };
     let pass = dcr <= 1.0;
 
@@ -172,4 +163,74 @@ pub(crate) fn build_displacement_output_directional(
         disp_limit: Quantity::new(limit_val, length_label),
         pass,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::{DriftDirection, build_displacement_output_directional};
+    use crate::tables::{joint_drift::JointDriftRow, story_def::StoryDefRow};
+
+    #[test]
+    fn displacement_limit_uses_total_building_height() {
+        let stories = vec![
+            StoryDefRow {
+                story: "L2".into(),
+                height_ft: 10.0,
+                elevation_ft: 20.0,
+            },
+            StoryDefRow {
+                story: "L1".into(),
+                height_ft: 10.0,
+                elevation_ft: 10.0,
+            },
+        ];
+
+        let rows = vec![
+            JointDriftRow {
+                story: "L2".into(),
+                unique_name: "J1".into(),
+                output_case: "WIND_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: None,
+                disp_x_ft: 0.20,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 1,
+            },
+            JointDriftRow {
+                story: "L1".into(),
+                unique_name: "J1".into(),
+                output_case: "WIND_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: None,
+                disp_x_ft: 0.05,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 1,
+            },
+        ];
+
+        let mut group_map = HashMap::new();
+        group_map.insert("Tracking".to_string(), vec!["J1".to_string()]);
+
+        let output = build_displacement_output_directional(
+            &rows,
+            &stories,
+            &group_map,
+            &["Tracking".to_string()],
+            &["WIND_X".to_string()],
+            400,
+            DriftDirection::X,
+            "ft",
+        )
+        .unwrap();
+
+        assert!((output.disp_limit.value - 0.05).abs() < 1e-9);
+    }
 }

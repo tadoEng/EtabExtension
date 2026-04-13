@@ -1,8 +1,8 @@
 # Week 3–4 VCS Visual Test Spec
 # ETABS Extension — Current Manual Validation With Real Sidecar
 
-**Date:** 2026-04-11
-**Phase:** Phase 1, Weeks 3–4 plus ETABS lifecycle fix
+**Date:** 2026-04-13
+**Phase:** Phase 1, Weeks 3–4 plus ETABS lifecycle and ext-calc v4 config pass
 **Status:** Active
 **Author:** EtabExtension Team
 
@@ -10,8 +10,9 @@
 
 ## Overview
 
-Manual validation sheet for the real ETABS flow after the lifecycle fix applied
-in this sprint. Key behavioral changes since the previous spec version:
+Manual validation sheet for the real ETABS flow after the lifecycle fixes and
+the ext-calc v4 config refactor. Key behavioral changes since the previous
+spec version:
 
 - `ext etabs open` now **attaches to an already-running ETABS** (Mode A) by default
 - `ext etabs open --new-instance` launches a new visible ETABS window (Mode B)
@@ -24,8 +25,20 @@ in this sprint. Key behavioral changes since the previous spec version:
 - `extract-results` merges user table filters over the full default table set;
   partial `[extract.tables.*]` config no longer disables other required parquet outputs
 - Materials extraction writes `{table_slug}.parquet`, not `takeoff.parquet`
-- `ext calc` still requires explicit `[calc]` config; `ext init` does not
-  generate defaults for those values
+- `ext init` now writes a commented shared `config.toml` starter block; the
+  tester should edit the generated calc values instead of building the file
+  from scratch
+- `ext calc` now uses the v4 schema:
+  - `joint-tracking-groups`
+  - `[calc.base-reactions]`
+  - `[calc.story-forces]`
+  - `[calc.pier-shear-stress-wind]`
+  - `[calc.pier-shear-stress-seismic]`
+  - `[calc.pier-axial-stress]`
+- `ext calc` currently computes more checks than `ext report` renders:
+  - `storyForces` and `torsional` are present in `calc_output.json`
+  - chart/report sections for those two are intentionally deferred while the
+    final visualization approach is decided
 
 Primary implementation reference: `2026-03-29-week3-4-vcs-spec.md`.
 
@@ -90,10 +103,11 @@ email = "tester@example.com"
 acknowledgedSync = true
 ```
 
-### 4. Set the full project config
+### 4. Edit the generated shared config
 
-Replace the contents of `.etabs-ext\config.toml` with the following. All load
-case and combo names are confirmed present in the test model.
+`ext init` now generates a commented starter `config.toml`. For the visual
+pass, replace the calc portion with a known-good example like the one below.
+All load case and combo names must exist in the real test model.
 
 ```toml
 [project]
@@ -120,61 +134,76 @@ units = "US_Kip_Ft"
 code = "ACI318-14"
 occupancy-category = "II"
 modal-case = "Modal (Rizt)"
-drift-tracking-groups = ["Joint47", "Joint49", "Joint50", "Joint51"]
+joint-tracking-groups = ["Joint47", "Joint49", "Joint50", "Joint51"]
 
 [calc.modal]
 min-mass-participation = 0.9
 display-mode-limit = 20
 
-[calc.base-shear]
+[calc.base-reactions]
 elf-case-x = "ELF_X"
 elf-case-y = "ELF_Y"
 rsa-case-x = "DBE_X"
 rsa-case-y = "DBE_Y"
 rsa-scale-min = 1.0
 
-[[calc.base-shear.pie-groups]]
+[[calc.base-reactions.pie-groups]]
 label = "Gravity"
 load-cases = ["Dead", "SDL", "Live (red)", "Live (non-red)", "Live (roof)"]
 
+[calc.story-forces]
+story-force-x-cases = ["ELF_X", "DBE_X", "MCER_X", "W_700YRS"]
+story-force-y-cases = ["ELF_Y", "DBE_Y", "MCER_Y", "W_700YRS"]
+
 [calc.drift-wind]
-load-cases = ["W_10YRS", "W_10YRS"]
+drift-x-cases = ["W_10YRS"]
+drift-y-cases = ["W_10YRS"]
 drift-limit = 0.0025
 
 [calc.drift-seismic]
-load-cases = ["DBE_X*Cd/R", "DBE_Y*Cd/R", "ELF_X_Drift*Cd/Ie", "ELF_Y_Drift*Cd/Ie"]
+drift-x-cases = ["DBE_X*Cd/R", "ELF_X_Drift*Cd/Ie"]
+drift-y-cases = ["DBE_Y*Cd/R", "ELF_Y_Drift*Cd/Ie"]
 drift-limit = 0.02
 
 [calc.displacement-wind]
-load-cases = ["W_10YRS", "W_10YRS"]
+disp-x-cases = ["W_10YRS"]
+disp-y-cases = ["W_10YRS"]
 disp-limit-h = 400
 
-[calc.pier-shear-wind]
-load-combos = ["ENV: WIND"]
+[calc.torsional]
+torsional-x-case = ["ELF_X", "DBE_X"]
+torsional-y-case = ["ELF_Y", "DBE_Y"]
+x-joints = [["Joint47", "Joint50"]]
+y-joints = [["Joint49", "Joint51"]]
+ecc-ratio = 0.05
+# Optional for now unless you want a meaningful ecc_ft output:
+# building-dim-x-ft = 96.0
+# building-dim-y-ft = 56.0
+
+[calc.pier-shear-stress-wind]
+stress-combos = ["ENV: WIND"]
 phi-v = 0.75
-alpha-c = 2.0
-fy-ksi = 60.0
-rho-t = 0.0025
 fc-default-ksi = 8.0
 
-[calc.pier-shear-seismic]
-load-combos = ["ENV: DBE"]
+[calc.pier-shear-stress-seismic]
+stress-combos = ["ENV: DBE"]
 phi-v = 0.75
-alpha-c = 2.0
-fy-ksi = 60.0
-rho-t = 0.0025
 fc-default-ksi = 8.0
 
-[calc.pier-axial]
-load-combos = [
+[calc.pier-axial-stress]
+stress-gravity-combos = [
   "LC1: 1.4D",
   "LC2: 1.2D+1.6L",
+]
+stress-wind-combos = [
   "LC3.1: 1.2D+0.5W",
   "LC3.2: 1.2D-0.5W",
   "LC4.1: 1.2D+1.0W+1.0L",
   "LC4.2: 1.2D+1.0W-1.0L",
   "LC6.1: 0.9D+1.0W",
   "LC6.2: 0.9D-1.0W",
+]
+stress-seismic-combos = [
   "DBE1: (1.2+0.2Sds)D+0.5L+100X+30Y",
   "DBE2: (1.2+0.2Sds)D+0.5L+100Y+30X",
   "DBE3: (0.9-0.2Sds)D+100X+30Y",
@@ -182,8 +211,9 @@ load-combos = [
 ]
 phi-axial = 0.65
 
-# Note: drift-tracking-groups must match names extracted into
-# results/group_assignments.parquet after analysis.
+# Note: joint-tracking-groups must match group names extracted into
+# results/group_assignments.parquet exactly. Despite the older name, these are
+# group names resolved through the group assignments parquet, not raw joint IDs.
 ```
 
 ### 5. Optional focused filter pass-through check
@@ -221,7 +251,10 @@ Run these first for the highest-signal checks:
    required parquet files (see step 14)
 6. `ext analyze steel-columns/v2` also works if `v2` exists from a prior
    non-analyzed commit
-7. `ext log` hides internal `ext:` commits; raw `git log` still shows them
+7. `ext calc steel-columns/v2` writes `results\calc_output.json` with the new
+   v4 field names such as `baseReactions`, `storyForces`,
+   `pierShearStressWind`, and `pierAxialStress`
+8. `ext log` hides internal `ext:` commits; raw `git log` still shows them
 
 ---
 
@@ -393,10 +426,10 @@ Inspect `.etabs-ext\steel-columns\v2\results\`. All ten files must be present:
 If the three contract-critical files are missing while analysis otherwise
 succeeded, the request contract likely regressed again.
 
-### 17. Drift group verification before `ext calc`
+### 17. Tracking group verification before `ext calc`
 
 Inspect `group_assignments.parquet` and confirm the group names match
-`drift-tracking-groups` in config exactly: `Joint47`, `Joint49`, `Joint50`,
+`joint-tracking-groups` in config exactly: `Joint47`, `Joint49`, `Joint50`,
 `Joint51`. If names differ, update the config before proceeding — `ext calc`
 will fail fast on mismatched group names.
 
@@ -410,10 +443,24 @@ will fail fast on mismatched group names.
 
 Expect:
 - `calc` succeeds with the confirmed load case/combo names from config
-- `render` writes SVG/chart assets
-- `report` writes a PDF successfully
+- `results\calc_output.json` contains the v4 fields:
+  - `modal`
+  - `baseReactions`
+  - `storyForces`
+  - `driftWind`
+  - `driftSeismic`
+  - `displacementWind`
+  - `pierShearStressWind`
+  - `pierShearStressSeismic`
+  - `pierAxialStress`
+  - `torsional` if torsional config is enabled
+- `render` writes SVG/chart assets for the currently charted subset
+- `report` writes a PDF successfully for the currently reported subset
 - Pier axial report content includes a note that the check is conservative and
   excludes rebar contribution
+- Current limitation by design:
+  - `storyForces` and `torsional` are calc outputs today
+  - dedicated chart/report sections for those two are still deferred
 
 ### 19. Analyzed-version verification
 
@@ -511,7 +558,9 @@ The visual pass is successful when all of the following are true:
 - Snapshot open returns `isSnapshot = true` and the discard warning
 - Analyzed branch version contains manifest, summary, results, E2K, and materials
 - `results\` contains all ten required parquet files listed in step 16
-- `ext calc`, `ext render`, and `ext report` succeed with the confirmed config
+- `ext calc` succeeds with the v4 config schema and writes `calc_output.json`
+- `ext render` and `ext report` succeed for the currently charted/reportable
+  subset of checks
 - `ext log` hides internal `ext:` commits; raw git log shows them
 - `ext diff` produces a real diff between `main/v1` and `steel-columns/v2`
 - `checkout`, `stash save`, and `stash pop` behave correctly in human mode
@@ -530,5 +579,8 @@ The visual pass is successful when all of the following are true:
   analyzes `v2` together
 - Partial `[extract.tables.*]` config is merged over defaults — it should not
   suppress the other seven required result tables; verify in step 16
-- `drift-tracking-groups` entries are joint names (`Joint47` etc.) and must
-  exactly match the group names in `group_assignments.parquet` after extraction
+- `joint-tracking-groups` entries must exactly match the group names in
+  `group_assignments.parquet` after extraction
+- `storyForces` and `torsional` are expected in calc JSON when configured, but
+  their final chart/report pages are intentionally postponed until the visual
+  format is chosen
