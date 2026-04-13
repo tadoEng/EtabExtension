@@ -1,7 +1,7 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
-use crate::code_params::{CodeParams, TorsionalParams, TorsionalJointPair};
+use crate::code_params::{TorsionalParams, TorsionalJointPair};
 use crate::output::{TorsionalDirectionOutput, TorsionalOutput, TorsionalRow};
 use crate::tables::joint_drift::JointDriftRow;
 use crate::tables::story_def::StoryDefRow;
@@ -218,7 +218,7 @@ mod tests {
         
         // Let's artificially get the raw data inside the test and run a hand-calc loop!
         let t_params = params.torsional.as_ref().unwrap();
-        let output = run(&drifts, &stories, t_params).unwrap();
+        let _output = run(&drifts, &stories, t_params).unwrap();
 
         // Let's create an explicit hand-calc trace to prove the math works isolated from the parquet
         use crate::tables::joint_drift::JointDriftRow;

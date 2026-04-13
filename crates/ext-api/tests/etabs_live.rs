@@ -433,7 +433,7 @@ async fn live_week56_etabs_status_and_analyze_version_cycle() {
     .expect("commit v1");
     assert_eq!(commit_v1.version_id, "v1");
 
-    let open_working = etabs_open(ctx, None).await.expect("open working");
+    let open_working = etabs_open(ctx, None, true).await.expect("open working");
     assert!(open_working.pid > 0);
     assert!(!open_working.is_snapshot);
 
@@ -474,7 +474,7 @@ async fn live_week56_etabs_status_and_analyze_version_cycle() {
         assert!(!manifest.is_analyzed);
     }
 
-    let open_snapshot = etabs_open(ctx, Some("v1")).await.expect("open snapshot");
+    let open_snapshot = etabs_open(ctx, Some("v1"), true).await.expect("open snapshot");
     assert!(open_snapshot.is_snapshot);
 
     let close_snapshot = etabs_close(ctx, CloseMode::NoSave)

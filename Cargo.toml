@@ -167,11 +167,14 @@ uninlined_format_args = "deny"
 
 # ── Profiles ──────────────────────────────────────────────────────────────────
 [profile.dev]
-incremental = false
-debug       = "line-tables-only"
+opt-level     = 0
+incremental   = false
+debug         = "line-tables-only"
+codegen-units = 4          # cap parallel codegen workers; prevents OOM on full workspace builds
 
 [profile.test]
-incremental = false
+incremental   = false
+codegen-units = 4          # same OOM guard for test binaries
 
 [profile.release]
 opt-level     = "z"
@@ -185,23 +188,13 @@ lto           = false
 opt-level     = 3
 debug         = "line-tables-only"
 
-# ── Keep debug builds fast ─────────────────────────────────────────────────────
+# ── Keep debug builds fast for heavy analytical crates ────────────────────────
+# Only list packages that actually exist in the workspace dependency tree.
 [profile.dev.package]
-gix          = { opt-level = 3 }
-gix-diff     = { opt-level = 3 }
-gix-object   = { opt-level = 3 }
-gix-ref      = { opt-level = 3 }
-gix-pack     = { opt-level = 3 }
-gix-hash     = { opt-level = 3 }
-gix-actor    = { opt-level = 3 }
-gix-config   = { opt-level = 3 }
-gix-worktree = { opt-level = 3 }
-sha1-checked = { opt-level = 3 }
-zlib-rs      = { opt-level = 3 }
 serde        = { opt-level = 3 }
 serde_json   = { opt-level = 3 }
 polars       = { opt-level = 3 }
 polars-core  = { opt-level = 3 }
 polars-io    = { opt-level = 3 }
 polars-lazy  = { opt-level = 3 }
-arrow-data   = { opt-level = 3 }
+zlib-rs      = { opt-level = 3 }

@@ -62,7 +62,7 @@ async fn etabs_open_updates_state_to_open_clean() {
     let sidecar = configure_sidecar(&project_root, &temp);
     let ctx = AppContext::new(&project_root).unwrap();
 
-    let result = etabs_open(&ctx, None).await.unwrap();
+    let result = etabs_open(&ctx, None, true).await.unwrap();
     let state = ctx.load_state().unwrap();
     let working = state.working_file.as_ref().unwrap();
 
@@ -95,7 +95,7 @@ async fn etabs_open_snapshot_sets_warning_and_snapshot_flag() {
     .await
     .unwrap();
 
-    let result = etabs_open(&ctx, Some("v1")).await.unwrap();
+    let result = etabs_open(&ctx, Some("v1"), true).await.unwrap();
     assert!(result.is_snapshot);
     assert!(
         result
@@ -132,7 +132,7 @@ async fn etabs_open_blocks_when_etabs_is_already_running() {
         &working.path,
     );
 
-    let err = etabs_open(&ctx, None).await.unwrap_err();
+    let err = etabs_open(&ctx, None, true).await.unwrap_err();
     assert!(err.to_string().contains("already running"), "{err}");
 }
 
@@ -155,7 +155,7 @@ async fn etabs_open_fails_when_pid_cannot_be_confirmed() {
         &working_before.path,
     );
 
-    let err = etabs_open(&ctx, None).await.unwrap_err();
+    let err = etabs_open(&ctx, None, true).await.unwrap_err();
     assert!(
         err.to_string().contains("PID could not be confirmed"),
         "{}",

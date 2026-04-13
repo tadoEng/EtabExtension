@@ -544,22 +544,38 @@ mod tests {
             },
         );
 
-        assert_eq!(document.sections.len(), 6);
+        // The fixture calc_output.json has these active (non-null) checks:
+        //   modal, baseReactions, storyForces, driftWind, driftSeismic,
+        //   displacementWind, pierShearStressWind, pierShearStressSeismic, pierAxialStress
+        //   torsional = null (not configured in fixture config)
+        //
+        // Report sections generated (only checks with both output and matching chart ref):
+        //   1 summary + 1 modal (table only)
+        //   + 1 base_reactions (chart+table)
+        //   + 2 drift_wind (X, Y)
+        //   + 2 drift_seismic (X, Y)   <- driftSeismic IS Some in fixture
+        //   + 2 displacement_wind (X, Y)
+        //   + 1 pier_shear_wind + 1 pier_shear_seismic
+        //   + 1 pier_axial chart + 1 pier_axial assumptions
+        //   storyForces has no chart builder → no report section
+        //   torsional is null → no section
+        //   = 13 sections
+        assert_eq!(document.sections.len(), 13);
         assert!(matches!(
             document.sections[0],
             ReportSection::SummaryPage { .. }
         ));
         assert!(matches!(
             document.sections[1],
-            ReportSection::TableOnlyPage { .. }
+            ReportSection::TableOnlyPage { .. }   // modal
         ));
         assert!(matches!(
             document.sections[2],
-            ReportSection::ChartAndTablePage { .. }
+            ReportSection::ChartAndTablePage { .. } // base reactions
         ));
         assert!(matches!(
-            document.sections[5],
-            ReportSection::ChartAndTablePage { .. }
+            document.sections[12],
+            ReportSection::CalculationPage { .. }  // pier axial assumptions
         ));
     }
 }

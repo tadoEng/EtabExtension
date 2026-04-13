@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use crate::code_params::CodeParams;
 use crate::output::{PierAxialStressOutput, PierAxialResult, Quantity};
@@ -130,7 +130,6 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use ext_db::config::Config;
     use crate::code_params::CodeParams;
     use crate::tables::pier_forces::PierForceRow;
     use crate::tables::pier_section::PierSectionRow;
@@ -140,7 +139,7 @@ mod tests {
     fn pier_axial_produces_governing_matches() {
         let mut params = CodeParams::for_testing();
         
-        let mut axial_params = crate::code_params::PierAxialStressParams {
+        let axial_params = crate::code_params::PierAxialStressParams {
             phi_axial: 0.65,
             gravity_combos: vec!["Grav1".into()],
             wind_combos: vec!["Wind1".into()],

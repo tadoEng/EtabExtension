@@ -6,7 +6,7 @@ use crate::code_params::CodeParams;
 use crate::output::{DisplacementEnvelopeRow, DisplacementOutput, DisplacementWindOutput, JointDisplacementResult, Quantity};
 use crate::tables::joint_drift::JointDriftRow;
 use crate::tables::story_def::StoryDefRow;
-use super::drift_wind::{max_negative, max_positive, resolve_groups, sort_rows_by_story, story_order_lookup, DriftDirection};
+use super::drift_wind::{max_negative, max_positive, resolve_groups, sort_rows_by_story, DriftDirection};
 
 pub fn run(
     rows: &[JointDriftRow],
@@ -136,8 +136,6 @@ pub(crate) fn build_displacement_output_directional(
     let governing_row = rows_out[governing_index].clone();
     
     // Find the height of the governing story.
-    let order = story_order_lookup(stories);
-    let story_idx = order.get(&governing_row.story).copied().unwrap_or(0);
     // Stories are ordered internally by sort_rows_by_story which uses order map.
     // The closest to story_idx height should be looked up.
     let story_height = stories.iter()

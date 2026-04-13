@@ -292,7 +292,8 @@ mod tests {
     #[test]
     fn calc_runner_populates_all_checks() {
         let results_dir = fixture_dir();
-        let params = configured_params_from_fixture(&results_dir);
+        let mut params = configured_params_from_fixture(&results_dir);
+        params.check_selection.torsional = true;
         let output = CalcRunner::run_all(
             results_dir.as_path(),
             results_dir.as_path(),

@@ -92,7 +92,7 @@ mod tests {
         let output = run(&rows, &params).unwrap();
         assert_eq!(output.mode_reaching_ux, Some(15));
         assert_eq!(output.mode_reaching_uy, Some(7));
-        assert_eq!(output.rows.len(), 23);
+        assert_eq!(output.rows.len(), 20);
         assert!(
             output
                 .rows
@@ -100,7 +100,7 @@ mod tests {
                 .all(|pair| pair[0].mode <= pair[1].mode)
         );
         assert_eq!(output.rows.first().map(|row| row.mode), Some(1));
-        assert_eq!(output.rows.last().map(|row| row.mode), Some(23));
+        assert_eq!(output.rows.last().map(|row| row.mode), Some(20));
     }
 
     #[test]

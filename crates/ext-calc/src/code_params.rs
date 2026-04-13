@@ -375,22 +375,13 @@ fn required_positive_u32(value: Option<u32>, key: &str) -> Result<u32> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use ext_db::config::Config;
 
     use super::CodeParams;
-
-    fn fixture_dir() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests")
-            .join("fixtures")
-            .join("results_realistic")
-    }
-
     fn base_valid_config() -> Config {
-        // Just extract it from the builder if we want it isolated, but here we can just test properties:
-        let p = CodeParams::for_testing();
+        // Bootstrap from the for_testing() builder so all required fields are already set,
+        // then override specific fields where individual tests need different values.
+        let _p = CodeParams::for_testing();
         let mut config = Config::default(); // Dummy for tests that specifically modify config
         config.project.units = Some("kip-ft-F".into());
         config.calc.modal_case = Some("Modal-Rizt".into());

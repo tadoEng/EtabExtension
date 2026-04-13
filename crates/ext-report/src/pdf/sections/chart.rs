@@ -18,9 +18,9 @@ pub fn render_two_charts_page(title: &str, charts: &[ChartRef]) -> String {
     format!(
         "#text(size: 16pt, weight: \"bold\")[{}]\n#v(10pt)\n#grid(columns: (1fr, 1fr), gutter: 14pt,\n  [#figure(image(\"{}\", height: 6.0in), caption: [{}])],\n  [#figure(image(\"{}\", height: 6.0in), caption: [{}])],\n)\n",
         escape_text(title),
-        escape_text(&left.logical_name),
+        &left.logical_name,
         escape_text(&left.caption),
-        escape_text(&right.logical_name),
+        &right.logical_name,
         escape_text(&right.caption),
     )
 }
@@ -41,7 +41,7 @@ pub fn render_chart_and_table_page(
         escape_text(title),
         columns,
         render_table(table),
-        escape_text(&chart.logical_name),
+        &chart.logical_name,
         chart_height,
         escape_text(&chart.caption),
     )
@@ -50,7 +50,7 @@ pub fn render_chart_and_table_page(
 fn render_single_chart(chart: &ChartRef, height: &str) -> String {
     format!(
         "#figure(\n  image(\"{}\", height: {}),\n  caption: [{}],\n)\n",
-        escape_text(&chart.logical_name),
+        &chart.logical_name,
         height,
         escape_text(&chart.caption),
     )
