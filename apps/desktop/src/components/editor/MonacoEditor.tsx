@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,12 @@ console.log(\`Result: \${result}\`);`;
 
 export function MonacoCodeEditor() {
     const [code, setCode] = useState(DEFAULT_CODE);
+    const [ready, setReady] = useState(false);
+
+    useEffect(() => {
+        const id = requestAnimationFrame(() => setReady(true));
+        return () => cancelAnimationFrame(id);
+    }, []);
 
     return (
         <Card className="h-full flex flex-col border-border/50">
@@ -32,22 +38,28 @@ export function MonacoCodeEditor() {
                 </div>
             </CardHeader>
             <CardContent className="flex-1 p-0 border-t border-border/50">
-                <Editor
-                    height="100%"
-                    defaultLanguage="javascript"
-                    value={code}
-                    onChange={(value) => setCode(value || '')}
-                    theme="vs-dark"
-                    options={{
-                        minimap: { enabled: false },
-                        fontSize: 14,
-                        fontFamily: 'Fira Code, Courier New',
-                        lineNumbers: 'on',
-                        scrollBeyondLastLine: false,
-                        automaticLayout: true,
-                        padding: { top: 16, bottom: 16 },
-                    }}
-                />
+                {!ready ? (
+                    <div className="flex items-center justify-center h-full bg-[#1e1e1e] text-xs text-slate-500">
+                        Initialising Monaco…
+                    </div>
+                ) : (
+                    <Editor
+                        height="100%"
+                        defaultLanguage="javascript"
+                        value={code}
+                        onChange={(value) => setCode(value || '')}
+                        theme="vs-dark"
+                        options={{
+                            minimap: { enabled: false },
+                            fontSize: 14,
+                            fontFamily: 'Fira Code, Courier New',
+                            lineNumbers: 'on',
+                            scrollBeyondLastLine: false,
+                            automaticLayout: true,
+                            padding: { top: 16, bottom: 16 },
+                        }}
+                    />
+                )}
             </CardContent>
         </Card>
     );
