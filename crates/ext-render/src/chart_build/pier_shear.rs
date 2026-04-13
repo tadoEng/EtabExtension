@@ -1,13 +1,13 @@
-use ext_calc::output::PierShearOutput;
+use ext_calc::output::PierShearStressOutput;
 
-use crate::chart_build::{PIER_SHEAR_SEISMIC_IMAGE, PIER_SHEAR_WIND_IMAGE};
+use crate::chart_build::{PIER_SHEAR_STRESS_SEISMIC_IMAGE, PIER_SHEAR_STRESS_WIND_IMAGE};
 use crate::chart_types::{
     CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
 };
 
-pub fn build_wind(output: &PierShearOutput, config: &RenderConfig) -> NamedChartSpec {
+pub fn build_wind(output: &PierShearStressOutput, config: &RenderConfig) -> NamedChartSpec {
     build_chart(
-        PIER_SHEAR_WIND_IMAGE,
+        PIER_SHEAR_STRESS_WIND_IMAGE,
         "Pier Shear Wind — Vu/Acv vs 8√f'c",
         "All pier shear stresses vs ACI 318 maximum stress limit 8√f’c (psi).",
         output,
@@ -15,9 +15,9 @@ pub fn build_wind(output: &PierShearOutput, config: &RenderConfig) -> NamedChart
     )
 }
 
-pub fn build_seismic(output: &PierShearOutput, config: &RenderConfig) -> NamedChartSpec {
+pub fn build_seismic(output: &PierShearStressOutput, config: &RenderConfig) -> NamedChartSpec {
     build_chart(
-        PIER_SHEAR_SEISMIC_IMAGE,
+        PIER_SHEAR_STRESS_SEISMIC_IMAGE,
         "Pier Shear Seismic — Vu/Acv vs 8√f'c",
         "All pier shear stresses vs ACI 318 maximum stress limit 8√f’c (psi).",
         output,
@@ -29,19 +29,18 @@ fn build_chart(
     logical_name: &str,
     title: &str,
     caption: &str,
-    output: &PierShearOutput,
+    output: &PierShearStressOutput,
     config: &RenderConfig,
 ) -> NamedChartSpec {
     // One entry per pier × story, sorted by demand descending so the chart reads
     // highest-stressed bars at the top (swap_axes = true ⇒ Y is category).
     let mut entries: Vec<(String, f64, f64)> = output
-        .piers
+        .per_pier
         .iter()
         .map(|row| {
-            let label = format!("{} / {}", row.pier_label, row.story);
-            let demand = row.vu.value / row.acv.value; // psi
-            let fc_psi = row.fc_ksi * 1000.0;
-            let limit = 8.0 * fc_psi.sqrt(); // ACI max psi
+            let label = format!("{} / {}", row.pier, row.story);
+            let demand = row.stress_psi; // psi
+            let limit = row.limit_individual; // ACI max psi
             (label, demand, limit)
         })
         .collect();

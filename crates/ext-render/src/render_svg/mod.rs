@@ -57,7 +57,7 @@ pub fn write_svg_assets(rendered: &RenderedCharts, output_dir: &Path) -> Result<
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
     use crate::chart_build::{
-        BASE_SHEAR_IMAGE, DRIFT_SEISMIC_IMAGE, DRIFT_WIND_IMAGE, MODAL_IMAGE,
+        BASE_REACTIONS_IMAGE, DRIFT_SEISMIC_X_IMAGE, DRIFT_WIND_X_IMAGE, MODAL_IMAGE,
     };
     use crate::chart_types::RenderConfig;
     use crate::render_svg::render_all_svg;
@@ -82,9 +82,9 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(names.contains(&MODAL_IMAGE));
-        assert!(names.contains(&BASE_SHEAR_IMAGE));
-        assert!(names.contains(&DRIFT_WIND_IMAGE));
-        assert!(names.contains(&DRIFT_SEISMIC_IMAGE));
+        assert!(names.contains(&BASE_REACTIONS_IMAGE));
+        assert!(names.contains(&DRIFT_WIND_X_IMAGE));
+        assert!(names.contains(&DRIFT_SEISMIC_X_IMAGE));
         assert!(
             rendered
                 .assets

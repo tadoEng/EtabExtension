@@ -290,7 +290,7 @@ fn build_render_config(ctx: &AppContext) -> RenderConfig {
     let configured_groups = ctx
         .config
         .calc
-        .base_shear
+        .base_reactions
         .pie_groups
         .iter()
         .map(|group| BaseReactionGroup {

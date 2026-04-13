@@ -1,28 +1,46 @@
-use ext_calc::output::DriftOutput;
+use ext_calc::output::{DriftOutput, DriftWindOutput, DriftSeismicOutput};
 
-use crate::chart_build::{DRIFT_SEISMIC_IMAGE, DRIFT_WIND_IMAGE, aggregate_story_max};
+use crate::chart_build::{DRIFT_SEISMIC_X_IMAGE, DRIFT_SEISMIC_Y_IMAGE, DRIFT_WIND_X_IMAGE, DRIFT_WIND_Y_IMAGE, aggregate_story_max};
 use crate::chart_types::{
     CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
 };
 
-pub fn build_wind(drift: &DriftOutput, config: &RenderConfig) -> NamedChartSpec {
-    build_chart(
-        DRIFT_WIND_IMAGE,
-        "Wind Drift Envelope",
-        "Maximum drift ratio per story under wind loading.",
-        drift,
-        config,
-    )
+pub fn build_wind(drift: &DriftWindOutput, config: &RenderConfig) -> Vec<NamedChartSpec> {
+    vec![
+        build_chart(
+            DRIFT_WIND_X_IMAGE,
+            "Wind Drift Envelope (X)",
+            "Maximum drift ratio per story under wind loading (X).",
+            &drift.x,
+            config,
+        ),
+        build_chart(
+            DRIFT_WIND_Y_IMAGE,
+            "Wind Drift Envelope (Y)",
+            "Maximum drift ratio per story under wind loading (Y).",
+            &drift.y,
+            config,
+        ),
+    ]
 }
 
-pub fn build_seismic(drift: &DriftOutput, config: &RenderConfig) -> NamedChartSpec {
-    build_chart(
-        DRIFT_SEISMIC_IMAGE,
-        "Seismic Drift Envelope",
-        "Maximum drift ratio per story under seismic loading.",
-        drift,
-        config,
-    )
+pub fn build_seismic(drift: &DriftSeismicOutput, config: &RenderConfig) -> Vec<NamedChartSpec> {
+    vec![
+        build_chart(
+            DRIFT_SEISMIC_X_IMAGE,
+            "Seismic Drift Envelope (X)",
+            "Maximum drift ratio per story under seismic loading (X).",
+            &drift.x,
+            config,
+        ),
+        build_chart(
+            DRIFT_SEISMIC_Y_IMAGE,
+            "Seismic Drift Envelope (Y)",
+            "Maximum drift ratio per story under seismic loading (Y).",
+            &drift.y,
+            config,
+        ),
+    ]
 }
 
 fn build_chart(

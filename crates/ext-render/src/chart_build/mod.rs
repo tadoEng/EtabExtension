@@ -19,13 +19,18 @@ use crate::chart_types::{
 };
 
 pub const MODAL_IMAGE: &str = "images/modal.svg";
-pub const BASE_SHEAR_IMAGE: &str = "images/base_shear.svg";
-pub const DRIFT_WIND_IMAGE: &str = "images/drift_wind.svg";
-pub const DRIFT_SEISMIC_IMAGE: &str = "images/drift_seismic.svg";
-pub const DISPLACEMENT_WIND_IMAGE: &str = "images/displacement_wind.svg";
-pub const PIER_SHEAR_WIND_IMAGE: &str = "images/pier_shear_wind.svg";
-pub const PIER_SHEAR_SEISMIC_IMAGE: &str = "images/pier_shear_seismic.svg";
-pub const PIER_AXIAL_IMAGE: &str = "images/pier_axial.svg";
+pub const BASE_REACTIONS_IMAGE: &str = "images/base_reactions.svg";
+pub const STORY_FORCE_VX_IMAGE: &str = "images/story_force_vx.svg";
+pub const STORY_FORCE_VY_IMAGE: &str = "images/story_force_vy.svg";
+pub const DRIFT_WIND_X_IMAGE: &str = "images/drift_wind_x.svg";
+pub const DRIFT_WIND_Y_IMAGE: &str = "images/drift_wind_y.svg";
+pub const DRIFT_SEISMIC_X_IMAGE: &str = "images/drift_seismic_x.svg";
+pub const DRIFT_SEISMIC_Y_IMAGE: &str = "images/drift_seismic_y.svg";
+pub const DISPLACEMENT_WIND_X_IMAGE: &str = "images/displacement_wind_x.svg";
+pub const DISPLACEMENT_WIND_Y_IMAGE: &str = "images/displacement_wind_y.svg";
+pub const PIER_SHEAR_STRESS_WIND_IMAGE: &str = "images/pier_shear_stress_wind.svg";
+pub const PIER_SHEAR_STRESS_SEISMIC_IMAGE: &str = "images/pier_shear_stress_seismic.svg";
+pub const PIER_AXIAL_STRESS_IMAGE: &str = "images/pier_axial_stress.svg";
 
 pub fn build_report_charts(calc: &CalcOutput, config: &RenderConfig) -> Vec<NamedChartSpec> {
     let mut charts = Vec::new();
@@ -34,31 +39,31 @@ pub fn build_report_charts(calc: &CalcOutput, config: &RenderConfig) -> Vec<Name
         charts.push(modal::build(modal_output, config));
     }
 
-    if let Some(base_shear_output) = calc.base_shear.as_ref() {
-        charts.push(base_shear::build(base_shear_output, config));
+    if let Some(base_reactions_output) = calc.base_reactions.as_ref() {
+        charts.push(base_shear::build(base_reactions_output, config));
     }
 
     if let Some(drift_output) = calc.drift_wind.as_ref() {
-        charts.push(drift::build_wind(drift_output, config));
+        charts.extend(drift::build_wind(drift_output, config));
     }
 
     if let Some(drift_output) = calc.drift_seismic.as_ref() {
-        charts.push(drift::build_seismic(drift_output, config));
+        charts.extend(drift::build_seismic(drift_output, config));
     }
 
     if let Some(displacement_output) = calc.displacement_wind.as_ref() {
-        charts.push(displacement::build(displacement_output, config));
+        charts.extend(displacement::build(displacement_output, config));
     }
 
-    if let Some(pier_output) = calc.pier_shear_wind.as_ref() {
+    if let Some(pier_output) = calc.pier_shear_stress_wind.as_ref() {
         charts.push(pier_shear::build_wind(pier_output, config));
     }
 
-    if let Some(pier_output) = calc.pier_shear_seismic.as_ref() {
+    if let Some(pier_output) = calc.pier_shear_stress_seismic.as_ref() {
         charts.push(pier_shear::build_seismic(pier_output, config));
     }
 
-    if let Some(axial_output) = calc.pier_axial.as_ref() {
+    if let Some(axial_output) = calc.pier_axial_stress.as_ref() {
         charts.push(pier_axial::build(axial_output, config));
     }
 

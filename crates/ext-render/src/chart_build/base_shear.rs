@@ -1,13 +1,13 @@
-use ext_calc::output::BaseShearOutput;
+use ext_calc::output::BaseReactionsOutput;
 
-use crate::chart_build::BASE_SHEAR_IMAGE;
+use crate::chart_build::BASE_REACTIONS_IMAGE;
 use crate::chart_types::{ChartKind, ChartSpec, NamedChartSpec, RenderConfig};
 
-pub fn build(base_shear: &BaseShearOutput, config: &RenderConfig) -> NamedChartSpec {
+pub fn build(base_shear: &BaseReactionsOutput, config: &RenderConfig) -> NamedChartSpec {
     let data = build_pie_groups(base_shear, config);
 
     NamedChartSpec {
-        logical_name: BASE_SHEAR_IMAGE.to_string(),
+        logical_name: BASE_REACTIONS_IMAGE.to_string(),
         caption: "Gravity load distribution from configured base reaction Fz groups.".to_string(),
         spec: ChartSpec {
             title: "Gravity Load Distribution".to_string(),
@@ -18,7 +18,7 @@ pub fn build(base_shear: &BaseShearOutput, config: &RenderConfig) -> NamedChartS
     }
 }
 
-fn build_pie_groups(base_shear: &BaseShearOutput, config: &RenderConfig) -> Vec<(f64, String)> {
+fn build_pie_groups(base_shear: &BaseReactionsOutput, config: &RenderConfig) -> Vec<(f64, String)> {
     if !config.base_reaction_groups.is_empty() {
         let mut grouped = Vec::new();
         for group in &config.base_reaction_groups {

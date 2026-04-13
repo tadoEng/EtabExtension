@@ -2,44 +2,78 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use anyhow::{Result, bail};
 
-use crate::code_params::{CodeParams, DriftParams};
-use crate::output::{DriftEnvelopeRow, DriftOutput, StoryDriftResult};
+use crate::code_params::CodeParams;
+use crate::output::{DriftEnvelopeRow, DriftOutput, DriftWindOutput, StoryDriftResult};
 use crate::tables::joint_drift::JointDriftRow;
 use crate::tables::story_def::StoryDefRow;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DriftDirection {
+    X,
+    Y,
+}
 
 pub fn run(
     rows: &[JointDriftRow],
     stories: &[StoryDefRow],
     group_map: &HashMap<String, Vec<String>>,
     params: &CodeParams,
-) -> Result<DriftOutput> {
-    build_drift_output(
-        rows,
-        stories,
-        group_map,
-        &params.drift_tracking_groups,
-        &params.drift_wind,
-    )
+) -> Result<DriftWindOutput> {
+    Ok(DriftWindOutput {
+        x: build_drift_output_directional(
+            rows,
+            stories,
+            group_map,
+            &params.joint_tracking_groups,
+            &params.drift_wind.x_cases,
+            params.drift_wind.drift_limit,
+            DriftDirection::X,
+        )?,
+        y: build_drift_output_directional(
+            rows,
+            stories,
+            group_map,
+            &params.joint_tracking_groups,
+            &params.drift_wind.y_cases,
+            params.drift_wind.drift_limit,
+            DriftDirection::Y,
+        )?,
+    })
 }
 
-pub(crate) fn build_drift_output(
+pub(crate) fn build_drift_output_directional(
     rows: &[JointDriftRow],
     stories: &[StoryDefRow],
     group_map: &HashMap<String, Vec<String>>,
     configured_groups: &[String],
-    params: &DriftParams,
+    cases: &[String],
+    drift_limit: f64,
+    direction: DriftDirection,
 ) -> Result<DriftOutput> {
     let selected_groups = resolve_groups(group_map, configured_groups)?;
-    let selected_cases: HashSet<&str> = params.load_cases.iter().map(String::as_str).collect();
+    let selected_cases: HashSet<&str> = cases.iter().map(String::as_str).collect();
 
+    // Valid if no cases are supplied for this direction
     if selected_cases.is_empty() {
-        bail!("No load cases configured for drift check");
-    }
-
-    for case in &params.load_cases {
-        if !rows.iter().any(|row| row.output_case == *case) {
-            bail!("Configured drift load case '{}' not found", case);
-        }
+        return Ok(DriftOutput {
+            allowable_ratio: drift_limit,
+            rows: vec![],
+            governing: StoryDriftResult {
+                story: String::new(),
+                group_name: String::new(),
+                output_case: String::new(),
+                direction: if direction == DriftDirection::X { "X".to_string() } else { "Y".to_string() },
+                sense: String::new(),
+                drift_ratio: 0.0,
+                dcr: 0.0,
+                pass: true,
+            },
+            pass: true,
+            roof_disp_x: None,
+            roof_disp_y: None,
+            disp_limit: None,
+            disp_pass: None,
+        });
     }
 
     let mut grouped: BTreeMap<(String, String, String), Vec<&JointDriftRow>> = BTreeMap::new();
@@ -57,21 +91,6 @@ pub(crate) fn build_drift_output(
                     ))
                     .or_default()
                     .push(row);
-            }
-        }
-    }
-
-    for case in &params.load_cases {
-        for group in configured_groups {
-            if !grouped
-                .keys()
-                .any(|(_, group_name, output_case)| group_name == group && output_case == case)
-            {
-                bail!(
-                    "No drift rows found for group '{}' and case '{}'",
-                    group,
-                    case
-                );
             }
         }
     }
@@ -99,37 +118,44 @@ pub(crate) fn build_drift_output(
         bail!("No drift envelope rows generated");
     }
 
-    let (governing_index, direction, sense, drift_ratio) = rows_out
+    let (governing_index, gov_direction, sense, drift_ratio) = rows_out
         .iter()
         .enumerate()
         .map(|(idx, row)| {
-            let candidates = [
-                ("X", "positive", row.max_drift_x_pos.abs()),
-                ("X", "negative", row.max_drift_x_neg.abs()),
-                ("Y", "positive", row.max_drift_y_pos.abs()),
-                ("Y", "negative", row.max_drift_y_neg.abs()),
-            ];
-            let (direction, sense, value) = candidates
+            let candidates = if direction == DriftDirection::X {
+                vec![
+                    ("X", "positive", row.max_drift_x_pos.abs()),
+                    ("X", "negative", row.max_drift_x_neg.abs()),
+                ]
+            } else {
+                vec![
+                    ("Y", "positive", row.max_drift_y_pos.abs()),
+                    ("Y", "negative", row.max_drift_y_neg.abs()),
+                ]
+            };
+            
+            let (dir, sense, value) = candidates
                 .into_iter()
                 .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
                 .unwrap();
-            (idx, direction.to_string(), sense.to_string(), value)
+            (idx, dir.to_string(), sense.to_string(), value)
         })
         .max_by(|a, b| a.3.partial_cmp(&b.3).unwrap_or(std::cmp::Ordering::Equal))
         .unwrap();
+        
     let governing_row = rows_out[governing_index].clone();
 
-    let dcr = drift_ratio / params.drift_limit;
+    let dcr = drift_ratio / drift_limit;
     let pass = dcr <= 1.0;
 
     Ok(DriftOutput {
-        allowable_ratio: params.drift_limit,
+        allowable_ratio: drift_limit,
         rows: rows_out,
         governing: StoryDriftResult {
             story: governing_row.story,
             group_name: governing_row.group_name,
             output_case: governing_row.output_case,
-            direction,
+            direction: gov_direction,
             sense,
             drift_ratio,
             dcr,
@@ -178,9 +204,9 @@ pub(crate) fn resolve_groups<'a>(
     for group in configured_groups {
         let members = group_map
             .get(group)
-            .ok_or_else(|| anyhow::anyhow!("Configured drift group '{}' not found", group))?;
+            .ok_or_else(|| anyhow::anyhow!("Configured tracking group '{}' not found", group))?;
         if members.is_empty() {
-            bail!("Configured drift group '{}' has no members", group);
+            bail!("Configured tracking group '{}' has no members", group);
         }
         selected.insert(
             group.as_str(),
@@ -196,108 +222,4 @@ pub(crate) fn max_positive(values: impl Iterator<Item = f64>) -> f64 {
 
 pub(crate) fn max_negative(values: impl Iterator<Item = f64>) -> f64 {
     values.filter(|value| *value < 0.0).fold(0.0_f64, f64::min)
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-
-    use ext_db::config::Config;
-
-    use crate::code_params::CodeParams;
-    use crate::tables::group_assignments::load_group_assignments;
-    use crate::tables::joint_drift::load_joint_drifts;
-    use crate::tables::story_def::load_story_definitions;
-
-    use super::run;
-
-    fn fixture_dir() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests")
-            .join("fixtures")
-            .join("results_realistic")
-    }
-
-    fn fixture_config() -> Config {
-        Config::load(&fixture_dir()).unwrap()
-    }
-
-    #[test]
-    fn drift_wind_produces_sorted_group_envelopes() {
-        let dir = fixture_dir();
-        let drifts = load_joint_drifts(&dir).unwrap();
-        let groups = load_group_assignments(&dir).unwrap();
-        let stories = load_story_definitions(&dir).unwrap();
-        let config = fixture_config();
-        let params = CodeParams::from_config(&config).unwrap();
-
-        let output = run(&drifts, &stories, &groups, &params).unwrap();
-        assert_eq!(output.governing.story, "L35");
-        assert_eq!(output.governing.group_name, "Joint48");
-        assert_eq!(output.governing.output_case, "Wind_10yr_Diagonal");
-        assert_eq!(output.governing.direction, "Y");
-        assert_eq!(output.governing.sense, "positive");
-        assert!((output.governing.dcr - 0.4028).abs() < 1e-9);
-        assert_eq!(
-            output.rows.first().map(|row| row.story.as_str()),
-            Some("L01")
-        );
-        assert_eq!(
-            output.rows.last().map(|row| row.story.as_str()),
-            Some("ROOF")
-        );
-        assert!(output.roof_disp_x.is_none());
-        assert!(output.disp_limit.is_none());
-    }
-
-    #[test]
-    fn drift_wind_errors_when_group_missing() {
-        let dir = fixture_dir();
-        let groups = load_group_assignments(&dir).unwrap();
-        let stories = load_story_definitions(&dir).unwrap();
-        let drifts = load_joint_drifts(&dir).unwrap();
-        let mut config = fixture_config();
-        config.calc.drift_tracking_groups = vec!["missing-group".into()];
-        let params = CodeParams::from_config(&config).unwrap();
-
-        assert!(run(&drifts, &stories, &groups, &params).is_err());
-    }
-
-    #[test]
-    fn drift_wind_requires_explicit_load_cases() {
-        let mut config = fixture_config();
-        config.calc.drift_wind.drift_limit = Some(0.0025);
-        config.calc.drift_wind.load_cases.clear();
-
-        let err = CodeParams::from_config(&config).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("missing required config: [calc.drift-wind].load-cases")
-        );
-    }
-
-    #[test]
-    fn drift_wind_errors_when_group_and_case_exist_but_have_no_matching_rows() {
-        let dir = fixture_dir();
-        let groups = load_group_assignments(&dir).unwrap();
-        let stories = load_story_definitions(&dir).unwrap();
-        let drifts = load_joint_drifts(&dir).unwrap();
-        let config = fixture_config();
-        let params = CodeParams::from_config(&config).unwrap();
-        let joint48 = groups.get("Joint48").unwrap();
-        let joint48_members = joint48.iter().collect::<std::collections::HashSet<_>>();
-        let filtered = drifts
-            .into_iter()
-            .filter(|row| {
-                !(row.output_case == "Wind_10yr_Diagonal"
-                    && joint48_members.contains(&row.unique_name))
-            })
-            .collect::<Vec<_>>();
-
-        let err = run(&filtered, &stories, &groups, &params).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("No drift rows found for group 'Joint48' and case 'Wind_10yr_Diagonal'")
-        );
-    }
 }

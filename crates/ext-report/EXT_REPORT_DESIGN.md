@@ -7,6 +7,8 @@
 
 Both outputs draw from the same `CalcOutput` source. They diverge completely in how they render it.
 
+⚠️ **Critical:** See [`INVARIANTS.md`](INVARIANTS.md) for constraints on check integration, character escaping, unit handling, and story ordering. Violations can crash report generation or silently produce incorrect output.
+
 ---
 
 ## Output Format Comparison

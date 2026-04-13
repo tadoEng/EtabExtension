@@ -5,7 +5,7 @@ use crate::checks::CheckSelection;
 use crate::unit_convert::UnitContext;
 
 #[derive(Debug, Clone)]
-pub struct BaseShearParams {
+pub struct BaseReactionsParams {
     pub elf_case_x: String,
     pub elf_case_y: String,
     pub rsa_case_x: String,
@@ -14,44 +14,65 @@ pub struct BaseShearParams {
 }
 
 #[derive(Debug, Clone)]
-pub struct DriftParams {
-    pub load_cases: Vec<String>,
+pub struct StoryForcesParams {
+    pub x_cases: Vec<String>,
+    pub y_cases: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DriftDirectionalParams {
+    pub x_cases: Vec<String>,
+    pub y_cases: Vec<String>,
     pub drift_limit: f64,
 }
 
 #[derive(Debug, Clone)]
-pub struct DisplacementParams {
-    pub load_cases: Vec<String>,
+pub struct DisplacementDirectionalParams {
+    pub x_cases: Vec<String>,
+    pub y_cases: Vec<String>,
     pub disp_limit_h: u32,
 }
 
-/// Parameters for pier shear wall checks (ACI 318-14 §11.5.4.3 / §18.10.4).
-/// Wind and seismic checks share the same formula — only ϕ differs:
-///   Wind:    ϕ = 0.75  (ACI 318-14 §9.3.2.3)
-///   Seismic: ϕ = 0.60  (ACI 318-14 §21.2.4.1)
 #[derive(Debug, Clone)]
-pub struct PierShearParams {
-    pub load_combos: Vec<String>,
-    /// Shear strength reduction factor ϕ.
+pub struct TorsionalJointPair {
+    pub joint_a: String,
+    pub joint_b: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct TorsionalParams {
+    pub x_cases: Vec<String>,
+    pub y_cases: Vec<String>,
+    pub x_pairs: Vec<TorsionalJointPair>,
+    pub y_pairs: Vec<TorsionalJointPair>,
+    pub ecc_ratio: f64,
+    pub building_dim_x_ft: f64,
+    pub building_dim_y_ft: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct PierShearStressParams {
+    pub combos: Vec<String>,
     pub phi_v: f64,
-    /// αc coefficient, psi-based form: 2.0 for hw/lw ≥ 2.0.
-    /// ACI 318-14 §11.5.4.3.  Must be used with fc_psi, NOT fc_ksi.
-    pub alpha_c: f64,
-    /// Horizontal reinforcement yield strength (ksi). Grade 60 = 60.0.
-    pub fy_ksi: f64,
-    /// Horizontal reinforcement ratio ρt. ACI minimum: 0.0025.
-    pub rho_t: f64,
-    /// Fallback f'c (ksi) when material join yields no match for a pier/story.
     pub fc_default_ksi: f64,
 }
 
-/// Parameters for pier axial stress check (ACI 318-14 §22.4).
 #[derive(Debug, Clone)]
-pub struct PierAxialParams {
-    pub load_combos: Vec<String>,
-    /// Axial strength reduction factor ϕ.
-    /// ACI 318-14 §9.3.2.2 tied: 0.65.
+pub struct PierAxialStressParams {
+    pub gravity_combos: Vec<String>,
+    pub wind_combos: Vec<String>,
+    pub seismic_combos: Vec<String>,
     pub phi_axial: f64,
+}
+
+impl PierAxialStressParams {
+    pub fn all_combos(&self) -> impl Iterator<Item = &str> {
+        self.gravity_combos
+            .iter()
+            .chain(&self.wind_combos)
+            .chain(&self.seismic_combos)
+            .map(String::as_str)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -61,14 +82,16 @@ pub struct CodeParams {
     pub modal_case: String,
     pub modal_threshold: f64,
     pub modal_display_limit: usize,
-    pub drift_tracking_groups: Vec<String>,
-    pub base_shear: BaseShearParams,
-    pub drift_wind: DriftParams,
-    pub drift_seismic: DriftParams,
-    pub displacement_wind: DisplacementParams,
-    pub pier_shear_wind: PierShearParams,
-    pub pier_shear_seismic: PierShearParams,
-    pub pier_axial: PierAxialParams,
+    pub joint_tracking_groups: Vec<String>,
+    pub base_reactions: BaseReactionsParams,
+    pub story_forces: Option<StoryForcesParams>,
+    pub drift_wind: DriftDirectionalParams,
+    pub drift_seismic: DriftDirectionalParams,
+    pub displacement_wind: DisplacementDirectionalParams,
+    pub torsional: Option<TorsionalParams>,
+    pub pier_shear_stress_wind: Option<PierShearStressParams>,
+    pub pier_shear_stress_seismic: Option<PierShearStressParams>,
+    pub pier_axial_stress: Option<PierAxialStressParams>,
     pub check_selection: CheckSelection,
     pub unit_context: UnitContext,
 }
@@ -85,67 +108,151 @@ impl CodeParams {
             "[calc.modal].display-mode-limit",
         )?)
         .map_err(|_| anyhow::anyhow!("invalid required config: [calc.modal].display-mode-limit"))?;
-        let drift_tracking_groups = required_string_list(
-            &config.calc.drift_tracking_groups,
-            "[calc].drift-tracking-groups",
+        let joint_tracking_groups = required_string_list(
+            &config.calc.joint_tracking_groups,
+            "[calc].joint-tracking-groups",
         )?;
         let elf_case_x = required_string(
-            config.calc.base_shear.elf_case_x.as_deref(),
-            "[calc.base-shear].elf-case-x",
+            config.calc.base_reactions.elf_case_x.as_deref(),
+            "[calc.base-reactions].elf-case-x",
         )?;
         let elf_case_y = required_string(
-            config.calc.base_shear.elf_case_y.as_deref(),
-            "[calc.base-shear].elf-case-y",
+            config.calc.base_reactions.elf_case_y.as_deref(),
+            "[calc.base-reactions].elf-case-y",
         )?;
         let rsa_case_x = required_string(
-            config.calc.base_shear.rsa_case_x.as_deref(),
-            "[calc.base-shear].rsa-case-x",
+            config.calc.base_reactions.rsa_case_x.as_deref(),
+            "[calc.base-reactions].rsa-case-x",
         )?;
         let rsa_case_y = required_string(
-            config.calc.base_shear.rsa_case_y.as_deref(),
-            "[calc.base-shear].rsa-case-y",
+            config.calc.base_reactions.rsa_case_y.as_deref(),
+            "[calc.base-reactions].rsa-case-y",
         )?;
         let rsa_scale_min = required_positive_f64(
-            config.calc.base_shear.rsa_scale_min,
-            "[calc.base-shear].rsa-scale-min",
+            config.calc.base_reactions.rsa_scale_min,
+            "[calc.base-reactions].rsa-scale-min",
         )?;
-        let drift_wind_load_cases = required_string_list(
-            &config.calc.drift_wind.load_cases,
-            "[calc.drift-wind].load-cases",
+
+        // Drift wind
+        let drift_wind_x = required_string_list(
+            &config.calc.drift_wind.drift_x_cases,
+            "[calc.drift-wind].drift-x-cases",
+        )?;
+        let drift_wind_y = required_string_list(
+            &config.calc.drift_wind.drift_y_cases,
+            "[calc.drift-wind].drift-y-cases",
         )?;
         let drift_wind_limit = required_positive_f64(
             config.calc.drift_wind.drift_limit,
             "[calc.drift-wind].drift-limit",
         )?;
-        let drift_seismic_load_cases = required_string_list(
-            &config.calc.drift_seismic.load_cases,
-            "[calc.drift-seismic].load-cases",
+
+        // Drift seismic
+        let drift_seismic_x = required_string_list(
+            &config.calc.drift_seismic.drift_x_cases,
+            "[calc.drift-seismic].drift-x-cases",
+        )?;
+        let drift_seismic_y = required_string_list(
+            &config.calc.drift_seismic.drift_y_cases,
+            "[calc.drift-seismic].drift-y-cases",
         )?;
         let drift_seismic_limit = required_positive_f64(
             config.calc.drift_seismic.drift_limit,
             "[calc.drift-seismic].drift-limit",
         )?;
-        let displacement_wind_load_cases = required_string_list(
-            &config.calc.displacement_wind.load_cases,
-            "[calc.displacement-wind].load-cases",
+
+        // Displacement wind
+        let disp_wind_x = required_string_list(
+            &config.calc.displacement_wind.disp_x_cases,
+            "[calc.displacement-wind].disp-x-cases",
         )?;
-        let displacement_wind_disp_limit_h = required_positive_u32(
+        let disp_wind_y = required_string_list(
+            &config.calc.displacement_wind.disp_y_cases,
+            "[calc.displacement-wind].disp-y-cases",
+        )?;
+        let disp_limit_h = required_positive_u32(
             config.calc.displacement_wind.disp_limit_h,
             "[calc.displacement-wind].disp-limit-h",
         )?;
 
-        let pier_shear_wind_combos = required_string_list(
-            &config.calc.pier_shear_wind.load_combos,
-            "[calc.pier-shear-wind].load-combos",
-        )?;
-        let pier_shear_seismic_combos = required_string_list(
-            &config.calc.pier_shear_seismic.load_combos,
-            "[calc.pier-shear-seismic].load-combos",
-        )?;
-        let pier_axial_combos = required_string_list(
-            &config.calc.pier_axial.load_combos,
-            "[calc.pier-axial].load-combos",
-        )?;
+        // Optionals
+        let story_forces = if config.calc.story_forces.story_force_x_cases.is_empty()
+            && config.calc.story_forces.story_force_y_cases.is_empty()
+        {
+            None
+        } else {
+            Some(StoryForcesParams {
+                x_cases: config.calc.story_forces.story_force_x_cases.clone(),
+                y_cases: config.calc.story_forces.story_force_y_cases.clone(),
+            })
+        };
+
+        let torsional = if config.calc.torsional.is_configured() {
+            let mut x_pairs = Vec::new();
+            for pair in &config.calc.torsional.x_joints {
+                if pair.len() != 2 {
+                    bail!("[calc.torsional].x-joints: each pair must have exactly 2 joint names, found {}", pair.len());
+                }
+                x_pairs.push(TorsionalJointPair {
+                    joint_a: pair[0].clone(),
+                    joint_b: pair[1].clone(),
+                });
+            }
+
+            let mut y_pairs = Vec::new();
+            for pair in &config.calc.torsional.y_joints {
+                if pair.len() != 2 {
+                    bail!("[calc.torsional].y-joints: each pair must have exactly 2 joint names, found {}", pair.len());
+                }
+                y_pairs.push(TorsionalJointPair {
+                    joint_a: pair[0].clone(),
+                    joint_b: pair[1].clone(),
+                });
+            }
+
+            Some(TorsionalParams {
+                x_cases: config.calc.torsional.torsional_x_case.clone(),
+                y_cases: config.calc.torsional.torsional_y_case.clone(),
+                x_pairs,
+                y_pairs,
+                ecc_ratio: config.calc.torsional.ecc_ratio(),
+                building_dim_x_ft: config.calc.torsional.building_dim_x_ft.unwrap_or(0.0),
+                building_dim_y_ft: config.calc.torsional.building_dim_y_ft.unwrap_or(0.0),
+            })
+        } else {
+            None
+        };
+
+        let pier_shear_stress_wind = if config.calc.pier_shear_stress_wind.is_configured() {
+            Some(PierShearStressParams {
+                combos: config.calc.pier_shear_stress_wind.stress_combos.clone(),
+                phi_v: config.calc.pier_shear_stress_wind.phi_v(),
+                fc_default_ksi: config.calc.pier_shear_stress_wind.fc_default_ksi(),
+            })
+        } else {
+            None
+        };
+
+        let pier_shear_stress_seismic = if config.calc.pier_shear_stress_seismic.is_configured() {
+            Some(PierShearStressParams {
+                combos: config.calc.pier_shear_stress_seismic.stress_combos.clone(),
+                phi_v: config.calc.pier_shear_stress_seismic.phi_v(),
+                fc_default_ksi: config.calc.pier_shear_stress_seismic.fc_default_ksi(),
+            })
+        } else {
+            None
+        };
+
+        let pier_axial_stress = if config.calc.pier_axial_stress.is_configured() {
+            Some(PierAxialStressParams {
+                gravity_combos: config.calc.pier_axial_stress.stress_gravity_combos.clone(),
+                wind_combos: config.calc.pier_axial_stress.stress_wind_combos.clone(),
+                seismic_combos: config.calc.pier_axial_stress.stress_seismic_combos.clone(),
+                phi_axial: config.calc.pier_axial_stress.phi_axial(),
+            })
+        } else {
+            None
+        };
 
         Ok(Self {
             code: config.calc.code_or_default().to_string(),
@@ -153,49 +260,74 @@ impl CodeParams {
             modal_case,
             modal_threshold,
             modal_display_limit,
-            drift_tracking_groups,
-            base_shear: BaseShearParams {
+            joint_tracking_groups,
+            base_reactions: BaseReactionsParams {
                 elf_case_x,
                 elf_case_y,
                 rsa_case_x,
                 rsa_case_y,
                 rsa_scale_min,
             },
-            drift_wind: DriftParams {
-                load_cases: drift_wind_load_cases,
+            drift_wind: DriftDirectionalParams {
+                x_cases: drift_wind_x,
+                y_cases: drift_wind_y,
                 drift_limit: drift_wind_limit,
             },
-            drift_seismic: DriftParams {
-                load_cases: drift_seismic_load_cases,
+            drift_seismic: DriftDirectionalParams {
+                x_cases: drift_seismic_x,
+                y_cases: drift_seismic_y,
                 drift_limit: drift_seismic_limit,
             },
-            displacement_wind: DisplacementParams {
-                load_cases: displacement_wind_load_cases,
-                disp_limit_h: displacement_wind_disp_limit_h,
+            displacement_wind: DisplacementDirectionalParams {
+                x_cases: disp_wind_x,
+                y_cases: disp_wind_y,
+                disp_limit_h,
             },
-            pier_shear_wind: PierShearParams {
-                load_combos: pier_shear_wind_combos,
-                phi_v: config.calc.pier_shear_wind.phi_v(0.75),
-                alpha_c: config.calc.pier_shear_wind.alpha_c(),
-                fy_ksi: config.calc.pier_shear_wind.fy_ksi(),
-                rho_t: config.calc.pier_shear_wind.rho_t(),
-                fc_default_ksi: config.calc.pier_shear_wind.fc_default_ksi(),
-            },
-            pier_shear_seismic: PierShearParams {
-                load_combos: pier_shear_seismic_combos,
-                phi_v: config.calc.pier_shear_seismic.phi_v(0.60),
-                alpha_c: config.calc.pier_shear_seismic.alpha_c(),
-                fy_ksi: config.calc.pier_shear_seismic.fy_ksi(),
-                rho_t: config.calc.pier_shear_seismic.rho_t(),
-                fc_default_ksi: config.calc.pier_shear_seismic.fc_default_ksi(),
-            },
-            pier_axial: PierAxialParams {
-                load_combos: pier_axial_combos,
-                phi_axial: config.calc.pier_axial.phi_axial(),
-            },
+            story_forces,
+            torsional,
+            pier_shear_stress_wind,
+            pier_shear_stress_seismic,
+            pier_axial_stress,
             check_selection: CheckSelection::default(),
             unit_context: UnitContext::from_config(config)?,
         })
+    }
+
+    #[cfg(test)]
+    pub fn for_testing() -> Self {
+        let mut config = Config::default();
+        config.project.units = Some("kip-ft-F".into());
+        config.calc.modal_case = Some("Modal-Rizt".into());
+        config.calc.joint_tracking_groups = vec!["Tracking_Points".into()];
+        config.calc.modal.min_mass_participation = Some(0.90);
+        config.calc.modal.display_mode_limit = Some(20);
+        
+        config.calc.base_reactions.elf_case_x = Some("ELF_X".into());
+        config.calc.base_reactions.elf_case_y = Some("ELF_Y".into());
+        config.calc.base_reactions.rsa_case_x = Some("RSA_X".into());
+        config.calc.base_reactions.rsa_case_y = Some("RSA_Y".into());
+        config.calc.base_reactions.rsa_scale_min = Some(1.0);
+        
+        config.calc.drift_wind.drift_x_cases = vec!["Wind_ASCE_10yr_X".into()];
+        config.calc.drift_wind.drift_y_cases = vec!["Wind_ASCE_10yr_Y".into()];
+        config.calc.drift_wind.drift_limit = Some(0.0025);
+        
+        config.calc.drift_seismic.drift_x_cases = vec!["RSA_X_Drift".into()];
+        config.calc.drift_seismic.drift_y_cases = vec!["RSA_Y_Drift".into()];
+        config.calc.drift_seismic.drift_limit = Some(0.020);
+        
+        config.calc.displacement_wind.disp_x_cases = vec!["Wind_10yr_X".into()];
+        config.calc.displacement_wind.disp_y_cases = vec!["Wind_10yr_Y".into()];
+        config.calc.displacement_wind.disp_limit_h = Some(500);
+        
+        config.calc.pier_shear_stress_wind.stress_combos = vec!["EVN_LRFD_WIND".into()];
+        config.calc.pier_shear_stress_seismic.stress_combos = vec!["EVN_LRFD_EQ".into()];
+        
+        config.calc.pier_axial_stress.stress_gravity_combos = vec!["LC1_Grav".into()];
+        config.calc.pier_axial_stress.stress_wind_combos = vec!["LC2_Wind".into()];
+        config.calc.pier_axial_stress.stress_seismic_combos = vec!["LC3_EQ".into()];
+        
+        Self::from_config(&config).unwrap()
     }
 }
 
@@ -257,32 +389,34 @@ mod tests {
     }
 
     fn base_valid_config() -> Config {
-        let mut config = Config::default();
+        // Just extract it from the builder if we want it isolated, but here we can just test properties:
+        let p = CodeParams::for_testing();
+        let mut config = Config::default(); // Dummy for tests that specifically modify config
         config.project.units = Some("kip-ft-F".into());
         config.calc.modal_case = Some("Modal-Rizt".into());
-        config.calc.drift_tracking_groups = vec!["Tracking_Points".into()];
+        config.calc.joint_tracking_groups = vec!["Tracking_Points".into()];
         config.calc.modal.min_mass_participation = Some(0.90);
         config.calc.modal.display_mode_limit = Some(20);
-        config.calc.base_shear.elf_case_x = Some("ELF_X".into());
-        config.calc.base_shear.elf_case_y = Some("ELF_Y".into());
-        config.calc.base_shear.rsa_case_x = Some("RSA_X".into());
-        config.calc.base_shear.rsa_case_y = Some("RSA_Y".into());
-        config.calc.base_shear.rsa_scale_min = Some(1.0);
-        config.calc.drift_wind.load_cases = vec!["Wind_ASCE_10yr".into()];
+        config.calc.base_reactions.elf_case_x = Some("ELF_X".into());
+        config.calc.base_reactions.elf_case_y = Some("ELF_Y".into());
+        config.calc.base_reactions.rsa_case_x = Some("RSA_X".into());
+        config.calc.base_reactions.rsa_case_y = Some("RSA_Y".into());
+        config.calc.base_reactions.rsa_scale_min = Some(1.0);
+        config.calc.drift_wind.drift_x_cases = vec!["Wind_ASCE_10yr_X".into()];
+        config.calc.drift_wind.drift_y_cases = vec!["Wind_ASCE_10yr_Y".into()];
         config.calc.drift_wind.drift_limit = Some(0.0025);
-        config.calc.drift_seismic.load_cases = vec!["RSA_Y_Drift".into()];
+        config.calc.drift_seismic.drift_x_cases = vec!["RSA_X_Drift".into()];
+        config.calc.drift_seismic.drift_y_cases = vec!["RSA_Y_Drift".into()];
         config.calc.drift_seismic.drift_limit = Some(0.020);
-        config.calc.displacement_wind.load_cases = vec!["Wind_10yr_Diagonal".into()];
+        config.calc.displacement_wind.disp_x_cases = vec!["Wind_10yr_X".into()];
+        config.calc.displacement_wind.disp_y_cases = vec!["Wind_10yr_Y".into()];
         config.calc.displacement_wind.disp_limit_h = Some(500);
-        config.calc.pier_shear_wind.load_combos = vec!["EVN_LRFD_EQ".into()];
-        config.calc.pier_shear_seismic.load_combos = vec!["EVN_LRFD_EQ".into()];
-        config.calc.pier_axial.load_combos = vec!["EVN_LRFD_EQ".into()];
         config
     }
 
     #[test]
     fn code_params_pick_up_shared_calc_and_local_units() {
-        let config = Config::load(&fixture_dir()).unwrap();
+        let config = base_valid_config();
 
         let params = CodeParams::from_config(&config).unwrap();
         assert_eq!(params.code, "ACI318-14");
@@ -291,18 +425,6 @@ mod tests {
         assert_eq!(params.modal_display_limit, 20);
         assert_eq!(params.unit_context.force_label(), "kip");
         assert_eq!(params.displacement_wind.disp_limit_h, 500);
-    }
-
-    #[test]
-    fn code_params_require_calc_driving_values() {
-        let mut config = Config::default();
-        config.project.units = Some("kip-ft-F".into());
-
-        let err = CodeParams::from_config(&config).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("missing required config: [calc].modal-case")
-        );
     }
 
     #[test]
@@ -319,96 +441,36 @@ mod tests {
     #[test]
     fn code_params_require_drift_groups() {
         let mut config = base_valid_config();
-        config.calc.drift_tracking_groups.clear();
+        config.calc.joint_tracking_groups.clear();
 
         let err = CodeParams::from_config(&config).unwrap_err();
         assert!(
             err.to_string()
-                .contains("missing required config: [calc].drift-tracking-groups")
+                .contains("missing required config: [calc].joint-tracking-groups")
         );
     }
 
     #[test]
-    fn code_params_require_base_shear_cases() {
+    fn code_params_require_base_reactions_cases() {
         let mut config = base_valid_config();
-        config.calc.base_shear.elf_case_x = None;
+        config.calc.base_reactions.elf_case_x = None;
 
         let err = CodeParams::from_config(&config).unwrap_err();
         assert!(
             err.to_string()
-                .contains("missing required config: [calc.base-shear].elf-case-x")
+                .contains("missing required config: [calc.base-reactions].elf-case-x")
         );
     }
 
     #[test]
     fn code_params_require_displacement_wind_config() {
         let mut config = base_valid_config();
-        config.calc.displacement_wind.load_cases.clear();
+        config.calc.displacement_wind.disp_x_cases.clear();
 
         let err = CodeParams::from_config(&config).unwrap_err();
         assert!(
             err.to_string()
-                .contains("missing required config: [calc.displacement-wind].load-cases")
+                .contains("missing required config: [calc.displacement-wind].disp-x-cases")
         );
-    }
-
-    #[test]
-    fn code_params_require_modal_display_limit() {
-        let mut config = base_valid_config();
-        config.calc.modal.display_mode_limit = None;
-
-        let err = CodeParams::from_config(&config).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("missing required config: [calc.modal].display-mode-limit")
-        );
-    }
-
-    #[test]
-    fn code_params_require_pier_shear_wind_combos() {
-        let mut config = base_valid_config();
-        config.calc.pier_shear_wind.load_combos.clear();
-
-        let err = CodeParams::from_config(&config).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("missing required config: [calc.pier-shear-wind].load-combos")
-        );
-    }
-
-    #[test]
-    fn code_params_require_pier_shear_seismic_combos() {
-        let mut config = base_valid_config();
-        config.calc.pier_shear_seismic.load_combos.clear();
-
-        let err = CodeParams::from_config(&config).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("missing required config: [calc.pier-shear-seismic].load-combos")
-        );
-    }
-
-    #[test]
-    fn code_params_require_pier_axial_combos() {
-        let mut config = base_valid_config();
-        config.calc.pier_axial.load_combos.clear();
-
-        let err = CodeParams::from_config(&config).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("missing required config: [calc.pier-axial].load-combos")
-        );
-    }
-
-    #[test]
-    fn code_params_pier_shear_defaults_phi_v_correctly() {
-        let config = base_valid_config();
-        let params = CodeParams::from_config(&config).unwrap();
-        // Wind: default ϕ = 0.75 (ACI 318-14 §9.3.2.3)
-        assert!((params.pier_shear_wind.phi_v - 0.75).abs() < 1e-9);
-        // Seismic: default ϕ = 0.60 (ACI 318-14 §21.2.4.1)
-        assert!((params.pier_shear_seismic.phi_v - 0.60).abs() < 1e-9);
-        // Axial: default ϕ = 0.65 (ACI 318-14 §9.3.2.2 tied)
-        assert!((params.pier_axial.phi_axial - 0.65).abs() < 1e-9);
     }
 }

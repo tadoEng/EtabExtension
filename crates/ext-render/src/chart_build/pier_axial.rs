@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
-use ext_calc::output::PierAxialOutput;
+use ext_calc::output::PierAxialStressOutput;
 
-use crate::chart_build::PIER_AXIAL_IMAGE;
+use crate::chart_build::PIER_AXIAL_STRESS_IMAGE;
 use crate::chart_types::{
     CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
 };
 
-pub fn build(output: &PierAxialOutput, config: &RenderConfig) -> NamedChartSpec {
+pub fn build(output: &PierAxialStressOutput, config: &RenderConfig) -> NamedChartSpec {
     // Collect all stories in their natural order (first seen = bottom to top).
     let mut stories: Vec<String> = Vec::new();
     for row in &output.piers {
@@ -69,7 +69,7 @@ pub fn build(output: &PierAxialOutput, config: &RenderConfig) -> NamedChartSpec 
     });
 
     NamedChartSpec {
-        logical_name: PIER_AXIAL_IMAGE.to_string(),
+        logical_name: PIER_AXIAL_STRESS_IMAGE.to_string(),
         caption: "Signed axial stress envelope per pier (ksi). Dashed line = zero.".to_string(),
         spec: ChartSpec {
             title: "Pier Axial Stress".to_string(),

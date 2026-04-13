@@ -1,73 +1,85 @@
+[project]
+name = "Project Test"
+
+[extract]
+units = "US_Kip_Ft"
+
 [calc]
 code = "ACI318-14"
 occupancy-category = "II"
-modal-case = "Modal-Rizt"
-drift-tracking-groups = ["Joint48"]
+modal-case = "Modal (Rizt)"
+joint-tracking-groups = ["Joint47", "Joint49", "Joint50", "Joint51"]
 
 [calc.modal]
-min-mass-participation = 0.90
+min-mass-participation = 0.9
 display-mode-limit = 20
 
-[calc.base-shear]
+[calc.base-reactions]
 elf-case-x = "ELF_X"
 elf-case-y = "ELF_Y"
-rsa-case-x = "RSA_X"
-rsa-case-y = "RSA_Y"
+rsa-case-x = "DBE_X"
+rsa-case-y = "DBE_Y"
 rsa-scale-min = 1.0
 
-[[calc.base-shear.pie-groups]]
-label = "Dead"
-load-cases = ["Dead"]
+[[calc.base-reactions.pie-groups]]
+label = "Gravity"
+load-cases = ["Dead", "SDL", "Live (red)", "Live (non-red)", "Live (roof)"]
 
-[[calc.base-shear.pie-groups]]
-label = "SDL"
-load-cases = ["SDL"]
-
-[[calc.base-shear.pie-groups]]
-label = "Live_red"
-load-cases = ["Live_red"]
-
-[[calc.base-shear.pie-groups]]
-label = "Live_unred"
-load-cases = ["Live_unred"]
+[calc.story-forces]
+story-force-x-cases = ["ELF_X", "DBE_X", "MCER_X", "W_700YRS"]
+story-force-y-cases = ["ELF_Y", "DBE_Y", "MCER_Y", "W_700YRS"]
 
 [calc.drift-wind]
-load-cases = ["Wind_10yr_Diagonal",]
+drift-x-cases = ["W_10YRS"]
+drift-y-cases = ["W_10YRS"]
 drift-limit = 0.0025
 
 [calc.drift-seismic]
-# The realistic fixture currently contains wind-only drift rows, so seismic
-# drift checks use the same extracted case until dedicated seismic drift
-# fixtures are added.
-load-cases = ["Wind_10yr_Diagonal"]
-drift-limit = 0.020
+drift-x-cases = ["DBE_X*Cd/R", "ELF_X_Drift*Cd/Ie"]
+drift-y-cases = ["DBE_Y*Cd/R", "ELF_Y_Drift*Cd/Ie"]
+drift-limit = 0.02
 
 [calc.displacement-wind]
-load-cases = ["Wind_10yr_Diagonal"]
+disp-x-cases = ["W_10YRS"]
+disp-y-cases = ["W_10YRS"]
 disp-limit-h = 400
 
-[calc.pier-shear-wind]
-# Wind LRFD strength combos — ϕ = 0.75 (ACI 318-14 §9.3.2.3)
-# NOTE: This fixture only contains EVN_LRFD_EQ in pier_forces.parquet.
-# In a real project config, replace with the actual wind LRFD combo name
-# (e.g. "EVN_LRFD_Wind") once that combo is extracted from ETABS.
-load-combos   = ["EVN_LRFD_EQ"]
-phi-v         = 0.75
-alpha-c       = 2.0    # psi-based coefficient for hw/lw ≥ 2.0 (ACI 318-14 §11.5.4.3)
-fy-ksi        = 60.0   # Grade 60
-rho-t         = 0.0025 # ACI 318-14 §11.6 minimum horizontal reinforcement ratio
-fc-default-ksi = 8.0   # fallback f'c when material join misses a pier/story
+[calc.torsional]
+torsional-x-case = ["ELF_X", "DBE_X"]
+torsional-y-case = ["ELF_Y", "DBE_Y"]
+x-joints = [["Joint47", "Joint50"]]
+y-joints = [["Joint49", "Joint51"]]
+ecc-ratio = 0.05
 
-[calc.pier-shear-seismic]
-# Seismic LRFD strength combos — ϕ = 0.60 (ACI 318-14 §21.2.4.1)
-load-combos   = ["EVN_LRFD_EQ"]
-phi-v         = 0.60
-alpha-c       = 2.0
-fy-ksi        = 60.0
-rho-t         = 0.0025
+# Pier shear stress check — REPLACES the old pier-shear-wind/seismic capacity check.
+# Formula: Ve/(phi*Acw) / sqrt(f'c). Limits: 8 individual, 10 average.
+[calc.pier-shear-stress-wind]
+stress-combos = ["ENV: WIND"]
+phi-v = 0.75
 fc-default-ksi = 8.0
 
-[calc.pier-axial]
-# Gravity + seismic combos for axial stress check (ACI 318-14 §22.4)
-load-combos = ["EVN_LRFD_EQ"]
-phi-axial   = 0.65   # ACI 318-14 §9.3.2.2 tied walls
+[calc.pier-shear-stress-seismic]
+stress-combos = ["ENV: DBE"]
+phi-v = 0.75
+fc-default-ksi = 8.0
+
+[calc.pier-axial-stress]
+stress-gravity-combos = [
+  "LC1: 1.4D",
+  "LC2: 1.2D+1.6L",
+]
+stress-wind-combos = [
+  "LC3.1: 1.2D+0.5W",
+  "LC3.2: 1.2D-0.5W",
+  "LC4.1: 1.2D+1.0W+1.0L",
+  "LC4.2: 1.2D+1.0W-1.0L",
+  "LC6.1: 0.9D+1.0W",
+  "LC6.2: 0.9D-1.0W",
+]
+stress-seismic-combos = [
+  "DBE1: (1.2+0.2Sds)D+0.5L+100X+30Y",
+  "DBE2: (1.2+0.2Sds)D+0.5L+100Y+30X",
+  "DBE3: (0.9-0.2Sds)D+100X+30Y",
+  "DBE4: (0.9-0.2Sds)D+100Y+30X",
+]
+phi-axial = 0.65

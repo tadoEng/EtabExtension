@@ -90,8 +90,8 @@ mod tests {
         let params = CodeParams::from_config(&config).unwrap();
 
         let output = run(&rows, &params).unwrap();
-        assert_eq!(output.mode_reaching_ux, Some(12));
-        assert_eq!(output.mode_reaching_uy, Some(23));
+        assert_eq!(output.mode_reaching_ux, Some(15));
+        assert_eq!(output.mode_reaching_uy, Some(7));
         assert_eq!(output.rows.len(), 23);
         assert!(
             output

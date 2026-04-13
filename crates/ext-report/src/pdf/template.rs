@@ -50,6 +50,8 @@ pub(crate) fn escape_text(text: &str) -> String {
         .replace('#', "\\#")
         .replace('"', "\\\"")
         .replace('@', "\\@")
+        .replace('*', "\\*")
+        .replace('_', "\\_")
 }
 
 fn title_block_fn() -> String {
@@ -204,5 +206,13 @@ mod tests {
     fn escape_text_handles_quotes_and_mentions() {
         let escaped = super::escape_text("Tower \"A\" @ Main");
         assert_eq!(escaped, "Tower \\\"A\\\" \\@ Main");
+    }
+
+    #[test]
+    fn escape_text_handles_load_case_names() {
+        // ETABS load cases like "DBE_X*Cd/R" must have _ and * escaped
+        // to prevent Typst markup interpretation (subscript and bold/emphasis)
+        let escaped = super::escape_text("DBE_X*Cd/R");
+        assert_eq!(escaped, "DBE\\_X\\*Cd/R");
     }
 }

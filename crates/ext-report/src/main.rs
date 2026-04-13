@@ -122,7 +122,7 @@ fn build_project_meta(config: &Config, version_id: &str, branch: &str) -> Report
 fn build_render_config(config: &Config) -> RenderConfig {
     let configured_groups = config
         .calc
-        .base_shear
+        .base_reactions
         .pie_groups
         .iter()
         .map(|group| BaseReactionGroup {

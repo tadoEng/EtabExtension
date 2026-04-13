@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use ext_calc::output::{
-    BaseShearOutput, CalcOutput, DisplacementOutput, DriftOutput, ModalOutput, PierShearOutput,
+    BaseReactionsOutput, CalcOutput, DisplacementOutput, DriftOutput, ModalOutput, PierShearStressOutput,
 };
 use ext_render::{
-    BASE_SHEAR_IMAGE, DISPLACEMENT_WIND_IMAGE, DRIFT_SEISMIC_IMAGE, DRIFT_WIND_IMAGE,
-    PIER_AXIAL_IMAGE, PIER_SHEAR_SEISMIC_IMAGE, PIER_SHEAR_WIND_IMAGE,
+    BASE_REACTIONS_IMAGE, DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE, DRIFT_SEISMIC_X_IMAGE, DRIFT_SEISMIC_Y_IMAGE, DRIFT_WIND_X_IMAGE, DRIFT_WIND_Y_IMAGE,
+    PIER_AXIAL_STRESS_IMAGE, PIER_SHEAR_STRESS_SEISMIC_IMAGE, PIER_SHEAR_STRESS_WIND_IMAGE,
 };
 
 use crate::report_types::{
@@ -36,8 +36,8 @@ pub fn build_report_document(
     }
 
     if let (Some(base_shear), Some(chart)) = (
-        calc.base_shear.as_ref(),
-        chart_lookup.get(BASE_SHEAR_IMAGE).cloned(),
+        calc.base_reactions.as_ref(),
+        chart_lookup.get(BASE_REACTIONS_IMAGE).cloned(),
     ) {
         sections.push(ReportSection::ChartAndTablePage {
             title: "Base Reaction Review".to_string(),
@@ -47,45 +47,66 @@ pub fn build_report_document(
         });
     }
 
-    if let (Some(drift), Some(chart)) = (
-        calc.drift_wind.as_ref(),
-        chart_lookup.get(DRIFT_WIND_IMAGE).cloned(),
-    ) {
-        sections.push(ReportSection::ChartAndTablePage {
-            title: "Wind Drift Review".to_string(),
-            chart,
-            table: build_drift_table(drift),
-            table_emphasis: true,
-        });
+    if let Some(drift) = calc.drift_wind.as_ref() {
+        if let Some(chart) = chart_lookup.get(DRIFT_WIND_X_IMAGE).cloned() {
+            sections.push(ReportSection::ChartAndTablePage {
+                title: "Wind Drift Review (X)".to_string(),
+                chart,
+                table: build_drift_table(&drift.x),
+                table_emphasis: true,
+            });
+        }
+        if let Some(chart) = chart_lookup.get(DRIFT_WIND_Y_IMAGE).cloned() {
+            sections.push(ReportSection::ChartAndTablePage {
+                title: "Wind Drift Review (Y)".to_string(),
+                chart,
+                table: build_drift_table(&drift.y),
+                table_emphasis: true,
+            });
+        }
     }
 
-    if let (Some(drift), Some(chart)) = (
-        calc.drift_seismic.as_ref(),
-        chart_lookup.get(DRIFT_SEISMIC_IMAGE).cloned(),
-    ) {
-        sections.push(ReportSection::ChartAndTablePage {
-            title: "Seismic Drift Review".to_string(),
-            chart,
-            table: build_drift_table(drift),
-            table_emphasis: true,
-        });
+    if let Some(drift) = calc.drift_seismic.as_ref() {
+        if let Some(chart) = chart_lookup.get(DRIFT_SEISMIC_X_IMAGE).cloned() {
+            sections.push(ReportSection::ChartAndTablePage {
+                title: "Seismic Drift Review (X)".to_string(),
+                chart,
+                table: build_drift_table(&drift.x),
+                table_emphasis: true,
+            });
+        }
+        if let Some(chart) = chart_lookup.get(DRIFT_SEISMIC_Y_IMAGE).cloned() {
+            sections.push(ReportSection::ChartAndTablePage {
+                title: "Seismic Drift Review (Y)".to_string(),
+                chart,
+                table: build_drift_table(&drift.y),
+                table_emphasis: true,
+            });
+        }
     }
 
-    if let (Some(displacement), Some(chart)) = (
-        calc.displacement_wind.as_ref(),
-        chart_lookup.get(DISPLACEMENT_WIND_IMAGE).cloned(),
-    ) {
-        sections.push(ReportSection::ChartAndTablePage {
-            title: "Wind Displacement Review".to_string(),
-            chart,
-            table: build_displacement_table(displacement),
-            table_emphasis: true,
-        });
+    if let Some(displacement) = calc.displacement_wind.as_ref() {
+        if let Some(chart) = chart_lookup.get(DISPLACEMENT_WIND_X_IMAGE).cloned() {
+            sections.push(ReportSection::ChartAndTablePage {
+                title: "Wind Displacement Review (X)".to_string(),
+                chart,
+                table: build_displacement_table(&displacement.x),
+                table_emphasis: true,
+            });
+        }
+        if let Some(chart) = chart_lookup.get(DISPLACEMENT_WIND_Y_IMAGE).cloned() {
+            sections.push(ReportSection::ChartAndTablePage {
+                title: "Wind Displacement Review (Y)".to_string(),
+                chart,
+                table: build_displacement_table(&displacement.y),
+                table_emphasis: true,
+            });
+        }
     }
 
     if let (Some(pier), Some(chart)) = (
-        calc.pier_shear_wind.as_ref(),
-        chart_lookup.get(PIER_SHEAR_WIND_IMAGE).cloned(),
+        calc.pier_shear_stress_wind.as_ref(),
+        chart_lookup.get(PIER_SHEAR_STRESS_WIND_IMAGE).cloned(),
     ) {
         sections.push(ReportSection::ChartAndTablePage {
             title: "Pier Shear Wind Review".to_string(),
@@ -96,8 +117,8 @@ pub fn build_report_document(
     }
 
     if let (Some(pier), Some(chart)) = (
-        calc.pier_shear_seismic.as_ref(),
-        chart_lookup.get(PIER_SHEAR_SEISMIC_IMAGE).cloned(),
+        calc.pier_shear_stress_seismic.as_ref(),
+        chart_lookup.get(PIER_SHEAR_STRESS_SEISMIC_IMAGE).cloned(),
     ) {
         sections.push(ReportSection::ChartAndTablePage {
             title: "Pier Shear Seismic Review".to_string(),
@@ -108,8 +129,8 @@ pub fn build_report_document(
     }
 
     if let (Some(_axial), Some(chart)) = (
-        calc.pier_axial.as_ref(),
-        chart_lookup.get(PIER_AXIAL_IMAGE).cloned(),
+        calc.pier_axial_stress.as_ref(),
+        chart_lookup.get(PIER_AXIAL_STRESS_IMAGE).cloned(),
     ) {
         sections.push(ReportSection::SingleChartPage {
             title: "Pier Axial Review".to_string(),
@@ -214,7 +235,7 @@ fn build_modal_table(modal: &ModalOutput) -> KeyValueTable {
     }
 }
 
-fn build_base_shear_table(base_shear: &BaseShearOutput) -> KeyValueTable {
+fn build_base_shear_table(base_shear: &BaseReactionsOutput) -> KeyValueTable {
     let mut grouped = Vec::<(String, String, f64, f64, f64)>::new();
     for row in &base_shear.rows {
         if let Some(existing) = grouped.iter_mut().find(|entry| entry.0 == row.output_case) {
@@ -392,26 +413,20 @@ fn build_displacement_table(displacement: &DisplacementOutput) -> KeyValueTable 
     }
 }
 
-fn build_pier_shear_table(pier: &PierShearOutput) -> KeyValueTable {
+fn build_pier_shear_table(pier: &PierShearStressOutput) -> KeyValueTable {
     // ACI 318-19 §18.10.4.4: maximum nominal shear stress = 8√f'c (psi)
-    // fc_ksi is per-row; use the governing pier's value for the limit column header,
-    // but compute per-row limit so mixed-fc walls are handled correctly.
     let mut rows: Vec<Vec<String>> = pier
-        .piers
+        .per_pier
         .iter()
         .map(|row| {
-            let vu_acv = row.vu.value / row.acv.value; // psi
-            let phi_vn_acv = row.phi_vn.value / row.acv.value; // psi
-            let fc_psi = row.fc_ksi * 1000.0;
-            let limit_8sqrt_fc = 8.0 * fc_psi.sqrt(); // psi
             vec![
                 row.story.clone(),
-                row.pier_label.clone(),
+                row.pier.clone(),
                 row.combo.clone(),
-                format!("{:.1}", vu_acv),
-                format!("{:.1}", limit_8sqrt_fc),
-                format!("{:.1}", phi_vn_acv),
-                format!("{:.3}", row.dcr),
+                format!("{:.1}", row.stress_psi),
+                format!("{:.1}", row.limit_individual),
+                format!("{:.3}", row.stress_ratio), // replacing phi_vn with stress ratio directly
+                format!("{:.3}", row.stress_ratio), // DCR
                 pass_fail(row.pass),
             ]
         })
@@ -436,7 +451,6 @@ fn build_pier_shear_table(pier: &PierShearOutput) -> KeyValueTable {
             }
         })
         .collect();
-    // Annotate the governing row explicitly.
     if let Some(first) = row_annotations.first_mut() {
         if first.is_none() {
             *first = Some("pass".to_string());
@@ -445,11 +459,7 @@ fn build_pier_shear_table(pier: &PierShearOutput) -> KeyValueTable {
 
     KeyValueTable {
         title: Some(format!(
-            "Governing: {} {} {} ({})",
-            pier.governing.story,
-            pier.governing.pier_label,
-            pier.governing.combo,
-            pass_fail(pier.pass)
+            "Pier Shear Results. Passed = {}", pass_fail(pier.pass)
         )),
         headers: vec![
             "Story".to_string(),
@@ -480,8 +490,8 @@ mod tests {
     use crate::report_types::{ChartRef, ReportProjectMeta, ReportSection};
     use ext_calc::output::CalcOutput;
     use ext_render::{
-        BASE_SHEAR_IMAGE, DISPLACEMENT_WIND_IMAGE, DRIFT_SEISMIC_IMAGE, DRIFT_WIND_IMAGE,
-        MODAL_IMAGE, PIER_AXIAL_IMAGE, PIER_SHEAR_SEISMIC_IMAGE, PIER_SHEAR_WIND_IMAGE,
+        BASE_REACTIONS_IMAGE, DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE, DRIFT_SEISMIC_X_IMAGE, DRIFT_SEISMIC_Y_IMAGE, DRIFT_WIND_X_IMAGE, DRIFT_WIND_Y_IMAGE,
+        MODAL_IMAGE, PIER_AXIAL_STRESS_IMAGE, PIER_SHEAR_STRESS_SEISMIC_IMAGE, PIER_SHEAR_STRESS_WIND_IMAGE,
     };
     use std::path::PathBuf;
 
@@ -495,13 +505,16 @@ mod tests {
     fn all_chart_refs() -> Vec<ChartRef> {
         [
             MODAL_IMAGE,
-            BASE_SHEAR_IMAGE,
-            DRIFT_WIND_IMAGE,
-            DRIFT_SEISMIC_IMAGE,
-            DISPLACEMENT_WIND_IMAGE,
-            PIER_SHEAR_WIND_IMAGE,
-            PIER_SHEAR_SEISMIC_IMAGE,
-            PIER_AXIAL_IMAGE,
+            BASE_REACTIONS_IMAGE,
+            DRIFT_WIND_X_IMAGE,
+            DRIFT_WIND_Y_IMAGE,
+            DRIFT_SEISMIC_X_IMAGE,
+            DRIFT_SEISMIC_Y_IMAGE,
+            DISPLACEMENT_WIND_X_IMAGE,
+            DISPLACEMENT_WIND_Y_IMAGE,
+            PIER_SHEAR_STRESS_WIND_IMAGE,
+            PIER_SHEAR_STRESS_SEISMIC_IMAGE,
+            PIER_AXIAL_STRESS_IMAGE,
         ]
         .into_iter()
         .map(|logical_name| ChartRef {

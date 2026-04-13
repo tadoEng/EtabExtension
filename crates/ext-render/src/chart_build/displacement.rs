@@ -1,11 +1,18 @@
-use ext_calc::output::DisplacementOutput;
+use ext_calc::output::{DisplacementOutput, DisplacementWindOutput};
 
-use crate::chart_build::{DISPLACEMENT_WIND_IMAGE, aggregate_story_max};
+use crate::chart_build::{DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE, aggregate_story_max};
 use crate::chart_types::{
     CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
 };
 
-pub fn build(displacement: &DisplacementOutput, config: &RenderConfig) -> NamedChartSpec {
+pub fn build(displacement: &DisplacementWindOutput, config: &RenderConfig) -> Vec<NamedChartSpec> {
+    vec![
+        build_inner(DISPLACEMENT_WIND_X_IMAGE, "Wind Displacement (X)", "Maximum wind displacement (X).", &displacement.x, config),
+        build_inner(DISPLACEMENT_WIND_Y_IMAGE, "Wind Displacement (Y)", "Maximum wind displacement (Y).", &displacement.y, config)
+    ]
+}
+
+fn build_inner(logical_name: &str, title: &str, caption: &str, displacement: &DisplacementOutput, config: &RenderConfig) -> NamedChartSpec {
     let story_values = aggregate_story_max(displacement.rows.iter().map(|row| {
         let value = [
             row.max_disp_x_pos_ft.abs(),
@@ -19,10 +26,10 @@ pub fn build(displacement: &DisplacementOutput, config: &RenderConfig) -> NamedC
     }));
 
     NamedChartSpec {
-        logical_name: DISPLACEMENT_WIND_IMAGE.to_string(),
-        caption: "Maximum roof and story displacement demand under wind loading.".to_string(),
+        logical_name: logical_name.to_string(),
+        caption: caption.to_string(),
         spec: ChartSpec {
-            title: "Wind Displacement Envelope".to_string(),
+            title: title.to_string(),
             width: config.width,
             height: config.height,
             kind: ChartKind::Cartesian {
