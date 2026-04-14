@@ -170,6 +170,7 @@ pub struct PierAxialStressCalcConfig {
     #[serde(default)]
     pub stress_seismic_combos: Vec<String>,
     pub phi_axial: Option<f64>,
+    pub fc_default_ksi: Option<f64>,
 }
 
 impl PierAxialStressCalcConfig {

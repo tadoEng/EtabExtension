@@ -63,6 +63,7 @@ pub struct PierAxialStressParams {
     pub wind_combos: Vec<String>,
     pub seismic_combos: Vec<String>,
     pub phi_axial: f64,
+    pub fc_default_ksi: f64,
 }
 
 impl PierAxialStressParams {
@@ -244,11 +245,19 @@ impl CodeParams {
         };
 
         let pier_axial_stress = if config.calc.pier_axial_stress.is_configured() {
+            let fc_default_ksi = config
+                .calc
+                .pier_axial_stress
+                .fc_default_ksi
+                .or(config.calc.pier_shear_stress_seismic.fc_default_ksi)
+                .or(config.calc.pier_shear_stress_wind.fc_default_ksi)
+                .unwrap_or(8.0);
             Some(PierAxialStressParams {
                 gravity_combos: config.calc.pier_axial_stress.stress_gravity_combos.clone(),
                 wind_combos: config.calc.pier_axial_stress.stress_wind_combos.clone(),
                 seismic_combos: config.calc.pier_axial_stress.stress_seismic_combos.clone(),
                 phi_axial: config.calc.pier_axial_stress.phi_axial(),
+                fc_default_ksi,
             })
         } else {
             None

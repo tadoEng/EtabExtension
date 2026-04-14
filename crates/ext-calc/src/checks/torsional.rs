@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::code_params::{TorsionalParams, TorsionalJointPair};
 use crate::output::{TorsionalDirectionOutput, TorsionalOutput, TorsionalRow};
@@ -51,6 +51,7 @@ fn process_direction(
 
     let mut out_rows = Vec::new();
     let selected_cases: HashSet<&str> = cases.iter().map(|s| s.as_str()).collect();
+    let mut available_steps_by_case: HashMap<&str, BTreeSet<i32>> = HashMap::new();
 
     // Optimize by creating a lookup map: (UniqueName, Story, OutputCase, StepNumber) -> Disp
     let mut disp_map: HashMap<(&str, &str, &str, i32), f64> = HashMap::new();
@@ -60,10 +61,19 @@ fn process_direction(
             let step = r.step_number.unwrap_or(1.0).round() as i32;
             let disp = if is_x { r.disp_x_ft } else { r.disp_y_ft };
             disp_map.insert((r.unique_name.as_str(), r.story.as_str(), r.output_case.as_str(), step), disp);
+            available_steps_by_case
+                .entry(r.output_case.as_str())
+                .or_default()
+                .insert(step);
         }
     }
 
     for case in cases {
+        let steps = available_steps_by_case
+            .get(case.as_str())
+            .map(|values| values.iter().copied().collect::<Vec<_>>())
+            .unwrap_or_else(|| vec![1]);
+
         for pair in pairs {
             let j_a = pair.joint_a.as_str();
             let j_b = pair.joint_b.as_str();
@@ -72,29 +82,27 @@ fn process_direction(
                 let story_bot = &stories[i - 1];
                 let story_top = &stories[i];
 
-                let mut drift_a_steps = vec![0.0; 3];
-                let mut drift_b_steps = vec![0.0; 3];
-                let mut delta_max_steps = vec![0.0; 3];
-                let mut delta_avg_steps = vec![0.0; 3];
+                let mut drift_a_steps = Vec::with_capacity(steps.len());
+                let mut drift_b_steps = Vec::with_capacity(steps.len());
+                let mut delta_max_steps = Vec::with_capacity(steps.len());
+                let mut delta_avg_steps = Vec::with_capacity(steps.len());
                 let mut has_data = true;
 
-                for step in 1..=3 {
-                    let s_idx = (step - 1) as usize;
-                    
-                    let a_top = disp_map.get(&(j_a, &story_top.story, case, step));
-                    let a_bot = disp_map.get(&(j_a, &story_bot.story, case, step));
-                    let b_top = disp_map.get(&(j_b, &story_top.story, case, step));
-                    let b_bot = disp_map.get(&(j_b, &story_bot.story, case, step));
+                for step in &steps {
+                    let a_top = disp_map.get(&(j_a, &story_top.story, case, *step));
+                    let a_bot = disp_map.get(&(j_a, &story_bot.story, case, *step));
+                    let b_top = disp_map.get(&(j_b, &story_top.story, case, *step));
+                    let b_bot = disp_map.get(&(j_b, &story_bot.story, case, *step));
 
                     if let (Some(&at), Some(&ab), Some(&bt), Some(&bb)) = (a_top, a_bot, b_top, b_bot) {
                         // Drift is |DispTop - DispBot|. We multiply by 12.0 to get Inches.
                         let d_a = (at - ab).abs() * 12.0;
                         let d_b = (bt - bb).abs() * 12.0;
                         
-                        drift_a_steps[s_idx] = d_a;
-                        drift_b_steps[s_idx] = d_b;
-                        delta_max_steps[s_idx] = d_a.max(d_b);
-                        delta_avg_steps[s_idx] = (d_a + d_b) / 2.0;
+                        drift_a_steps.push(d_a);
+                        drift_b_steps.push(d_b);
+                        delta_max_steps.push(d_a.max(d_b));
+                        delta_avg_steps.push((d_a + d_b) / 2.0);
                     } else {
                         has_data = false;
                         break;
@@ -108,7 +116,7 @@ fn process_direction(
                 let mut max_ratio = 0.0;
                 let mut max_ax_base = 0.0;
 
-                for idx in 0..3 {
+                for idx in 0..delta_avg_steps.len() {
                     let avg = delta_avg_steps[idx];
                     let max = delta_max_steps[idx];
                     if avg > 1e-6 {
@@ -282,5 +290,99 @@ mod tests {
         assert!((gov.ratio - 1.2).abs() < 1e-4);
         
         assert!(!output.x.rows.is_empty(), "X Torsion rows must be populated");
+    }
+
+    #[test]
+    fn torsional_accepts_single_step_cases() {
+        use crate::code_params::{TorsionalJointPair, TorsionalParams};
+        use crate::tables::joint_drift::JointDriftRow;
+        use crate::tables::story_def::StoryDefRow;
+
+        let stories = vec![
+            StoryDefRow {
+                story: "L1".into(),
+                height_ft: 10.0,
+                elevation_ft: 10.0,
+            },
+            StoryDefRow {
+                story: "L2".into(),
+                height_ft: 10.0,
+                elevation_ft: 20.0,
+            },
+        ];
+
+        let rows = vec![
+            JointDriftRow {
+                story: "L2".into(),
+                unique_name: "J1".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.20,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 1,
+            },
+            JointDriftRow {
+                story: "L1".into(),
+                unique_name: "J1".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.05,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 1,
+            },
+            JointDriftRow {
+                story: "L2".into(),
+                unique_name: "J2".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.18,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 2,
+            },
+            JointDriftRow {
+                story: "L1".into(),
+                unique_name: "J2".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.04,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 2,
+            },
+        ];
+
+        let params = TorsionalParams {
+            x_cases: vec!["ELF_X".into()],
+            y_cases: vec![],
+            x_pairs: vec![TorsionalJointPair {
+                joint_a: "J1".into(),
+                joint_b: "J2".into(),
+            }],
+            y_pairs: vec![],
+            ecc_ratio: 0.05,
+            building_dim_x_ft: 100.0,
+            building_dim_y_ft: 50.0,
+        };
+
+        let output = run(&rows, &stories, &params).unwrap();
+
+        assert_eq!(output.x.rows.len(), 1);
+        assert_eq!(output.x.rows[0].delta_avg_steps.len(), 1);
+        assert!(output.x.rows[0].ratio >= 1.0);
     }
 }

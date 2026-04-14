@@ -57,7 +57,10 @@ pub fn run(
             }
         };
 
-        let fc_ksi = fc_map.get(&(pier.clone(), story.clone())).copied().unwrap_or(4.0);
+        let fc_ksi = fc_map
+            .get(&(pier.clone(), story.clone()))
+            .copied()
+            .unwrap_or(axial_params.fc_default_ksi);
         let ag_in2 = section.ag_in2;
         let pu_kip = p_kip.abs();
         
@@ -144,6 +147,7 @@ mod tests {
             gravity_combos: vec!["Grav1".into()],
             wind_combos: vec!["Wind1".into()],
             seismic_combos: vec!["Seis1".into()],
+            fc_default_ksi: 4.0,
         };
         params.pier_axial_stress = Some(axial_params);
 

@@ -198,8 +198,11 @@ fn build_summary(
     }
 
     if let Some(_sf) = &output.story_forces {
-        check_count += 1; pass_count += 1;
-        lines.push(SummaryLine { key: "storyForces".to_string(), status: "pass".to_string(), message: "Story forces extraction".to_string() });
+        lines.push(SummaryLine {
+            key: "storyForces".to_string(),
+            status: "loaded".to_string(),
+            message: "Story forces extracted".to_string(),
+        });
     }
 
     if let Some(dw) = &output.drift_wind {
