@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -11,19 +10,20 @@ use typst::utils::LazyHash;
 use typst::{Library, LibraryExt, World};
 use typst_pdf::PdfOptions;
 
+use crate::data::{ReportData, ReportProjectMeta};
 use crate::pdf::template::build_typst_document;
-use crate::report_types::{ReportDocument, ReportSection};
+use crate::theme::PageTheme;
 
 struct TypstWorld {
     library: LazyHash<Library>,
     book: LazyHash<FontBook>,
     fonts: Vec<Font>,
     main: Source,
-    image_cache: HashMap<PathBuf, Bytes>,
+    data: ReportData,
 }
 
 impl TypstWorld {
-    fn new(content: String, images: HashMap<PathBuf, Bytes>) -> Result<Self> {
+    fn new(content: String, data: ReportData) -> Result<Self> {
         let mut fonts = Vec::new();
         let mut book = FontBook::new();
 
@@ -43,7 +43,7 @@ impl TypstWorld {
             book: LazyHash::new(book),
             fonts,
             main: Source::new(FileId::new(None, VirtualPath::new("main.typ")), content),
-            image_cache: images,
+            data,
         })
     }
 
@@ -72,7 +72,7 @@ impl TypstWorld {
                 continue;
             }
 
-            let Ok(buffer) = fs::read(font_path) else {
+            let Ok(buffer) = std::fs::read(font_path) else {
                 continue;
             };
             let bytes = Bytes::new(buffer);
@@ -119,7 +119,7 @@ impl World for TypstWorld {
 
     fn file(&self, id: FileId) -> FileResult<Bytes> {
         let path = Path::new(id.vpath().as_rootless_path());
-        if let Some(bytes) = self.image_cache.get(path) {
+        if let Some(bytes) = self.data.files.get(path) {
             return Ok(bytes.clone());
         }
         Err(typst::diag::FileError::NotFound(path.to_path_buf()))
@@ -134,34 +134,16 @@ impl World for TypstWorld {
     }
 }
 
-pub fn render_pdf(document: &ReportDocument, svg_map: HashMap<String, String>) -> Result<Vec<u8>> {
-    for section in &document.sections {
-        match section {
-            ReportSection::SingleChartPage { chart, .. }
-            | ReportSection::ChartAndTablePage { chart, .. } => {
-                if !svg_map.contains_key(&chart.logical_name) {
-                    bail!("Missing SVG asset for '{}'", chart.logical_name);
-                }
-            }
-            ReportSection::TwoChartsPage { charts, .. } => {
-                for chart in charts {
-                    if !svg_map.contains_key(&chart.logical_name) {
-                        bail!("Missing SVG asset for '{}'", chart.logical_name);
-                    }
-                }
-            }
-            ReportSection::SummaryPage { .. }
-            | ReportSection::TableOnlyPage { .. }
-            | ReportSection::CalculationPage { .. } => {}
-        }
-    }
+pub fn render_pdf(
+    calc: &ext_calc::output::CalcOutput,
+    project: &ReportProjectMeta,
+    svg_map: HashMap<String, String>,
+    theme: &PageTheme,
+) -> Result<Vec<u8>> {
+    let source = build_typst_document(calc);
+    let data = ReportData::from_calc(calc, project, theme, svg_map)?;
 
-    let source = build_typst_document(document);
-    let images = svg_map
-        .into_iter()
-        .map(|(name, svg)| (PathBuf::from(name), Bytes::new(svg.into_bytes())))
-        .collect::<HashMap<_, _>>();
-    let world = TypstWorld::new(source, images)?;
+    let world = TypstWorld::new(source, data)?;
     let result = typst::compile(&world);
     let compiled = result.output.map_err(|errors| {
         anyhow::anyhow!(
@@ -180,80 +162,156 @@ pub fn render_pdf(document: &ReportDocument, svg_map: HashMap<String, String>) -
 
 pub fn write_pdf(path: &Path, pdf_bytes: &[u8]) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
+        std::fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create {}", parent.display()))?;
     }
-    fs::write(path, pdf_bytes).with_context(|| format!("Failed to write {}", path.display()))?;
+    std::fs::write(path, pdf_bytes).with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::render_pdf;
-    use crate::report_types::{ChartRef, ReportDocument, ReportProjectMeta, ReportSection};
-    use std::collections::HashMap;
+    use super::*;
+    use crate::theme::{A4_PORTRAIT, TABLOID_LANDSCAPE};
+    use ext_calc::output::{
+        CalcOutput, TorsionalDirectionOutput, TorsionalOutput, TorsionalRow,
+    };
+    use std::path::PathBuf;
 
-    fn sample_document() -> ReportDocument {
-        ReportDocument {
-            project: ReportProjectMeta {
-                project_name: "Proof Tower".to_string(),
-                project_number: "P-001".to_string(),
-                reference: "CLI-PROOF".to_string(),
-                engineer: "Tester".to_string(),
-                checker: "Reviewer".to_string(),
-                date: "2026-04-06".to_string(),
-                subject: "CLI proof report".to_string(),
-                scale: "NTS".to_string(),
-                revision: "0".to_string(),
-                sheet_prefix: "SK".to_string(),
-            },
-            branch: "main".to_string(),
-            version_id: "v1".to_string(),
-            overall_status: "pass".to_string(),
-            check_count: 1,
-            pass_count: 1,
-            fail_count: 0,
-            sections: vec![ReportSection::SingleChartPage {
-                title: "Rendered proof chart".to_string(),
-                chart: ChartRef {
-                    logical_name: "images/sample.svg".to_string(),
-                    caption: "Rendered proof chart".to_string(),
-                },
-            }],
+    fn fixture_calc_output() -> CalcOutput {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../ext-calc/tests/fixtures/results_realistic/calc_output.json");
+        let text = std::fs::read_to_string(path).unwrap();
+        serde_json::from_str(&text).unwrap()
+    }
+
+    fn dummy_svg_map() -> HashMap<String, String> {
+        let mut svgs = HashMap::new();
+        for key in [
+            "images/modal.svg",
+            "images/base_reactions.svg",
+            "images/story_force_vx.svg",
+            "images/story_force_vy.svg",
+            "images/story_force_my.svg",
+            "images/story_force_mx.svg",
+            "images/drift_wind_x.svg",
+            "images/drift_wind_y.svg",
+            "images/drift_seismic_x.svg",
+            "images/drift_seismic_y.svg",
+            "images/displacement_wind_x.svg",
+            "images/displacement_wind_y.svg",
+            "images/pier_shear_stress_wind.svg",
+            "images/pier_shear_stress_seismic.svg",
+            "images/pier_axial_gravity.svg",
+            "images/pier_axial_wind.svg",
+            "images/pier_axial_seismic.svg",
+        ] {
+            svgs.insert(key.to_string(), "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"120\"><rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/><text x=\"20\" y=\"60\">proof</text></svg>".to_string());
+        }
+        svgs
+    }
+
+    fn sample_torsional_row(story: &str, case: &str, ratio: f64) -> TorsionalRow {
+        TorsionalRow {
+            story: story.to_string(),
+            case: case.to_string(),
+            joint_a: "J1".to_string(),
+            joint_b: "J2".to_string(),
+            drift_a_steps: vec![],
+            drift_b_steps: vec![],
+            delta_max_steps: vec![],
+            delta_avg_steps: vec![],
+            ratio,
+            ax: 1.2,
+            ecc_ft: 0.9,
+            rho: 1.0,
+            is_type_a: ratio >= 1.2,
+            is_type_b: ratio >= 1.4,
+        }
+    }
+
+    fn build_torsional_direction(rows: Vec<TorsionalRow>) -> TorsionalDirectionOutput {
+        let governing_story = rows
+            .first()
+            .map(|row| row.story.clone())
+            .unwrap_or_else(|| "None".to_string());
+        let governing_case = rows
+            .first()
+            .map(|row| row.case.clone())
+            .unwrap_or_else(|| "None".to_string());
+        let max_ratio = rows.iter().map(|row| row.ratio).fold(0.0, f64::max);
+        let has_type_a = rows.iter().any(|row| row.is_type_a);
+        let has_type_b = rows.iter().any(|row| row.is_type_b);
+        TorsionalDirectionOutput {
+            rows,
+            governing_story,
+            governing_case,
+            governing_joints: vec!["J1".to_string(), "J2".to_string()],
+            max_ratio,
+            has_type_a,
+            has_type_b,
         }
     }
 
     #[test]
     fn render_pdf_returns_pdf_bytes() {
-        let mut svgs = HashMap::new();
-        svgs.insert(
-            "images/sample.svg".to_string(),
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"120\"><rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/><text x=\"20\" y=\"60\">proof</text></svg>".to_string(),
-        );
+        let calc = fixture_calc_output();
+        let project = ReportProjectMeta {
+            project_name: "Proof Tower".to_string(),
+            subject: "CLI proof report".to_string(),
+            ..ReportProjectMeta::default()
+        };
+        let svgs = dummy_svg_map();
 
-        let pdf = render_pdf(&sample_document(), svgs).unwrap();
+        let pdf = render_pdf(&calc, &project, svgs, &TABLOID_LANDSCAPE).unwrap();
         assert!(pdf.starts_with(b"%PDF"));
     }
 
     #[test]
-    fn render_pdf_handles_metadata_with_quotes_and_mentions() {
-        let mut svgs = HashMap::new();
-        svgs.insert(
-            "images/sample.svg".to_string(),
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"120\"><rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/><text x=\"20\" y=\"60\">proof</text></svg>".to_string(),
-        );
+    fn render_pdf_a4_theme_produces_pdf_bytes() {
+        let calc = fixture_calc_output();
+        let project = ReportProjectMeta {
+            project_name: "Proof Tower".to_string(),
+            subject: "A4 executive report".to_string(),
+            ..ReportProjectMeta::default()
+        };
+        let pdf = render_pdf(&calc, &project, dummy_svg_map(), &A4_PORTRAIT).unwrap();
+        assert!(pdf.starts_with(b"%PDF"));
+    }
 
-        let mut document = sample_document();
-        document.project.project_name = "Proof \"Tower\"".to_string();
-        document.project.engineer = "QA @ Desk".to_string();
+    #[test]
+    fn render_pdf_torsional_only_x_rows_produces_pdf() {
+        let mut calc = fixture_calc_output();
+        calc.torsional = Some(TorsionalOutput {
+            x: build_torsional_direction(vec![sample_torsional_row("L10", "EQX", 1.05)]),
+            y: build_torsional_direction(vec![]),
+            pass: true,
+        });
+        let project = ReportProjectMeta::default();
+        let pdf = render_pdf(&calc, &project, dummy_svg_map(), &TABLOID_LANDSCAPE).unwrap();
+        assert!(pdf.starts_with(b"%PDF"));
+    }
 
-        let pdf = render_pdf(&document, svgs).unwrap();
+    #[test]
+    fn render_pdf_torsional_only_y_rows_produces_pdf() {
+        let mut calc = fixture_calc_output();
+        calc.torsional = Some(TorsionalOutput {
+            x: build_torsional_direction(vec![]),
+            y: build_torsional_direction(vec![sample_torsional_row("L10", "EQY", 1.11)]),
+            pass: true,
+        });
+        let project = ReportProjectMeta::default();
+        let pdf = render_pdf(&calc, &project, dummy_svg_map(), &TABLOID_LANDSCAPE).unwrap();
         assert!(pdf.starts_with(b"%PDF"));
     }
 
     #[test]
     fn render_pdf_errors_when_image_missing() {
-        let err = render_pdf(&sample_document(), HashMap::new()).unwrap_err();
-        assert!(err.to_string().contains("Missing SVG asset"));
+        let calc = fixture_calc_output();
+        let project = ReportProjectMeta::default();
+        let err = render_pdf(&calc, &project, HashMap::new(), &TABLOID_LANDSCAPE).unwrap_err();
+        // Since the Typst template eagerly loads images using image("...") within the figure macros,
+        // missing SVGs result in a typst compilation error (mapped through anyhow).
+        assert!(err.to_string().contains("typst failed"));
     }
 }

@@ -9,7 +9,7 @@ use ext_calc::code_params::CodeParams;
 use ext_calc::output::CalcOutput;
 use ext_db::config::Config;
 use ext_render::{BaseReactionGroup, RenderConfig, render_all_svg};
-use ext_report::{ChartRef, ReportProjectMeta, build_report_document, render_pdf, write_pdf};
+use ext_report::{A4_PORTRAIT, PageTheme, ReportProjectMeta, TABLOID_LANDSCAPE, render_pdf, write_pdf};
 
 fn main() {
     if let Err(err) = run() {
@@ -45,25 +45,14 @@ fn preview_report(options: PreviewOptions) -> Result<()> {
     let calc_output =
         load_or_build_calc_output(&input_path, &results_dir, &config, &version_id, &branch)?;
     let rendered = render_all_svg(&calc_output, &build_render_config(&config))?;
-    let charts = rendered
-        .assets
-        .iter()
-        .map(|asset| ChartRef {
-            logical_name: asset.logical_name.clone(),
-            caption: asset.caption.clone(),
-        })
-        .collect::<Vec<_>>();
-    let document = build_report_document(
-        &calc_output,
-        &charts,
-        build_project_meta(&config, &version_id, &branch),
-    );
     let svg_map = rendered
         .assets
         .into_iter()
         .map(|asset| (asset.logical_name, asset.svg))
         .collect();
-    let pdf = render_pdf(&document, svg_map)?;
+
+    let project = build_project_meta(&config, &version_id, &branch);
+    let pdf = render_pdf(&calc_output, &project, svg_map, options.theme.theme())?;
 
     let output_path = options.out.unwrap_or_else(default_preview_path);
     write_pdf(&output_path, &pdf)?;
@@ -72,6 +61,7 @@ fn preview_report(options: PreviewOptions) -> Result<()> {
     println!("Results Dir : {}", results_dir.display());
     println!("Version     : {}", version_id);
     println!("Branch      : {}", branch);
+    println!("Theme       : {}", options.theme.as_str());
     println!("Output PDF  : {}", output_path.display());
     Ok(())
 }
@@ -175,7 +165,38 @@ struct PreviewOptions {
     results_dir: Option<PathBuf>,
     version_id: Option<String>,
     branch: Option<String>,
+    theme: PreviewTheme,
     out: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreviewTheme {
+    Tabloid,
+    A4,
+}
+
+impl PreviewTheme {
+    fn parse(value: &str) -> Result<Self> {
+        match value {
+            "tabloid" => Ok(Self::Tabloid),
+            "a4" => Ok(Self::A4),
+            _ => bail!("Unknown theme: {value}. Use 'tabloid' or 'a4'."),
+        }
+    }
+
+    fn theme(self) -> &'static PageTheme {
+        match self {
+            Self::Tabloid => &TABLOID_LANDSCAPE,
+            Self::A4 => &A4_PORTRAIT,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Tabloid => "tabloid",
+            Self::A4 => "a4",
+        }
+    }
 }
 
 impl CliOptions {
@@ -212,6 +233,7 @@ impl PreviewOptions {
         let mut results_dir = None;
         let mut version_id = None;
         let mut branch = None;
+        let mut theme = PreviewTheme::Tabloid;
         let mut out = None;
 
         let mut iter = args.into_iter();
@@ -229,6 +251,7 @@ impl PreviewOptions {
                 "--results-dir" => results_dir = Some(next_path(&mut iter, "--results-dir")?),
                 "--version-id" => version_id = Some(next_string(&mut iter, "--version-id")?),
                 "--branch" => branch = Some(next_string(&mut iter, "--branch")?),
+                "--theme" => theme = PreviewTheme::parse(&next_string(&mut iter, "--theme")?)?,
                 "--out" => out = Some(next_path(&mut iter, "--out")?),
                 flag if flag.starts_with("--") => bail!("Unknown flag: {flag}"),
                 path => {
@@ -252,6 +275,7 @@ impl PreviewOptions {
             results_dir,
             version_id,
             branch,
+            theme,
             out,
         })
     }
@@ -360,7 +384,7 @@ fn resolve_branch(results_dir: &Path, override_branch: Option<&str>) -> String {
 
 fn print_usage() {
     println!(
-        "Usage: cargo run -p ext-report -- preview <path> [--config-root PATH] [--results-dir PATH] [--version-id ID] [--branch NAME] [--out FILE]"
+        "Usage: cargo run -p ext-report -- preview <path> [--config-root PATH] [--results-dir PATH] [--version-id ID] [--branch NAME] [--theme tabloid|a4] [--out FILE]"
     );
     println!();
     println!("Examples:");
@@ -371,6 +395,46 @@ fn print_usage() {
         "  cargo run -p ext-report -- preview crates/ext-calc/tests/fixtures/results_realistic --out proofs/output/results_realistic_report.pdf"
     );
     println!(
+        "  cargo run -p ext-report -- preview crates/ext-calc/tests/fixtures/results_realistic --theme a4"
+    );
+    println!(
         "  cargo run -p ext-report -- preview crates/ext-calc/tests/fixtures/results_realistic/calc_output.json --config-root crates/ext-calc/tests/fixtures/results_realistic"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preview_theme_defaults_to_tabloid() {
+        let parsed = CliOptions::parse(vec![OsString::from("preview"), OsString::from("in")]).unwrap();
+        let Command::Preview(opts) = parsed.command;
+        assert_eq!(opts.theme, PreviewTheme::Tabloid);
+    }
+
+    #[test]
+    fn preview_theme_accepts_a4() {
+        let parsed = CliOptions::parse(vec![
+            OsString::from("preview"),
+            OsString::from("in"),
+            OsString::from("--theme"),
+            OsString::from("a4"),
+        ])
+        .unwrap();
+        let Command::Preview(opts) = parsed.command;
+        assert_eq!(opts.theme, PreviewTheme::A4);
+    }
+
+    #[test]
+    fn preview_theme_rejects_unknown_value() {
+        let err = CliOptions::parse(vec![
+            OsString::from("preview"),
+            OsString::from("in"),
+            OsString::from("--theme"),
+            OsString::from("letter"),
+        ])
+        .unwrap_err();
+        assert!(err.to_string().contains("Unknown theme"));
+    }
 }
