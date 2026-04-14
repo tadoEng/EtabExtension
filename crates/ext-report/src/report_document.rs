@@ -191,12 +191,12 @@ pub fn build_report_document(
 
     // ── Pier Axial — 3 category pages ────────────────────────────────────────
     if calc.pier_axial_stress.is_some() {
-        let axial_chart_data = [
-            (PIER_AXIAL_GRAVITY_IMAGE, "Pier Axial — Gravity"),
-            (PIER_AXIAL_WIND_IMAGE,    "Pier Axial — Wind"),
-            (PIER_AXIAL_SEISMIC_IMAGE, "Pier Axial — Seismic"),
+        let axial_chart_data: &[(&str, &str)] = &[
+            (PIER_AXIAL_GRAVITY_IMAGE, "Pier Axial - Gravity"),
+            (PIER_AXIAL_WIND_IMAGE,    "Pier Axial - Wind"),
+            (PIER_AXIAL_SEISMIC_IMAGE, "Pier Axial - Seismic"),
         ];
-        for (key, title) in axial_chart_data {
+        for &(key, title) in axial_chart_data {
             if let Some(chart) = chart_lookup.get(key).cloned() {
                 sections.push(ReportSection::SingleChartPage {
                     title: title.to_string(),
@@ -687,7 +687,7 @@ mod tests {
             PIER_AXIAL_SEISMIC_IMAGE,
         ]
         .into_iter()
-        .map(|logical_name| ChartRef {
+        .map(|logical_name: &str| ChartRef {
             logical_name: logical_name.to_string(),
             caption: logical_name.to_string(),
         })
