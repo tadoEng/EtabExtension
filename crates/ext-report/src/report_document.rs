@@ -1,11 +1,16 @@
 use std::collections::HashMap;
 
 use ext_calc::output::{
-    BaseReactionsOutput, CalcOutput, DisplacementOutput, DriftOutput, ModalOutput, PierShearStressOutput,
+    BaseReactionsOutput, CalcOutput, DisplacementOutput, DriftOutput, ModalOutput,
+    PierShearStressOutput, StoryForcesOutput, TorsionalDirectionOutput,
 };
 use ext_render::{
-    BASE_REACTIONS_IMAGE, DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE, DRIFT_SEISMIC_X_IMAGE, DRIFT_SEISMIC_Y_IMAGE, DRIFT_WIND_X_IMAGE, DRIFT_WIND_Y_IMAGE,
-    PIER_AXIAL_STRESS_IMAGE, PIER_SHEAR_STRESS_SEISMIC_IMAGE, PIER_SHEAR_STRESS_WIND_IMAGE,
+    BASE_REACTIONS_IMAGE,
+    DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE,
+    DRIFT_SEISMIC_X_IMAGE, DRIFT_SEISMIC_Y_IMAGE, DRIFT_WIND_X_IMAGE, DRIFT_WIND_Y_IMAGE,
+    PIER_AXIAL_GRAVITY_IMAGE, PIER_AXIAL_SEISMIC_IMAGE, PIER_AXIAL_WIND_IMAGE,
+    PIER_SHEAR_STRESS_SEISMIC_IMAGE, PIER_SHEAR_STRESS_WIND_IMAGE,
+    STORY_FORCE_MX_IMAGE, STORY_FORCE_MY_IMAGE, STORY_FORCE_VX_IMAGE, STORY_FORCE_VY_IMAGE,
 };
 
 use crate::report_types::{
@@ -28,6 +33,7 @@ pub fn build_report_document(
         lines: build_summary_lines(calc),
     }];
 
+    // ── Modal ────────────────────────────────────────────────────────────────
     if let Some(modal) = calc.modal.as_ref() {
         sections.push(ReportSection::TableOnlyPage {
             title: "Modal Participation".to_string(),
@@ -35,6 +41,7 @@ pub fn build_report_document(
         });
     }
 
+    // ── Base Reactions ───────────────────────────────────────────────────────
     if let (Some(base_shear), Some(chart)) = (
         calc.base_reactions.as_ref(),
         chart_lookup.get(BASE_REACTIONS_IMAGE).cloned(),
@@ -47,6 +54,41 @@ pub fn build_report_document(
         });
     }
 
+    // ── Story Forces — X page (VX + MY) ─────────────────────────────────────
+    if let Some(sf) = calc.story_forces.as_ref() {
+        if let (Some(vx_chart), Some(my_chart)) = (
+            chart_lookup.get(STORY_FORCE_VX_IMAGE).cloned(),
+            chart_lookup.get(STORY_FORCE_MY_IMAGE).cloned(),
+        ) {
+            sections.push(ReportSection::TwoChartsPage {
+                title: "Story Forces — X Direction".to_string(),
+                charts: vec![vx_chart, my_chart],
+            });
+        }
+
+        // ── Story Forces — Y page (VY + MX) ─────────────────────────────────
+        if let (Some(vy_chart), Some(mx_chart)) = (
+            chart_lookup.get(STORY_FORCE_VY_IMAGE).cloned(),
+            chart_lookup.get(STORY_FORCE_MX_IMAGE).cloned(),
+        ) {
+            sections.push(ReportSection::TwoChartsPage {
+                title: "Story Forces — Y Direction".to_string(),
+                charts: vec![vy_chart, mx_chart],
+            });
+        }
+
+        // Fall back: story forces table if no charts were found
+        if chart_lookup.get(STORY_FORCE_VX_IMAGE).is_none()
+            && chart_lookup.get(STORY_FORCE_VY_IMAGE).is_none()
+        {
+            sections.push(ReportSection::TableOnlyPage {
+                title: "Story Forces".to_string(),
+                table: build_story_forces_table(sf),
+            });
+        }
+    }
+
+    // ── Wind Drift ───────────────────────────────────────────────────────────
     if let Some(drift) = calc.drift_wind.as_ref() {
         if let Some(chart) = chart_lookup.get(DRIFT_WIND_X_IMAGE).cloned() {
             sections.push(ReportSection::ChartAndTablePage {
@@ -66,6 +108,7 @@ pub fn build_report_document(
         }
     }
 
+    // ── Seismic Drift ────────────────────────────────────────────────────────
     if let Some(drift) = calc.drift_seismic.as_ref() {
         if let Some(chart) = chart_lookup.get(DRIFT_SEISMIC_X_IMAGE).cloned() {
             sections.push(ReportSection::ChartAndTablePage {
@@ -85,6 +128,7 @@ pub fn build_report_document(
         }
     }
 
+    // ── Wind Displacement ────────────────────────────────────────────────────
     if let Some(displacement) = calc.displacement_wind.as_ref() {
         if let Some(chart) = chart_lookup.get(DISPLACEMENT_WIND_X_IMAGE).cloned() {
             sections.push(ReportSection::ChartAndTablePage {
@@ -104,6 +148,23 @@ pub fn build_report_document(
         }
     }
 
+    // ── Torsional — X table page ─────────────────────────────────────────────
+    if let Some(torsional) = calc.torsional.as_ref() {
+        if !torsional.x.rows.is_empty() {
+            sections.push(ReportSection::TableOnlyPage {
+                title: "Torsional Irregularity — X Direction".to_string(),
+                table: build_torsional_table(&torsional.x),
+            });
+        }
+        if !torsional.y.rows.is_empty() {
+            sections.push(ReportSection::TableOnlyPage {
+                title: "Torsional Irregularity — Y Direction".to_string(),
+                table: build_torsional_table(&torsional.y),
+            });
+        }
+    }
+
+    // ── Pier Shear ───────────────────────────────────────────────────────────
     if let (Some(pier), Some(chart)) = (
         calc.pier_shear_stress_wind.as_ref(),
         chart_lookup.get(PIER_SHEAR_STRESS_WIND_IMAGE).cloned(),
@@ -128,14 +189,23 @@ pub fn build_report_document(
         });
     }
 
-    if let (Some(_axial), Some(chart)) = (
-        calc.pier_axial_stress.as_ref(),
-        chart_lookup.get(PIER_AXIAL_STRESS_IMAGE).cloned(),
-    ) {
-        sections.push(ReportSection::SingleChartPage {
-            title: "Pier Axial Review".to_string(),
-            chart,
-        });
+    // ── Pier Axial — 3 category pages ────────────────────────────────────────
+    if calc.pier_axial_stress.is_some() {
+        let axial_chart_data = [
+            (PIER_AXIAL_GRAVITY_IMAGE, "Pier Axial — Gravity"),
+            (PIER_AXIAL_WIND_IMAGE,    "Pier Axial — Wind"),
+            (PIER_AXIAL_SEISMIC_IMAGE, "Pier Axial — Seismic"),
+        ];
+        for (key, title) in axial_chart_data {
+            if let Some(chart) = chart_lookup.get(key).cloned() {
+                sections.push(ReportSection::SingleChartPage {
+                    title: title.to_string(),
+                    chart,
+                });
+            }
+        }
+
+        // Axial assumptions note (always shown when axial check is present).
         sections.push(ReportSection::CalculationPage {
             title: "Pier Axial Assumptions".to_string(),
             blocks: vec![CalculationBlock {
@@ -143,7 +213,8 @@ pub fn build_report_document(
                 lines: vec![
                     "Nominal capacity uses Po = 0.85f'cAg and ϕPo = ϕ × Po.".to_string(),
                     "Rebar contribution is intentionally excluded from this preliminary axial check.".to_string(),
-                    "Fallback f'c currently reuses the seismic pier-shear default when pier/story material matching is unavailable.".to_string(),
+                    "Fallback f'c reuses the pier section material default when pier/story material matching is unavailable.".to_string(),
+                    "Results are split by load category: gravity combos (gravity), wind combos (wind), seismic combos (seismic).".to_string(),
                 ],
             }],
         });
@@ -160,6 +231,8 @@ pub fn build_report_document(
         sections,
     }
 }
+
+// ── Table builders ───────────────────────────────────────────────────────────
 
 fn build_summary_lines(calc: &CalcOutput) -> Vec<String> {
     let mut summary_lines = vec![
@@ -190,7 +263,6 @@ fn build_modal_table(modal: &ModalOutput) -> KeyValueTable {
             (true, false) => Some("ux_threshold".to_string()),
             (false, true) => Some("uy_threshold".to_string()),
             (false, false) => {
-                // Highlight rows with individually high contribution (>=10%)
                 if row.ux >= 0.10 || row.uy >= 0.10 {
                     Some("high".to_string())
                 } else {
@@ -278,9 +350,35 @@ fn build_base_shear_table(base_shear: &BaseReactionsOutput) -> KeyValueTable {
     }
 }
 
+fn build_story_forces_table(sf: &StoryForcesOutput) -> KeyValueTable {
+    let row_count = sf.rows.len();
+    KeyValueTable {
+        title: Some("Story force envelope: maximum absolute values per story.".to_string()),
+        headers: vec![
+            "Story".to_string(),
+            "Vx (kip)".to_string(),
+            "Vy (kip)".to_string(),
+            "My (kip·ft)".to_string(),
+            "Mx (kip·ft)".to_string(),
+        ],
+        rows: sf
+            .rows
+            .iter()
+            .map(|r| {
+                vec![
+                    r.story.clone(),
+                    format!("{:.1}", r.max_vx_kip),
+                    format!("{:.1}", r.max_vy_kip),
+                    format!("{:.1}", r.max_my_kip_ft),
+                    format!("{:.1}", r.max_mx_kip_ft),
+                ]
+            })
+            .collect(),
+        row_annotations: vec![None; row_count],
+    }
+}
+
 fn build_drift_table(drift: &DriftOutput) -> KeyValueTable {
-    // Group by story: pick the governing-case row (max demand) per story to keep
-    // the table concise while showing every story level.
     let mut story_max: Vec<(String, String, f64)> = Vec::new();
     for row in &drift.rows {
         let demand = [
@@ -345,7 +443,6 @@ fn build_drift_table(drift: &DriftOutput) -> KeyValueTable {
 }
 
 fn build_displacement_table(displacement: &DisplacementOutput) -> KeyValueTable {
-    // Convert ft → in for readability; limit.unit carries the authoritative label.
     let to_in = |ft: f64| ft * 12.0;
     let limit_in = to_in(displacement.disp_limit.value);
 
@@ -413,8 +510,67 @@ fn build_displacement_table(displacement: &DisplacementOutput) -> KeyValueTable 
     }
 }
 
+fn build_torsional_table(dir: &TorsionalDirectionOutput) -> KeyValueTable {
+    let row_count = dir.rows.len();
+    let mut row_annotations: Vec<Option<String>> = Vec::with_capacity(row_count);
+
+    let rows = dir
+        .rows
+        .iter()
+        .map(|row| {
+            let annotation = if row.is_type_b {
+                Some("fail".to_string())
+            } else if row.is_type_a {
+                Some("warn".to_string())
+            } else {
+                None
+            };
+            row_annotations.push(annotation);
+            vec![
+                row.story.clone(),
+                row.case.clone(),
+                row.joint_a.clone(),
+                row.joint_b.clone(),
+                format!("{:.3}", row.ratio),
+                format!("{}", if row.is_type_a { "Type A" } else { "—" }),
+                format!("{}", if row.is_type_b { "Type B" } else { "—" }),
+                format!("{:.2}", row.ax),
+                format!("{:.2}", row.ecc_ft),
+            ]
+        })
+        .collect::<Vec<_>>();
+
+    KeyValueTable {
+        title: Some(format!(
+            "Governing story: {} | Case: {} | Max ratio: {:.3} | {}",
+            dir.governing_story,
+            dir.governing_case,
+            dir.max_ratio,
+            if dir.has_type_b {
+                "⚠ TYPE B IRREGULARITY"
+            } else if dir.has_type_a {
+                "Type A irregularity"
+            } else {
+                "No irregularity"
+            }
+        )),
+        headers: vec![
+            "Story".to_string(),
+            "Case".to_string(),
+            "Joint A".to_string(),
+            "Joint B".to_string(),
+            "Δmax/Δavg".to_string(),
+            "Type A (>1.2)".to_string(),
+            "Type B (>1.4)".to_string(),
+            "Ax".to_string(),
+            "Ecc (ft)".to_string(),
+        ],
+        rows,
+        row_annotations,
+    }
+}
+
 fn build_pier_shear_table(pier: &PierShearStressOutput) -> KeyValueTable {
-    // ACI 318-19 §18.10.4.4: maximum nominal shear stress = 8√f'c (psi)
     let mut rows: Vec<Vec<String>> = pier
         .per_pier
         .iter()
@@ -432,7 +588,6 @@ fn build_pier_shear_table(pier: &PierShearStressOutput) -> KeyValueTable {
             ]
         })
         .collect();
-    // Sort by DCR descending so worst cases appear first.
     rows.sort_by(|left, right| {
         let right_dcr = right[6].parse::<f64>().unwrap_or(0.0);
         let left_dcr = left[6].parse::<f64>().unwrap_or(0.0);
@@ -460,7 +615,8 @@ fn build_pier_shear_table(pier: &PierShearStressOutput) -> KeyValueTable {
 
     KeyValueTable {
         title: Some(format!(
-            "Pier Shear Results. Passed = {}", pass_fail(pier.pass)
+            "Pier Shear Results. Passed = {}",
+            pass_fail(pier.pass)
         )),
         headers: vec![
             "Story".to_string(),
@@ -485,14 +641,21 @@ fn pass_fail(pass: bool) -> String {
     }
 }
 
+// ── Tests ────────────────────────────────────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
     use super::build_report_document;
     use crate::report_types::{ChartRef, ReportProjectMeta, ReportSection};
     use ext_calc::output::CalcOutput;
     use ext_render::{
-        BASE_REACTIONS_IMAGE, DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE, DRIFT_SEISMIC_X_IMAGE, DRIFT_SEISMIC_Y_IMAGE, DRIFT_WIND_X_IMAGE, DRIFT_WIND_Y_IMAGE,
-        MODAL_IMAGE, PIER_AXIAL_STRESS_IMAGE, PIER_SHEAR_STRESS_SEISMIC_IMAGE, PIER_SHEAR_STRESS_WIND_IMAGE,
+        BASE_REACTIONS_IMAGE,
+        DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE,
+        DRIFT_SEISMIC_X_IMAGE, DRIFT_SEISMIC_Y_IMAGE, DRIFT_WIND_X_IMAGE, DRIFT_WIND_Y_IMAGE,
+        MODAL_IMAGE,
+        PIER_AXIAL_GRAVITY_IMAGE, PIER_AXIAL_SEISMIC_IMAGE, PIER_AXIAL_WIND_IMAGE,
+        PIER_SHEAR_STRESS_SEISMIC_IMAGE, PIER_SHEAR_STRESS_WIND_IMAGE,
+        STORY_FORCE_MX_IMAGE, STORY_FORCE_MY_IMAGE, STORY_FORCE_VX_IMAGE, STORY_FORCE_VY_IMAGE,
     };
     use std::path::PathBuf;
 
@@ -507,6 +670,10 @@ mod tests {
         [
             MODAL_IMAGE,
             BASE_REACTIONS_IMAGE,
+            STORY_FORCE_VX_IMAGE,
+            STORY_FORCE_VY_IMAGE,
+            STORY_FORCE_MY_IMAGE,
+            STORY_FORCE_MX_IMAGE,
             DRIFT_WIND_X_IMAGE,
             DRIFT_WIND_Y_IMAGE,
             DRIFT_SEISMIC_X_IMAGE,
@@ -515,7 +682,9 @@ mod tests {
             DISPLACEMENT_WIND_Y_IMAGE,
             PIER_SHEAR_STRESS_WIND_IMAGE,
             PIER_SHEAR_STRESS_SEISMIC_IMAGE,
-            PIER_AXIAL_STRESS_IMAGE,
+            PIER_AXIAL_GRAVITY_IMAGE,
+            PIER_AXIAL_WIND_IMAGE,
+            PIER_AXIAL_SEISMIC_IMAGE,
         ]
         .into_iter()
         .map(|logical_name| ChartRef {
@@ -525,58 +694,89 @@ mod tests {
         .collect()
     }
 
+    fn test_project() -> ReportProjectMeta {
+        ReportProjectMeta {
+            project_name: "Proof Tower".to_string(),
+            project_number: "P-001".to_string(),
+            reference: "CLI-PROOF".to_string(),
+            engineer: "Tester".to_string(),
+            checker: "Reviewer".to_string(),
+            date: "2026-04-14".to_string(),
+            subject: "CLI proof report".to_string(),
+            scale: "NTS".to_string(),
+            revision: "0".to_string(),
+            sheet_prefix: "SK".to_string(),
+        }
+    }
+
     #[test]
     fn build_report_document_matches_available_fixture_pages() {
         let calc = fixture_calc_output();
-        let document = build_report_document(
-            &calc,
-            &all_chart_refs(),
-            ReportProjectMeta {
-                project_name: "Proof Tower".to_string(),
-                project_number: "P-001".to_string(),
-                reference: "CLI-PROOF".to_string(),
-                engineer: "Tester".to_string(),
-                checker: "Reviewer".to_string(),
-                date: "2026-04-06".to_string(),
-                subject: "CLI proof report".to_string(),
-                scale: "NTS".to_string(),
-                revision: "0".to_string(),
-                sheet_prefix: "SK".to_string(),
-            },
-        );
+        let document = build_report_document(&calc, &all_chart_refs(), test_project());
 
-        // The fixture calc_output.json has these active (non-null) checks:
+        // The fixture calc_output.json has these active checks:
         //   modal, baseReactions, storyForces, driftWind, driftSeismic,
         //   displacementWind, pierShearStressWind, pierShearStressSeismic, pierAxialStress
-        //   torsional = null (not configured in fixture config)
+        //   torsional = null (not configured in fixture)
         //
-        // Report sections generated (only checks with both output and matching chart ref):
-        //   1 summary + 1 modal (table only)
-        //   + 1 base_reactions (chart+table)
-        //   + 2 drift_wind (X, Y)
-        //   + 2 drift_seismic (X, Y)   <- driftSeismic IS Some in fixture
-        //   + 2 displacement_wind (X, Y)
-        //   + 1 pier_shear_wind + 1 pier_shear_seismic
-        //   + 1 pier_axial chart + 1 pier_axial assumptions
-        //   storyForces has no chart builder → no report section
-        //   torsional is null → no section
-        //   = 13 sections
-        assert_eq!(document.sections.len(), 13);
-        assert!(matches!(
-            document.sections[0],
-            ReportSection::SummaryPage { .. }
-        ));
-        assert!(matches!(
-            document.sections[1],
-            ReportSection::TableOnlyPage { .. }   // modal
-        ));
-        assert!(matches!(
-            document.sections[2],
-            ReportSection::ChartAndTablePage { .. } // base reactions
-        ));
-        assert!(matches!(
-            document.sections[12],
-            ReportSection::CalculationPage { .. }  // pier axial assumptions
-        ));
+        // Sections generated:
+        //   1  SummaryPage
+        //   2  TableOnlyPage          modal
+        //   3  ChartAndTablePage      base_reactions
+        //   4  TwoChartsPage          story_forces X (VX + MY)
+        //   5  TwoChartsPage          story_forces Y (VY + MX)
+        //   6  ChartAndTablePage      drift_wind_x
+        //   7  ChartAndTablePage      drift_wind_y
+        //   8  ChartAndTablePage      drift_seismic_x
+        //   9  ChartAndTablePage      drift_seismic_y
+        //  10  ChartAndTablePage      displacement_wind_x
+        //  11  ChartAndTablePage      displacement_wind_y
+        //     [torsional = null → 0 pages]
+        //  12  ChartAndTablePage      pier_shear_wind
+        //  13  ChartAndTablePage      pier_shear_seismic
+        //  14  SingleChartPage        pier_axial gravity
+        //  15  SingleChartPage        pier_axial wind
+        //  16  SingleChartPage        pier_axial seismic
+        //  17  CalculationPage        pier_axial assumptions
+        //  = 17 sections
+        assert_eq!(document.sections.len(), 17);
+
+        assert!(matches!(document.sections[0], ReportSection::SummaryPage { .. }));
+        assert!(matches!(document.sections[1], ReportSection::TableOnlyPage { .. })); // modal
+        assert!(matches!(document.sections[2], ReportSection::ChartAndTablePage { .. })); // base reactions
+        assert!(matches!(document.sections[3], ReportSection::TwoChartsPage { .. })); // story forces X
+        assert!(matches!(document.sections[4], ReportSection::TwoChartsPage { .. })); // story forces Y
+        assert!(matches!(document.sections[16], ReportSection::CalculationPage { .. })); // pier axial assumptions
+    }
+
+    #[test]
+    fn report_builds_when_torsional_is_absent() {
+        let mut calc = fixture_calc_output();
+        calc.torsional = None;
+        let document = build_report_document(&calc, &all_chart_refs(), test_project());
+        // Sections count stays at 17 (torsional was already null in fixture).
+        assert_eq!(document.sections.len(), 17);
+    }
+
+    #[test]
+    fn report_builds_when_story_forces_is_absent() {
+        let mut calc = fixture_calc_output();
+        calc.story_forces = None;
+        let document = build_report_document(&calc, &all_chart_refs(), test_project());
+        // Loses the 2 story-forces pages → 15 sections.
+        assert_eq!(document.sections.len(), 15);
+    }
+
+    #[test]
+    fn report_builds_when_one_axial_category_absent_in_chart_refs() {
+        let calc = fixture_calc_output();
+        // Omit the seismic axial chart ref — only gravity + wind refs provided.
+        let charts: Vec<ChartRef> = all_chart_refs()
+            .into_iter()
+            .filter(|c| c.logical_name != PIER_AXIAL_SEISMIC_IMAGE)
+            .collect();
+        let document = build_report_document(&calc, &charts, test_project());
+        // Loses 1 axial page (seismic) → 16 sections.
+        assert_eq!(document.sections.len(), 16);
     }
 }

@@ -314,6 +314,9 @@ pub struct PierAxialResult {
     pub pier_label: String,
     pub story: String,
     pub combo: String,
+    /// Load category: "gravity", "wind", or "seismic".
+    #[serde(default)]
+    pub category: String,
     pub pu: Quantity,
     pub ag: Quantity,
     pub phi_po: Quantity,

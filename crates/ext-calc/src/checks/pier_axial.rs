@@ -71,10 +71,19 @@ pub fn run(
         let fa_ksi = pu_kip / ag_in2;
         let fa_ratio = fa_ksi / (0.85 * fc_ksi);
 
+        let category = if grav_set.contains(combo.as_str()) {
+            "gravity"
+        } else if wind_set.contains(combo.as_str()) {
+            "wind"
+        } else {
+            "seismic"
+        };
+
         let res = PierAxialResult {
             pier_label: pier.clone(),
             story: story.clone(),
             combo: combo.clone(),
+            category: category.to_string(),
             pu: uc.qty_force(pu_kip),
             ag: uc.qty_area_in2(ag_in2),
             phi_po: uc.qty_force(phi_po_kip),
@@ -109,6 +118,7 @@ pub fn run(
             governing_seismic: None,
             governing: PierAxialResult {
                 pier_label: String::new(), story: String::new(), combo: String::new(),
+                category: String::new(),
                 pu: Quantity::new(0.0, ""), ag: Quantity::new(0.0, ""), phi_po: Quantity::new(0.0, ""),
                 fa: Quantity::new(0.0, ""), fa_ratio: 0.0, dcr: 0.0, pass: true, fc_ksi: 0.0, material: String::new(),
             },

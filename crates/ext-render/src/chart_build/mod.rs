@@ -4,6 +4,7 @@ mod drift;
 mod modal;
 mod pier_axial;
 mod pier_shear;
+mod story_forces;
 
 use charming::{
     Chart,
@@ -18,19 +19,37 @@ use crate::chart_types::{
     ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
 };
 
+// ── Image path constants ────────────────────────────────────────────────────
+
 pub const MODAL_IMAGE: &str = "images/modal.svg";
 pub const BASE_REACTIONS_IMAGE: &str = "images/base_reactions.svg";
+
+// Story forces — 4 assets
 pub const STORY_FORCE_VX_IMAGE: &str = "images/story_force_vx.svg";
 pub const STORY_FORCE_VY_IMAGE: &str = "images/story_force_vy.svg";
+pub const STORY_FORCE_MY_IMAGE: &str = "images/story_force_my.svg";
+pub const STORY_FORCE_MX_IMAGE: &str = "images/story_force_mx.svg";
+
+// Drift — directional pairs
 pub const DRIFT_WIND_X_IMAGE: &str = "images/drift_wind_x.svg";
 pub const DRIFT_WIND_Y_IMAGE: &str = "images/drift_wind_y.svg";
 pub const DRIFT_SEISMIC_X_IMAGE: &str = "images/drift_seismic_x.svg";
 pub const DRIFT_SEISMIC_Y_IMAGE: &str = "images/drift_seismic_y.svg";
+
+// Displacement — directional pairs
 pub const DISPLACEMENT_WIND_X_IMAGE: &str = "images/displacement_wind_x.svg";
 pub const DISPLACEMENT_WIND_Y_IMAGE: &str = "images/displacement_wind_y.svg";
+
+// Pier shear
 pub const PIER_SHEAR_STRESS_WIND_IMAGE: &str = "images/pier_shear_stress_wind.svg";
 pub const PIER_SHEAR_STRESS_SEISMIC_IMAGE: &str = "images/pier_shear_stress_seismic.svg";
-pub const PIER_AXIAL_STRESS_IMAGE: &str = "images/pier_axial_stress.svg";
+
+// Pier axial — 3 category assets (replaces the old single PIER_AXIAL_STRESS_IMAGE)
+pub const PIER_AXIAL_GRAVITY_IMAGE: &str = "images/pier_axial_gravity.svg";
+pub const PIER_AXIAL_WIND_IMAGE: &str = "images/pier_axial_wind.svg";
+pub const PIER_AXIAL_SEISMIC_IMAGE: &str = "images/pier_axial_seismic.svg";
+
+// ── Main builder ────────────────────────────────────────────────────────────
 
 pub fn build_report_charts(calc: &CalcOutput, config: &RenderConfig) -> Vec<NamedChartSpec> {
     let mut charts = Vec::new();
@@ -41,6 +60,10 @@ pub fn build_report_charts(calc: &CalcOutput, config: &RenderConfig) -> Vec<Name
 
     if let Some(base_reactions_output) = calc.base_reactions.as_ref() {
         charts.push(base_shear::build(base_reactions_output, config));
+    }
+
+    if let Some(sf_output) = calc.story_forces.as_ref() {
+        charts.extend(story_forces::build(sf_output, config));
     }
 
     if let Some(drift_output) = calc.drift_wind.as_ref() {
@@ -64,11 +87,13 @@ pub fn build_report_charts(calc: &CalcOutput, config: &RenderConfig) -> Vec<Name
     }
 
     if let Some(axial_output) = calc.pier_axial_stress.as_ref() {
-        charts.push(pier_axial::build(axial_output, config));
+        charts.extend(pier_axial::build_all(axial_output, config));
     }
 
     charts
 }
+
+// ── Chart rendering ─────────────────────────────────────────────────────────
 
 pub fn build_chart(spec: &ChartSpec) -> Chart {
     match &spec.kind {
