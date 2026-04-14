@@ -1,4 +1,5 @@
 use ext_calc::output::CalcOutput;
+use crate::pdf::procedures;
 
 
 pub fn build_typst_document(calc: &CalcOutput) -> String {
@@ -22,70 +23,75 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
 #let m-right = parse-in(theme.margin-right)
 #let m-bottom = parse-in(theme.margin-bottom)
 #let content-h = parse-in(theme.content-height)
+#let content-inset = parse-pt(theme.content-inset)
 
 #let border-w = page-width - m-left - m-right
 #let border-h = page-height - m-top - m-bottom
 #let tb-h = border-h - content-h
+
+#let text-m-top = if is-executive { m-top } else { m-top + content-inset }
+#let text-m-left = if is-executive { m-left } else { m-left + content-inset }
+#let text-m-right = if is-executive { m-right } else { m-right + content-inset }
+#let text-m-bottom = if is-executive { m-bottom } else { m-bottom + tb-h + content-inset }
 
 #set text(font: theme.body-font, size: parse-pt(theme.body-size))
 #set par(justify: false)
 #set figure(numbering: none, outlined: false)
 #show heading: set block(sticky: true)
 
-#let title-block() = {
-  let cols = theme.title-block-columns.trim("(").trim(")").split(",").map(s => parse-in(s.trim()))
+#let title-block(sheet) = {
+  let cols = eval(theme.title-block-columns, mode: "code")
   table(
     columns: cols,
-    stroke: 1pt + black,
-    inset: parse-pt(theme.table-inset),
+    rows: (tb-h,),
+    stroke: 1.2pt + black,
+    inset: 8pt,
+    align: top + left,
 
-    [
-      #align(center + horizon)[
-        #stack(spacing: 0pt,
-          text(size: 11pt, weight: "bold")[Thornton],
-          text(size: 11pt, weight: "bold")[Tomasetti],
-        )
-      ]
-    ],
-    [
-      #stack(spacing: 2pt,
-        text(size: 5.5pt, fill: luma(110))[PROJECT],
-        text(size: 8pt, weight: "bold")[#project.project-name],
-        text(size: 5.5pt, fill: luma(110))[PROJECT NO.],
-        text(size: 7.5pt)[#project.project-number],
+    align(center + horizon)[
+      #stack(
+        spacing: 5pt,
+        text(size: 15pt, weight: "bold")[Thornton],
+        text(size: 15pt, weight: "bold")[Tomasetti],
       )
     ],
-    [
-      #stack(spacing: 2pt,
-        text(size: 5.5pt, fill: luma(110))[DRAWING TITLE],
-        text(size: 8.5pt, weight: "bold")[#project.subject],
-      )
-    ],
-    [
-      #stack(spacing: 2pt,
-        text(size: 5.5pt, fill: luma(110))[REFERENCE],
-        text(size: 7.5pt)[#project.reference],
-        text(size: 5.5pt, fill: luma(110))[REVISION],
-        text(size: 8pt, weight: "bold")[#project.revision],
-      )
-    ],
-    [
-      #stack(spacing: 2pt,
-        text(size: 5.5pt, fill: luma(110))[DRAWN BY],
-        text(size: 8pt, weight: "bold")[#project.engineer],
-        text(size: 5.5pt, fill: luma(110))[CHECKED BY],
-        text(size: 8pt, weight: "bold")[#project.checker],
-      )
-    ],
-    [
-      #stack(spacing: 2pt,
-        text(size: 5.5pt, fill: luma(110))[DATE],
-        text(size: 7.5pt)[#project.date],
-        text(size: 5.5pt, fill: luma(110))[SCALE / SHEET],
-        text(size: 8pt)[#project.scale],
-        text(size: 14pt, weight: "bold")[#project.sheet-prefix#"-"#counter(page).display("01")],
-      )
-    ],
+    stack(
+      spacing: 4pt,
+      text(size: 8pt, fill: luma(110))[PROJECT],
+      text(size: 10pt, weight: "bold")[#project.project-name],
+      v(4pt),
+      text(size: 8pt, fill: luma(110))[PROJECT NO.],
+      text(size: 10pt)[#project.project-number],
+    ),
+    stack(
+      spacing: 4pt,
+      text(size: 8pt, fill: luma(110))[DRAWING TITLE],
+      text(size: 10pt, weight: "bold")[#project.subject],
+    ),
+    stack(
+      spacing: 4pt,
+      text(size: 5.5pt, fill: luma(110))[REFERENCE],
+      text(size: 7.5pt)[#project.reference],
+      v(4pt),
+      text(size: 5.5pt, fill: luma(110))[REVISION],
+      text(size: 8pt, weight: "bold")[#project.revision],
+    ),
+    stack(
+      spacing: 4pt,
+      text(size: 5.5pt, fill: luma(110))[DRAWN BY],
+      text(size: 8pt, weight: "bold")[#project.engineer],
+      v(4pt),
+      text(size: 5.5pt, fill: luma(110))[CHECKED BY],
+      text(size: 8pt, weight: "bold")[#project.checker],
+    ),
+    stack(
+      spacing: 4pt,
+      text(size: 5.5pt, fill: luma(110))[DATE],
+      text(size: 7.5pt)[#project.date],
+      v(4pt),
+      text(size: 5.5pt, fill: luma(110))[SHEET],
+      text(size: 14pt, weight: "bold")[#sheet],
+    ),
   )
 }
 
@@ -93,10 +99,10 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
   width: page-width,
   height: page-height,
   margin: (
-    top: m-top,
-    left: m-left,
-    right: m-right,
-    bottom: if is-executive { m-bottom } else { m-bottom + tb-h },
+    top: text-m-top,
+    left: text-m-left,
+    right: text-m-right,
+    bottom: text-m-bottom,
   ),
   header: if is-executive {
     context {
@@ -133,27 +139,31 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
   background: if is-executive {
     none
   } else {
-    context {
-      place(
-        top + left,
-        dx: m-left,
-        dy: m-top,
-        rect(
-          width: border-w,
-          height: border-h,
-          stroke: 1.2pt + black,
-          inset: 0pt,
-          outset: 0pt,
-          [
-            #place(bottom + left)[
-              #box(width: border-w, height: tb-h)[
-                #title-block()
-              ]
-            ]
-          ]
+    pad(
+      top: m-top,
+      bottom: m-bottom,
+      left: m-left,
+      right: m-right,
+      align(top)[
+        #stack(
+          spacing: 0pt,
+          rect(
+            width: border-w,
+            height: content-h,
+            stroke: (
+              top: 1.2pt + black,
+              left: 1.2pt + black,
+              right: 1.2pt + black,
+              bottom: none,
+            ),
+          ),
+          context {
+            let sheet = project.sheet-prefix + "-" + str(counter(page).get().first())
+            title-block(sheet)
+          },
         )
-      )
-    }
+      ],
+    )
   },
 )
 
@@ -188,25 +198,17 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
 }
 
 #let chart-table-layout(table-body, chart-body, emphasized: false) = {
-  if is-executive {
-    stack(
-      spacing: parse-pt(theme.grid-gutter),
-      chart-body,
-      table-body,
-    )
+  let cols = if emphasized {
+    eval(theme.chart-table-emphasized, mode: "code")
   } else {
-    let cols = if emphasized {
-      eval(theme.chart-table-emphasized, mode: "code")
-    } else {
-      eval(theme.chart-table-normal, mode: "code")
-    }
-    grid(
-      columns: cols,
-      gutter: parse-pt(theme.grid-gutter),
-      [#align(top)[#table-body]],
-      [#align(center)[#chart-body]],
-    )
+    eval(theme.chart-table-normal, mode: "code")
   }
+  grid(
+    columns: cols,
+    gutter: parse-pt(theme.grid-gutter),
+    [#align(top)[#table-body]],
+    [#align(center)[#chart-body]],
+  )
 }
 
 #let single-chart-page(title, chart1, chart1-caption) = {
@@ -223,32 +225,18 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
 #let two-charts-page(title, chart1, chart1-caption, chart2, chart2-caption) = {
   text(size: parse-pt(theme.title-size), weight: "bold")[#title]
   v(parse-pt(theme.section-gap))
-  if is-executive {
-    stack(
-      spacing: parse-pt(theme.grid-gutter),
-      figure(
-        image(chart1, height: parse-in(theme.chart-two-col-h)),
-        caption: text(size: parse-pt(theme.caption-size))[#chart1-caption],
-      ),
-      figure(
-        image(chart2, height: parse-in(theme.chart-two-col-h)),
-        caption: text(size: parse-pt(theme.caption-size))[#chart2-caption],
-      ),
-    )
-  } else {
-    grid(
-      columns: eval(theme.two-col-ratio, mode: "code"),
-      gutter: parse-pt(theme.grid-gutter),
-      [#figure(
-        image(chart1, height: parse-in(theme.chart-two-col-h)),
-        caption: text(size: parse-pt(theme.caption-size))[#chart1-caption],
-      )],
-      [#figure(
-        image(chart2, height: parse-in(theme.chart-two-col-h)),
-        caption: text(size: parse-pt(theme.caption-size))[#chart2-caption],
-      )],
-    )
-  }
+  grid(
+    columns: eval(theme.two-col-ratio, mode: "code"),
+    gutter: parse-pt(theme.grid-gutter),
+    [#figure(
+      image(chart1, height: parse-in(theme.chart-two-col-h)),
+      caption: text(size: parse-pt(theme.caption-size))[#chart1-caption],
+    )],
+    [#figure(
+      image(chart2, height: parse-in(theme.chart-two-col-h)),
+      caption: text(size: parse-pt(theme.caption-size))[#chart2-caption],
+    )],
+  )
 }
 "#,
     );
@@ -256,6 +244,104 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
     // ── Section Logic ───────────────────────────────────────────────────────────
     doc.push_str(
         r#"
+#let cover-info-row(label, value) = {
+  stack(
+    spacing: 2pt,
+    text(size: parse-pt(theme.label-size), fill: luma(100), weight: "bold")[#upper(label)],
+    text(size: parse-pt(theme.body-size))[#value],
+    line(length: 100%, stroke: 0.4pt + luma(220)),
+  )
+}
+
+#let cover-page() = {
+  let data = json("summary.json")
+  let status-color = if data.overall-status == "pass" {
+    rgb(25, 135, 84)
+  } else if data.overall-status == "fail" {
+    rgb(220, 53, 69)
+  } else {
+    rgb(108, 117, 125)
+  }
+
+  v(6pt)
+  grid(
+    columns: (1fr, auto),
+    gutter: 0pt,
+    stack(
+      spacing: 6pt,
+      text(size: 22pt, weight: "bold", tracking: 1pt)[THORNTON TOMASETTI],
+      text(size: 10pt, fill: luma(90), tracking: 0.5pt)[STRUCTURAL ENGINEERING],
+    ),
+    align(right + top)[
+      #block(fill: status-color, radius: 3pt, inset: (x: 12pt, y: 6pt))[
+        #text(size: 10pt, weight: "bold", fill: white)[#upper(data.overall-status)]
+      ]
+    ],
+  )
+
+  v(14pt)
+  line(length: 100%, stroke: 2pt + black)
+  v(20pt)
+
+  text(size: 28pt, weight: "bold")[#project.project-name]
+  v(8pt)
+  text(size: 14pt, fill: luma(40))[#project.subject]
+  v(28pt)
+
+  grid(
+    columns: (2.2fr, 1fr),
+    gutter: 30pt,
+
+    stack(
+      spacing: 8pt,
+      cover-info-row("Project Number", project.project-number),
+      cover-info-row("Reference", project.reference),
+      cover-info-row("Code", data.code),
+      cover-info-row("Revision", project.revision),
+      cover-info-row("Branch", data.branch),
+      cover-info-row("Version", data.version-id),
+      cover-info-row("Date", project.date),
+      cover-info-row("Engineer", project.engineer),
+      cover-info-row("Checker", project.checker),
+    ),
+
+    stack(
+      spacing: 8pt,
+      text(size: parse-pt(theme.label-size), fill: luma(100), weight: "bold")[CHECKS],
+      v(2pt),
+      ..data.lines.map(line => {
+        let dot-color = if line.status == "pass" {
+          rgb(25, 135, 84)
+        } else if line.status == "fail" {
+          rgb(220, 53, 69)
+        } else if line.status == "warn" {
+          rgb(255, 193, 7)
+        } else {
+          luma(160)
+        }
+        (
+          grid(
+            columns: (8pt, 1fr, auto),
+            gutter: 5pt,
+            align: horizon,
+            circle(radius: 4pt, fill: dot-color),
+            text(size: 8pt)[#line.key],
+            text(size: 7pt, fill: luma(100))[#upper(line.status)],
+          ),
+          v(3pt),
+        )
+      }).flatten(),
+    ),
+  )
+
+  v(1fr)
+  line(length: 100%, stroke: 0.5pt + luma(180))
+  v(6pt)
+  text(size: 7pt, fill: luma(130))[
+    Generated by EtabExtension - Branch: #data.branch - Version: #data.version-id
+  ]
+}
+
 #let summary-page() = {
   let data = json("summary.json")
   text(size: parse-pt(theme.title-size), weight: "bold")[#project.project-name]
@@ -268,6 +354,7 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
       #stack(
         spacing: 3pt,
         [*Reference:* #project.reference],
+        [*Code:* #data.code],
         [*Project No.:* #project.project-number],
         [*Revision:* #project.revision],
         [*Branch / Version:* #data.branch / #data.version-id],
@@ -327,7 +414,7 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
 
 #let base-reactions-table(data) = {
   table(
-    columns: (1fr, 1fr, 1fr, 1fr, 1fr),
+    columns: (1.45fr, 1.45fr, 1fr, 1fr, 1.45fr),
     fill: (x, y) => if y == 0 { luma(220) } else { row-fill("", y) },
     align: (x, y) => if x >= 2 { right } else { left },
     table.header(
@@ -368,7 +455,7 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
 
 #let drift-table(data-node) = {
   table(
-    columns: (1fr, 1fr, 1fr, 1fr, 1fr),
+    columns: (auto, 1fr, auto, auto, auto),
     fill: (x, y) => if y == 0 { luma(220) } else { row-fill(data-node.annotations.at(y - 1, default: ""), y) },
     align: (x, y) => if x >= 2 { right } else { left },
     table.header(
@@ -407,7 +494,7 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
 
 #let displacement-table(data-node) = {
   table(
-    columns: (1fr, 1fr, 1fr, 1fr, 1fr),
+    columns: (auto, 1fr, auto, auto, auto),
     fill: (x, y) => if y == 0 { luma(220) } else { row-fill(data-node.annotations.at(y - 1, default: ""), y) },
     align: (x, y) => if x >= 2 { right } else { left },
     table.header(
@@ -478,19 +565,44 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
 
     doc.push_str(
         r#"
+#let pier-shear-table(data) = {
+  table(
+    columns: (0.8fr, 0.8fr, 1.9fr, 1fr, 1fr, 1fr, 0.8fr),
+    fill: (x, y) => if y == 0 { luma(220) } else { row-fill(data.annotations.at(y - 1, default: ""), y) },
+    align: (x, y) => if x >= 3 { right } else { left },
+    table.header(
+      ..("Story", "Pier", "Combo", "Stress (psi)", "Limit", "DCR", "Status")
+        .map(h => table.cell(fill: luma(220))[#h])
+    ),
+    ..data.rows.map(row => (
+      row.story,
+      row.pier,
+      row.combo,
+      str(calc.round(row.stress-psi, digits: 1)),
+      str(calc.round(row.limit-individual, digits: 3)),
+      str(calc.round(row.dcr, digits: 3)),
+      if row.pass { "PASS" } else { "FAIL" },
+    )).flatten(),
+  )
+}
+
 #let pier-shear-page(title, data-file, chart-file) = {
   let data = json(data-file)
   let pass-str = if data.pass { "PASS" } else { "FAIL" }
   text(size: parse-pt(theme.title-size), weight: "bold")[#title]
   v(parse-pt(theme.section-gap))
-  align(center)[
+  let table-body = [#align(top)[
+    #text(size: parse-pt(theme.label-size), weight: "bold")[Rows: #data.rows.len() | Overall: #pass-str]
+    #v(4pt)
+    #pier-shear-table(data)
+  ]]
+  let chart-body = [#align(center)[
     #figure(
       image(chart-file, height: parse-in(theme.chart-with-table-normal-h)),
       caption: text(size: parse-pt(theme.caption-size))[Pier Shear Envelope],
     )
-  ]
-  v(8pt)
-  text(size: parse-pt(theme.label-size), weight: "bold")[Rows: #data.rows.len() | Passed: #pass-str]
+  ]]
+  chart-table-layout(table-body, chart-body)
 }
 
 #let pier-axial-assumptions(data-file) = {
@@ -510,9 +622,12 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
 "#,
     );
 
+    procedures::append_definitions(&mut doc);
+
     // ── Generate Sequence of Section Calls ──────────────────────────────────────
     doc.push_str("\n// ── Document Sequence ────────────────────────────────\n");
-    doc.push_str("#summary-page()\n\n");
+    doc.push_str("#cover-page()\n\n");
+    doc.push_str("#pagebreak()\n#summary-page()\n\n");
 
     if calc.modal.is_some() {
         doc.push_str("#pagebreak()\n#modal-page()\n\n");
@@ -574,6 +689,8 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
         doc.push_str("#pagebreak()\n#single-chart-page([Pier Axial - Seismic], \"images/pier_axial_seismic.svg\", \"Pier Axial - Seismic\")\n\n");
         doc.push_str("#pagebreak()\n#pier-axial-assumptions(\"pier_axial_stress.json\")\n\n");
     }
+
+    procedures::append_sequence(&mut doc);
 
     doc
 }

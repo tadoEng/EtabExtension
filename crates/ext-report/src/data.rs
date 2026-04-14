@@ -7,7 +7,7 @@ use typst::foundations::Bytes;
 
 use ext_calc::output::{
     BaseReactionsOutput, CalcOutput, DisplacementOutput, DriftOutput, ModalOutput,
-    PierAxialStressOutput, TorsionalDirectionOutput, TorsionalOutput,
+    PierAxialStressOutput, StoryForcesOutput, TorsionalDirectionOutput, TorsionalOutput,
 };
 
 use crate::theme::PageTheme;
@@ -57,6 +57,9 @@ impl ReportData {
         }
         if let Some(v) = &calc.base_reactions {
             files.insert(pb("base_reactions.json"), to_json(&build_base_reactions(v))?);
+        }
+        if let Some(v) = &calc.story_forces {
+            files.insert(pb("story_forces.json"), to_json(&build_story_forces(v))?);
         }
         if let Some(v) = &calc.drift_wind {
             files.insert(pb("drift_wind.json"), to_json(&DriftReportData {
@@ -119,6 +122,7 @@ struct SummaryReportData {
     fail_count: u32,
     branch: String,
     version_id: String,
+    code: String,
     lines: Vec<SummaryLineReport>,
 }
 
@@ -138,6 +142,7 @@ fn build_summary(calc: &CalcOutput) -> SummaryReportData {
         fail_count: calc.summary.fail_count,
         branch: calc.meta.branch.clone(),
         version_id: calc.meta.version_id.clone(),
+        code: calc.meta.code.clone(),
         lines: calc.summary.lines.iter().map(|l| SummaryLineReport {
             key: l.key.clone(),
             status: l.status.clone(),
@@ -243,7 +248,7 @@ fn build_base_reactions(base: &BaseReactionsOutput) -> BaseReactionsReportData {
     let row_count = grouped.len();
     let rows = grouped.into_iter().map(|(case, case_type, fx, fy, fz)| {
         BaseReactionsReportRow {
-            output_case: case,
+            output_case: wrap_load_case_label(&case),
             case_type,
             fx_kip: fx,
             fy_kip: fy,
@@ -255,6 +260,48 @@ fn build_base_reactions(base: &BaseReactionsOutput) -> BaseReactionsReportData {
         rows,
         annotations: vec![String::new(); row_count],
     }
+}
+
+// ── Story Forces ─────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct StoryForcesReportData {
+    rows: Vec<StoryForcesReportRow>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct StoryForcesReportRow {
+    story: String,
+    max_vx_kip: f64,
+    max_my_kip_ft: f64,
+    max_vy_kip: f64,
+    max_mx_kip_ft: f64,
+}
+
+fn build_story_forces(story_forces: &StoryForcesOutput) -> StoryForcesReportData {
+    StoryForcesReportData {
+        rows: story_forces.rows.iter().map(|row| StoryForcesReportRow {
+            story: row.story.clone(),
+            max_vx_kip: row.max_vx_kip,
+            max_my_kip_ft: row.max_my_kip_ft,
+            max_vy_kip: row.max_vy_kip,
+            max_mx_kip_ft: row.max_mx_kip_ft,
+        }).collect(),
+    }
+}
+
+fn wrap_load_case_label(value: &str) -> String {
+    const SOFT_WRAP: char = '\u{200B}';
+    let mut out = String::with_capacity(value.len() + 16);
+    for ch in value.chars() {
+        out.push(ch);
+        if matches!(ch, '_' | '+' | '-' | '/' | ':' | ')') {
+            out.push(SOFT_WRAP);
+        }
+    }
+    out
 }
 
 // ── Drift ────────────────────────────────────────────────────────────────────
@@ -474,7 +521,7 @@ fn build_torsional_dir(dir: &TorsionalDirectionOutput) -> TorsionalDirReport {
         annotations.push(annotation.to_string());
         rows.push(TorsionalReportRow {
             story: row.story.clone(),
-            case: row.case.clone(),
+            case: wrap_load_case_label(&row.case),
             joint_a: row.joint_a.clone(),
             joint_b: row.joint_b.clone(),
             ratio: row.ratio,
@@ -544,7 +591,7 @@ fn build_pier_shear(pier: &ext_calc::output::PierShearStressOutput) -> PierShear
             PierShearReportRow {
                 story: row.story.clone(),
                 pier: row.pier.clone(),
-                combo: row.combo.clone(),
+                combo: wrap_load_case_label(&row.combo),
                 stress_psi: row.stress_psi,
                 limit_individual: row.limit_individual,
                 stress_ratio: row.stress_ratio,
@@ -577,3 +624,58 @@ fn build_pier_shear(pier: &ext_calc::output::PierShearStressOutput) -> PierShear
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::TABLOID_LANDSCAPE;
+
+    fn fixture_calc_output() -> CalcOutput {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../ext-calc/tests/fixtures/results_realistic/calc_output.json");
+        let text = std::fs::read_to_string(path).unwrap();
+        serde_json::from_str(&text).unwrap()
+    }
+
+    fn sample_project() -> ReportProjectMeta {
+        ReportProjectMeta {
+            project_name: "Project Test".to_string(),
+            project_number: "v1".to_string(),
+            reference: "main/v1".to_string(),
+            engineer: "Preview".to_string(),
+            checker: "Preview".to_string(),
+            date: "2026-04-15".to_string(),
+            subject: "Fixture report".to_string(),
+            scale: "NTS".to_string(),
+            revision: "0".to_string(),
+            sheet_prefix: "SK".to_string(),
+        }
+    }
+
+    #[test]
+    fn report_data_includes_story_forces_json_when_present() {
+        let calc = fixture_calc_output();
+        assert!(calc.story_forces.is_some());
+        let report_data =
+            ReportData::from_calc(&calc, &sample_project(), &TABLOID_LANDSCAPE, HashMap::new())
+                .unwrap();
+        assert!(
+            report_data
+                .files
+                .contains_key(&PathBuf::from("story_forces.json"))
+        );
+    }
+
+    #[test]
+    fn summary_json_includes_calc_code() {
+        let calc = fixture_calc_output();
+        let report_data =
+            ReportData::from_calc(&calc, &sample_project(), &TABLOID_LANDSCAPE, HashMap::new())
+                .unwrap();
+        let bytes = report_data
+            .files
+            .get(&PathBuf::from("summary.json"))
+            .expect("summary.json must exist");
+        let value: serde_json::Value = serde_json::from_slice(bytes.as_slice()).unwrap();
+        assert_eq!(value.get("code").and_then(|v| v.as_str()), Some(calc.meta.code.as_str()));
+    }
+}

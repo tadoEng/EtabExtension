@@ -1,3 +1,4 @@
+mod procedures;
 pub mod renderer;
 pub mod template;
 

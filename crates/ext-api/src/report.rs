@@ -302,7 +302,7 @@ fn build_render_config(ctx: &AppContext) -> RenderConfig {
 }
 
 fn default_base_reaction_groups() -> Vec<BaseReactionGroup> {
-    ["Dead", "SDL", "Live_red", "Live_unred"]
+    ["Dead", "SDL", "Live (red)", "Live (non-red)", "Live (roof)"]
         .into_iter()
         .map(|name| BaseReactionGroup {
             label: name.to_string(),

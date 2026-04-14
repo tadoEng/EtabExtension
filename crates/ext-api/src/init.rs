@@ -139,57 +139,82 @@ units = "US_Kip_Ft"
 [calc]
 code = "ACI318-14"
 occupancy-category = "II"
-modal-case = "MODAL"
-drift-tracking-groups = ["Core"]
+modal-case = "Modal (Rizt)"
+joint-tracking-groups = ["Joint47", "Joint49", "Joint50", "Joint51"]
 
 [calc.modal]
 min-mass-participation = 0.9
-display-mode-limit = 12
+display-mode-limit = 20
 
-[calc.base-shear]
-elf-case-x = "EQX"
-elf-case-y = "EQY"
-rsa-case-x = "RSX"
-rsa-case-y = "RSY"
-rsa-scale-min = 0.85
+[calc.base-reactions]
+elf-case-x = "ELF_X"
+elf-case-y = "ELF_Y"
+rsa-case-x = "DBE_X"
+rsa-case-y = "DBE_Y"
+rsa-scale-min = 1.0
 
-[[calc.base-shear.pie-groups]]
+[[calc.base-reactions.pie-groups]]
 label = "Gravity"
-load-cases = ["DEAD", "SDL", "LIVE"]
+load-cases = ["Dead", "SDL", "Live (red)", "Live (non-red)", "Live (roof)"]
+
+[calc.story-forces]
+story-force-x-cases = ["ELF_X", "DBE_X", "MCER_X", "W_700YRS"]
+story-force-y-cases = ["ELF_Y", "DBE_Y", "MCER_Y", "W_700YRS"]
 
 [calc.drift-wind]
-load-cases = ["WINDX", "WINDY"]
+drift-x-cases = ["W_10YRS"]
+drift-y-cases = ["W_10YRS"]
 drift-limit = 0.0025
 
 [calc.drift-seismic]
-load-cases = ["EQX", "EQY"]
+drift-x-cases = ["DBE_X*Cd/R", "ELF_X_Drift*Cd/Ie"]
+drift-y-cases = ["DBE_Y*Cd/R", "ELF_Y_Drift*Cd/Ie"]
 drift-limit = 0.02
 
 [calc.displacement-wind]
-load-cases = ["WINDX", "WINDY"]
-disp-limit-h = 500
+disp-x-cases = ["W_10YRS"]
+disp-y-cases = ["W_10YRS"]
+disp-limit-h = 400
 
-[calc.pier-shear-wind]
-load-combos = ["WIND-ULS"]
+[calc.torsional]
+torsional-x-case = ["ELF_X", "DBE_X"]
+torsional-y-case = ["ELF_Y", "DBE_Y"]
+x-joints = [["Joint47", "Joint50"]]
+y-joints = [["Joint49", "Joint51"]]
+ecc-ratio = 0.05
+
+[calc.pier-shear-stress-wind]
+stress-combos = ["ENV: WIND"]
 phi-v = 0.75
-alpha-c = 2.0
-fy-ksi = 60.0
-rho-t = 0.0025
 fc-default-ksi = 8.0
 
-[calc.pier-shear-seismic]
-load-combos = ["SEISMIC-ULS"]
+[calc.pier-shear-stress-seismic]
+stress-combos = ["ENV: DBE"]
 phi-v = 0.75
-alpha-c = 2.0
-fy-ksi = 60.0
-rho-t = 0.0025
 fc-default-ksi = 8.0
 
-[calc.pier-axial]
-load-combos = ["GRAVITY-ULS"]
+[calc.pier-axial-stress]
+stress-gravity-combos = [
+  "LC1: 1.4D",
+  "LC2: 1.2D+1.6L",
+]
+stress-wind-combos = [
+  "LC3.1: 1.2D+0.5W",
+  "LC3.2: 1.2D-0.5W",
+  "LC4.1: 1.2D+1.0W+1.0L",
+  "LC4.2: 1.2D+1.0W-1.0L",
+  "LC6.1: 0.9D+1.0W",
+  "LC6.2: 0.9D-1.0W",
+]
+stress-seismic-combos = [
+  "DBE1: (1.2+0.2Sds)D+0.5L+100X+30Y",
+  "DBE2: (1.2+0.2Sds)D+0.5L+100Y+30X",
+  "DBE3: (0.9-0.2Sds)D+100X+30Y",
+  "DBE4: (0.9-0.2Sds)D+100Y+30X",
+]
 phi-axial = 0.65
 
-# Note: drift-tracking-groups must match names extracted into
+# Note: joint-tracking-groups must match names extracted into
 # results/group_assignments.parquet after analysis.
 "#
     )
@@ -317,4 +342,27 @@ pub async fn init_project(req: InitRequest) -> Result<InitResult> {
         working_model_path: normalize_path(&working_model_path),
         onedrive_detected,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shared_config_template;
+
+    #[test]
+    fn shared_template_uses_new_calc_schema_only() {
+        let text = shared_config_template("Project Test");
+
+        assert!(text.contains("[calc.base-reactions]"));
+        assert!(text.contains("[[calc.base-reactions.pie-groups]]"));
+        assert!(text.contains("joint-tracking-groups"));
+        assert!(text.contains("drift-x-cases"));
+        assert!(text.contains("disp-x-cases"));
+        assert!(text.contains("[calc.pier-shear-stress-wind]"));
+        assert!(text.contains("[calc.pier-axial-stress]"));
+
+        assert!(!text.contains("[calc.base-shear]"));
+        assert!(!text.contains("drift-tracking-groups"));
+        assert!(!text.contains("[calc.pier-shear-wind]"));
+        assert!(!text.contains("[calc.pier-axial]"));
+    }
 }

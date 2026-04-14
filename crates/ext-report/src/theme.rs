@@ -109,9 +109,9 @@ pub const A4_PORTRAIT: PageTheme = PageTheme {
     chart_with_table_chart_h:  "4in",
     chart_with_table_normal_h: "4in",
 
-    two_col_ratio:          "(1fr, 1fr)",
-    chart_table_emphasized: "(1fr, 1fr)",
-    chart_table_normal:     "(1fr, 1fr)",
+    two_col_ratio:          "1fr",
+    chart_table_emphasized: "1fr",
+    chart_table_normal:     "1fr",
 
     // Unused in executive mode, retained for compatibility.
     title_block_columns: "(1in, 1in, 1in, 1in, 1in, 1.27in)",

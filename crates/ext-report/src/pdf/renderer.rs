@@ -211,6 +211,27 @@ mod tests {
         svgs
     }
 
+    fn parse_inches(s: &str) -> f64 {
+        s.trim_end_matches("in").parse::<f64>().unwrap()
+    }
+
+    fn first_media_box(pdf: &[u8]) -> Option<(f64, f64)> {
+        let text = String::from_utf8_lossy(pdf);
+        let start = text.find("/MediaBox")?;
+        let tail = &text[start..];
+        let bracket_start = tail.find('[')? + 1;
+        let bracket_end = tail[bracket_start..].find(']')? + bracket_start;
+        let values: Vec<f64> = tail[bracket_start..bracket_end]
+            .split_whitespace()
+            .filter_map(|token| token.parse::<f64>().ok())
+            .collect();
+        if values.len() >= 4 {
+            Some((values[2], values[3]))
+        } else {
+            None
+        }
+    }
+
     fn sample_torsional_row(story: &str, case: &str, ratio: f64) -> TorsionalRow {
         TorsionalRow {
             story: story.to_string(),
@@ -277,6 +298,27 @@ mod tests {
         };
         let pdf = render_pdf(&calc, &project, dummy_svg_map(), &A4_PORTRAIT).unwrap();
         assert!(pdf.starts_with(b"%PDF"));
+    }
+
+    #[test]
+    fn render_pdf_uses_theme_page_dimensions() {
+        let calc = fixture_calc_output();
+        let project = ReportProjectMeta::default();
+
+        let tabloid_pdf = render_pdf(&calc, &project, dummy_svg_map(), &TABLOID_LANDSCAPE).unwrap();
+        let (tabloid_w, tabloid_h) =
+            first_media_box(&tabloid_pdf).expect("tabloid pdf should contain MediaBox");
+        let expected_tabloid_w = parse_inches(TABLOID_LANDSCAPE.page_width) * 72.0;
+        let expected_tabloid_h = parse_inches(TABLOID_LANDSCAPE.page_height) * 72.0;
+        assert!((tabloid_w - expected_tabloid_w).abs() < 0.5);
+        assert!((tabloid_h - expected_tabloid_h).abs() < 0.5);
+
+        let a4_pdf = render_pdf(&calc, &project, dummy_svg_map(), &A4_PORTRAIT).unwrap();
+        let (a4_w, a4_h) = first_media_box(&a4_pdf).expect("a4 pdf should contain MediaBox");
+        let expected_a4_w = parse_inches(A4_PORTRAIT.page_width) * 72.0;
+        let expected_a4_h = parse_inches(A4_PORTRAIT.page_height) * 72.0;
+        assert!((a4_w - expected_a4_w).abs() < 0.5);
+        assert!((a4_h - expected_a4_h).abs() < 0.5);
     }
 
     #[test]

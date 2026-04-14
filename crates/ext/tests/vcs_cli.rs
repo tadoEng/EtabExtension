@@ -538,7 +538,14 @@ async fn init_writes_commented_calc_and_extract_template() {
     assert!(config_text.contains("[extract]"));
     assert!(config_text.contains("Capability notes"));
     assert!(config_text.contains("[calc]"));
-    assert!(config_text.contains("[[calc.base-shear.pie-groups]]"));
-    assert!(config_text.contains("drift-tracking-groups"));
+    assert!(config_text.contains("[calc.base-reactions]"));
+    assert!(config_text.contains("[[calc.base-reactions.pie-groups]]"));
+    assert!(config_text.contains("joint-tracking-groups"));
+    assert!(config_text.contains("drift-x-cases"));
+    assert!(config_text.contains("disp-x-cases"));
+    assert!(config_text.contains("[calc.pier-shear-stress-wind]"));
+    assert!(config_text.contains("[calc.pier-axial-stress]"));
+    assert!(!config_text.contains("[calc.base-shear]"));
+    assert!(!config_text.contains("drift-tracking-groups"));
     assert!(config_text.contains("results/group_assignments.parquet"));
 }
