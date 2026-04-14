@@ -27,18 +27,12 @@ use crate::{
 // ── Public types ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct CheckoutOptions {
     /// None = detect conflict only; Some = execute with chosen resolution.
     pub conflict_resolution: Option<CheckoutConflictResolution>,
 }
 
-impl Default for CheckoutOptions {
-    fn default() -> Self {
-        Self {
-            conflict_resolution: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub enum CheckoutConflictResolution {

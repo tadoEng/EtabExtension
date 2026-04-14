@@ -235,6 +235,128 @@ impl SidecarClient {
     }
 }
 
+// ── Mode B commands ───────────────────────────────────────────────────────
+
+impl SidecarClient {
+    /// Export a .edb snapshot to E2K text format.
+    pub async fn generate_e2k(
+        &self,
+        file: &Path,
+        output: &Path,
+        overwrite: bool,
+    ) -> ExtResult<GenerateE2kData> {
+        let file_str = file.display().to_string();
+        let output_str = output.display().to_string();
+        let mut args = vec!["generate-e2k", "--file", &file_str, "--output", &output_str];
+        let overwrite_flag;
+        if overwrite {
+            overwrite_flag = "--overwrite";
+            args.push(overwrite_flag);
+        }
+        let resp = self.run::<GenerateE2kData>(&args).await?;
+        resp.data.ok_or_else(|| {
+            ext_error::ExtError::SidecarParse("generate-e2k returned no data".into())
+        })
+    }
+
+    /// Run analysis on a committed snapshot. Never called on working/model.edb.
+    pub async fn run_analysis(
+        &self,
+        file: &Path,
+        cases: Option<&[String]>,
+        units: &str,
+    ) -> ExtResult<RunAnalysisData> {
+        let file_str = file.display().to_string();
+        let mut args = vec!["run-analysis", "--file", &file_str, "--units", units];
+        if let Some(c) = cases {
+            args.push("--cases");
+            for case in c {
+                args.push(case.as_str());
+            }
+        }
+        let resp = self.run::<RunAnalysisData>(&args).await?;
+        resp.data.ok_or_else(|| {
+            ext_error::ExtError::SidecarParse("run-analysis returned no data".into())
+        })
+    }
+
+    /// Extract material takeoff to a Parquet file.
+    pub async fn extract_materials(
+        &self,
+        file: &Path,
+        output_dir: &Path,
+        units: &str,
+        table_key: Option<&str>,
+        field_keys: Option<&[String]>,
+    ) -> ExtResult<ExtractMaterialsData> {
+        let file_str = file.display().to_string();
+        let output_str = output_dir.display().to_string();
+        let table_key_owned;
+        let field_keys_str;
+        let mut args = vec![
+            "extract-materials",
+            "--file",
+            &file_str,
+            "--output-dir",
+            &output_str,
+            "--units",
+            units,
+        ];
+        if let Some(k) = table_key {
+            table_key_owned = k.to_string();
+            args.push("--table-key");
+            args.push(&table_key_owned);
+        }
+        if let Some(fk) = field_keys {
+            field_keys_str = fk.join(",");
+            args.push("--field-keys");
+            args.push(&field_keys_str);
+        }
+        let resp = self.run::<ExtractMaterialsData>(&args).await?;
+        resp.data.ok_or_else(|| {
+            ext_error::ExtError::SidecarParse("extract-materials returned no data".into())
+        })
+    }
+
+    /// Extract analysis results to Parquet files.
+    ///
+    /// NOTE: calling convention differs from all other commands.
+    /// --file and --output-dir are flat flags.
+    /// --request takes the ENTIRE TableSelections tree serialised as one JSON string.
+    ///
+    /// Returns ExtractResultsData whose .tables map must be checked per-entry —
+    /// partial failure (some tables succeeded, some failed) is expected and normal.
+    pub async fn extract_results(
+        &self,
+        file: &Path,
+        output_dir: &Path,
+        request: &ExtractResultsRequest,
+    ) -> ExtResult<ExtractResultsData> {
+        let file_str = file.display().to_string();
+        let output_str = output_dir.display().to_string();
+        // Serialise the entire request struct → one JSON string arg.
+        // TOML snake_case is already converted to camelCase by #[serde(rename_all)].
+        let request_json = serde_json::to_string(request).map_err(|e| {
+            ext_error::ExtError::SidecarParse(format!("Failed to serialise request: {e}"))
+        })?;
+
+        let resp = self
+            .run::<ExtractResultsData>(&[
+                "extract-results",
+                "--file",
+                &file_str,
+                "--output-dir",
+                &output_str,
+                "--request",
+                &request_json,
+            ])
+            .await?;
+        resp.data.ok_or_else(|| {
+            ext_error::ExtError::SidecarParse("extract-results returned no data".into())
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -383,127 +505,5 @@ mod tests {
         assert!(json["tables"]["groupAssignments"].is_object());
         assert!(json["tables"]["materialPropertiesConcreteData"].is_object());
         assert!(json["tables"]["materialListByStory"].is_object());
-    }
-}
-
-// ── Mode B commands ───────────────────────────────────────────────────────
-
-impl SidecarClient {
-    /// Export a .edb snapshot to E2K text format.
-    pub async fn generate_e2k(
-        &self,
-        file: &Path,
-        output: &Path,
-        overwrite: bool,
-    ) -> ExtResult<GenerateE2kData> {
-        let file_str = file.display().to_string();
-        let output_str = output.display().to_string();
-        let mut args = vec!["generate-e2k", "--file", &file_str, "--output", &output_str];
-        let overwrite_flag;
-        if overwrite {
-            overwrite_flag = "--overwrite";
-            args.push(overwrite_flag);
-        }
-        let resp = self.run::<GenerateE2kData>(&args).await?;
-        resp.data.ok_or_else(|| {
-            ext_error::ExtError::SidecarParse("generate-e2k returned no data".into())
-        })
-    }
-
-    /// Run analysis on a committed snapshot. Never called on working/model.edb.
-    pub async fn run_analysis(
-        &self,
-        file: &Path,
-        cases: Option<&[String]>,
-        units: &str,
-    ) -> ExtResult<RunAnalysisData> {
-        let file_str = file.display().to_string();
-        let mut args = vec!["run-analysis", "--file", &file_str, "--units", units];
-        if let Some(c) = cases {
-            args.push("--cases");
-            for case in c {
-                args.push(case.as_str());
-            }
-        }
-        let resp = self.run::<RunAnalysisData>(&args).await?;
-        resp.data.ok_or_else(|| {
-            ext_error::ExtError::SidecarParse("run-analysis returned no data".into())
-        })
-    }
-
-    /// Extract material takeoff to a Parquet file.
-    pub async fn extract_materials(
-        &self,
-        file: &Path,
-        output_dir: &Path,
-        units: &str,
-        table_key: Option<&str>,
-        field_keys: Option<&[String]>,
-    ) -> ExtResult<ExtractMaterialsData> {
-        let file_str = file.display().to_string();
-        let output_str = output_dir.display().to_string();
-        let table_key_owned;
-        let field_keys_str;
-        let mut args = vec![
-            "extract-materials",
-            "--file",
-            &file_str,
-            "--output-dir",
-            &output_str,
-            "--units",
-            units,
-        ];
-        if let Some(k) = table_key {
-            table_key_owned = k.to_string();
-            args.push("--table-key");
-            args.push(&table_key_owned);
-        }
-        if let Some(fk) = field_keys {
-            field_keys_str = fk.join(",");
-            args.push("--field-keys");
-            args.push(&field_keys_str);
-        }
-        let resp = self.run::<ExtractMaterialsData>(&args).await?;
-        resp.data.ok_or_else(|| {
-            ext_error::ExtError::SidecarParse("extract-materials returned no data".into())
-        })
-    }
-
-    /// Extract analysis results to Parquet files.
-    ///
-    /// NOTE: calling convention differs from all other commands.
-    /// --file and --output-dir are flat flags.
-    /// --request takes the ENTIRE TableSelections tree serialised as one JSON string.
-    ///
-    /// Returns ExtractResultsData whose .tables map must be checked per-entry —
-    /// partial failure (some tables succeeded, some failed) is expected and normal.
-    pub async fn extract_results(
-        &self,
-        file: &Path,
-        output_dir: &Path,
-        request: &ExtractResultsRequest,
-    ) -> ExtResult<ExtractResultsData> {
-        let file_str = file.display().to_string();
-        let output_str = output_dir.display().to_string();
-        // Serialise the entire request struct → one JSON string arg.
-        // TOML snake_case is already converted to camelCase by #[serde(rename_all)].
-        let request_json = serde_json::to_string(request).map_err(|e| {
-            ext_error::ExtError::SidecarParse(format!("Failed to serialise request: {e}"))
-        })?;
-
-        let resp = self
-            .run::<ExtractResultsData>(&[
-                "extract-results",
-                "--file",
-                &file_str,
-                "--output-dir",
-                &output_str,
-                "--request",
-                &request_json,
-            ])
-            .await?;
-        resp.data.ok_or_else(|| {
-            ext_error::ExtError::SidecarParse("extract-results returned no data".into())
-        })
     }
 }

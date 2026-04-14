@@ -10,8 +10,12 @@ pub enum EtabsPreset {
     KnMC,
 }
 
-impl EtabsPreset {
-    pub fn from_str(value: &str) -> Result<Self> {
+use std::str::FromStr;
+
+impl FromStr for EtabsPreset {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "kip-ft-f" | "us_kip_ft" | "kip_ft" => Ok(Self::KipFtF),
             "kip-in-f" | "us_kip_in" | "kip_in" | "kip/in/f" | "kip-in" => Ok(Self::KipInF),
@@ -143,14 +147,14 @@ mod tests {
 
     #[test]
     fn preset_parsing_accepts_variants() {
-        assert!(EtabsPreset::from_str("kip-ft-F").is_ok());
-        assert!(EtabsPreset::from_str("KIP-FT-F").is_ok());
-        assert!(EtabsPreset::from_str("US_Kip_Ft").is_ok());
-        assert!(EtabsPreset::from_str("kip-in-F").is_ok());
-        assert!(EtabsPreset::from_str("US_Kip_In").is_ok());
-        assert!(EtabsPreset::from_str("kN-m-C").is_ok());
-        assert!(EtabsPreset::from_str("SI_kN_m").is_ok());
-        assert!(EtabsPreset::from_str("badunit").is_err());
+        assert!("kip-ft-F".parse::<EtabsPreset>().is_ok());
+        assert!("KIP-FT-F".parse::<EtabsPreset>().is_ok());
+        assert!("US_Kip_Ft".parse::<EtabsPreset>().is_ok());
+        assert!("kip-in-F".parse::<EtabsPreset>().is_ok());
+        assert!("US_Kip_In".parse::<EtabsPreset>().is_ok());
+        assert!("kN-m-C".parse::<EtabsPreset>().is_ok());
+        assert!("SI_kN_m".parse::<EtabsPreset>().is_ok());
+        assert!("badunit".parse::<EtabsPreset>().is_err());
     }
 
     #[test]

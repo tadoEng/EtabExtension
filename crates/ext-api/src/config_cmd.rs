@@ -220,11 +220,10 @@ fn parse_cli_value(raw: &str) -> Result<Value> {
     }
 
     let wrapped = format!("value = {trimmed}");
-    if let Ok(table) = toml::from_str::<toml::Table>(&wrapped) {
-        if let Some(value) = table.get("value") {
+    if let Ok(table) = toml::from_str::<toml::Table>(&wrapped)
+        && let Some(value) = table.get("value") {
             return toml_to_json(value);
         }
-    }
 
     Ok(Value::String(trimmed.to_string()))
 }

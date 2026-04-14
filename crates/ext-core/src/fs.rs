@@ -73,7 +73,7 @@ fn available_bytes(path: &Path) -> u64 {
         let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
         // SAFETY: c_path is a valid null-terminated C string; stat is zeroed.
         if unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) } == 0 {
-            (stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64)
+            stat.f_bavail.saturating_mul(stat.f_frsize)
         } else {
             u64::MAX
         }
@@ -148,11 +148,9 @@ pub fn cleanup_stale_tmp(dir: &Path) -> Vec<PathBuf> {
             .and_then(|e| e.to_str())
             .map(|e| e == "tmp")
             .unwrap_or(false)
-        {
-            if std::fs::remove_file(&path).is_ok() {
+            && std::fs::remove_file(&path).is_ok() {
                 removed.push(path);
             }
-        }
     }
     removed
 }

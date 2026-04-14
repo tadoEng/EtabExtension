@@ -81,15 +81,14 @@ pub fn save(
     based_on: Option<String>,
     overwrite: bool,
 ) -> Result<()> {
-    if let Some(existing) = stashes.get(branch) {
-        if !overwrite {
+    if let Some(existing) = stashes.get(branch)
+        && !overwrite {
             return Err(anyhow::Error::new(StashExists {
                 branch: branch.to_string(),
                 description: existing.description.clone(),
                 stashed_at: existing.stashed_at,
             }));
         }
-    }
 
     let stash_dir = ext_dir.join("stash");
     std::fs::create_dir_all(&stash_dir)

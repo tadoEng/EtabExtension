@@ -55,8 +55,8 @@ fn run() -> Result<()> {
 
     println!("Config Root : {}", config_root.display());
     println!("Results Dir : {}", results_dir.display());
-    println!("Version     : {}", version_id);
-    println!("Branch      : {}", branch);
+    println!("Version     : {version_id}");
+    println!("Branch      : {branch}");
     println!("Output JSON : {}", output_path.display());
     println!(
         "Summary     : {} ({} pass / {} fail / {} checks)",

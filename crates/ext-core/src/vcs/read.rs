@@ -199,11 +199,10 @@ pub fn latest_version_number(repo_dir: &Path, branch: &str) -> Result<u32> {
         if hash.is_empty() {
             continue;
         }
-        if let Some(id_str) = version_id_from_commit(repo_dir, branch, hash) {
-            if let Some(n) = parse_version_number(&id_str) {
+        if let Some(id_str) = version_id_from_commit(repo_dir, branch, hash)
+            && let Some(n) = parse_version_number(&id_str) {
                 max = max.max(n);
             }
-        }
     }
 
     Ok(max)
@@ -292,11 +291,10 @@ mod tests {
     }
 
     fn write_and_commit(repo: &Path, file: &str, content: &str, msg: &str) {
-        if let Some(parent) = Path::new(file).parent() {
-            if !parent.as_os_str().is_empty() {
+        if let Some(parent) = Path::new(file).parent()
+            && !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(repo.join(parent)).unwrap();
             }
-        }
         std::fs::write(repo.join(file), content).unwrap();
         Command::new("git")
             .args(["add", file])

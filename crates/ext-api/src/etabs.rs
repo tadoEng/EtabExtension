@@ -202,11 +202,10 @@ async fn confirm_open_pid(
         )
     })?;
 
-    if sidecar_target_matches(&status, target_file) {
-        if let Some(pid) = status.pid {
+    if sidecar_target_matches(&status, target_file)
+        && let Some(pid) = status.pid {
             return Ok(pid);
         }
-    }
 
     bail!(
         "✗ ETABS opened but PID could not be confirmed\n  File: {}\n  Close ETABS and try again",

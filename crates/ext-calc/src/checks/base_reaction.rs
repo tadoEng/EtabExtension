@@ -1,15 +1,12 @@
 use anyhow::{Result, bail};
 
+use crate::tables::base_reactions::BaseReactionRow;
 use crate::{
     code_params::CodeParams,
     output::{BaseReactionCheckRow, BaseReactionDir, BaseReactionsOutput, Quantity},
 };
-use crate::tables::base_reactions::BaseReactionRow;
 
-pub fn run(
-    reactions: &[BaseReactionRow],
-    params: &CodeParams,
-) -> Result<BaseReactionsOutput> {
+pub fn run(reactions: &[BaseReactionRow], params: &CodeParams) -> Result<BaseReactionsOutput> {
     let rows = reactions
         .iter()
         .map(|row| BaseReactionCheckRow {
@@ -58,22 +55,18 @@ fn build_direction(
     let component = if use_x_force { "FX" } else { "FY" };
     let v_rsa = max_abs_force_for_case(reactions, rsa_case, use_x_force).ok_or_else(|| {
         anyhow::anyhow!(
-            "Configured base reaction case '{}' not found in base reactions ({component})",
-            rsa_case
+            "Configured base reaction case '{rsa_case}' not found in base reactions ({component})"
         )
     })?;
     let v_elf = max_abs_force_for_case(reactions, elf_case, use_x_force).ok_or_else(|| {
         anyhow::anyhow!(
-            "Configured base reaction case '{}' not found in base reactions ({component})",
-            elf_case
+            "Configured base reaction case '{elf_case}' not found in base reactions ({component})"
         )
     })?;
 
     if v_elf <= f64::EPSILON {
         bail!(
-            "Configured ELF base reaction case '{}' has zero {} demand; cannot compute RSA scale ratio",
-            elf_case,
-            component
+            "Configured ELF base reaction case '{elf_case}' has zero {component} demand; cannot compute RSA scale ratio"
         );
     }
 
@@ -131,7 +124,10 @@ mod tests {
 
     #[test]
     fn base_reactions_compute_directional_rsa_ratios() {
-        let params = CodeParams::for_testing();
+        let mut params = CodeParams::for_testing();
+        params.base_reactions.rsa_case_x = "DBE_X".into();
+        params.base_reactions.rsa_case_y = "DBE_Y".into();
+
         let rows = vec![
             sample_row("ELF_X", 120.0, 10.0, 800.0),
             sample_row("DBE_X", 150.0, 15.0, 900.0),

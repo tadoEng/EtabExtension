@@ -94,11 +94,10 @@ pub fn cleanup_partial_snapshots(branch_dir: &Path) -> Vec<PathBuf> {
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.is_dir() && path.join(".partial").exists() {
-            if std::fs::remove_dir_all(&path).is_ok() {
+        if path.is_dir() && path.join(".partial").exists()
+            && std::fs::remove_dir_all(&path).is_ok() {
                 removed.push(path);
             }
-        }
     }
     removed
 }

@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
 use ext_calc::output::{
-    BaseReactionsOutput, CalcOutput, DisplacementOutput, DriftOutput, ModalOutput, PierShearStressOutput,
+    BaseReactionsOutput, CalcOutput, DisplacementOutput, DriftOutput, ModalOutput,
+    PierShearStressOutput,
 };
 use ext_render::{
-    BASE_REACTIONS_IMAGE, DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE, DRIFT_SEISMIC_X_IMAGE, DRIFT_SEISMIC_Y_IMAGE, DRIFT_WIND_X_IMAGE, DRIFT_WIND_Y_IMAGE,
+    BASE_REACTIONS_IMAGE, DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE,
+    DRIFT_SEISMIC_X_IMAGE, DRIFT_SEISMIC_Y_IMAGE, DRIFT_WIND_X_IMAGE, DRIFT_WIND_Y_IMAGE,
     PIER_AXIAL_STRESS_IMAGE, PIER_SHEAR_STRESS_SEISMIC_IMAGE, PIER_SHEAR_STRESS_WIND_IMAGE,
 };
 
@@ -452,15 +454,15 @@ fn build_pier_shear_table(pier: &PierShearStressOutput) -> KeyValueTable {
             }
         })
         .collect();
-    if let Some(first) = row_annotations.first_mut() {
-        if first.is_none() {
+    if let Some(first) = row_annotations.first_mut()
+        && first.is_none() {
             *first = Some("pass".to_string());
         }
-    }
 
     KeyValueTable {
         title: Some(format!(
-            "Pier Shear Results. Passed = {}", pass_fail(pier.pass)
+            "Pier Shear Results. Passed = {}",
+            pass_fail(pier.pass)
         )),
         headers: vec![
             "Story".to_string(),
@@ -491,8 +493,10 @@ mod tests {
     use crate::report_types::{ChartRef, ReportProjectMeta, ReportSection};
     use ext_calc::output::CalcOutput;
     use ext_render::{
-        BASE_REACTIONS_IMAGE, DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE, DRIFT_SEISMIC_X_IMAGE, DRIFT_SEISMIC_Y_IMAGE, DRIFT_WIND_X_IMAGE, DRIFT_WIND_Y_IMAGE,
-        MODAL_IMAGE, PIER_AXIAL_STRESS_IMAGE, PIER_SHEAR_STRESS_SEISMIC_IMAGE, PIER_SHEAR_STRESS_WIND_IMAGE,
+        BASE_REACTIONS_IMAGE, DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE,
+        DRIFT_SEISMIC_X_IMAGE, DRIFT_SEISMIC_Y_IMAGE, DRIFT_WIND_X_IMAGE, DRIFT_WIND_Y_IMAGE,
+        MODAL_IMAGE, PIER_AXIAL_STRESS_IMAGE, PIER_SHEAR_STRESS_SEISMIC_IMAGE,
+        PIER_SHEAR_STRESS_WIND_IMAGE,
     };
     use std::path::PathBuf;
 
@@ -568,7 +572,7 @@ mod tests {
         ));
         assert!(matches!(
             document.sections[1],
-            ReportSection::TableOnlyPage { .. }   // modal
+            ReportSection::TableOnlyPage { .. } // modal
         ));
         assert!(matches!(
             document.sections[2],
@@ -576,7 +580,7 @@ mod tests {
         ));
         assert!(matches!(
             document.sections[12],
-            ReportSection::CalculationPage { .. }  // pier axial assumptions
+            ReportSection::CalculationPage { .. } // pier axial assumptions
         ));
     }
 }

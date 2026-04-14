@@ -62,7 +62,11 @@ pub(crate) fn build_drift_output_directional(
                 story: String::new(),
                 group_name: String::new(),
                 output_case: String::new(),
-                direction: if direction == DriftDirection::X { "X".to_string() } else { "Y".to_string() },
+                direction: if direction == DriftDirection::X {
+                    "X".to_string()
+                } else {
+                    "Y".to_string()
+                },
                 sense: String::new(),
                 drift_ratio: 0.0,
                 dcr: 0.0,
@@ -133,7 +137,7 @@ pub(crate) fn build_drift_output_directional(
                     ("Y", "negative", row.max_drift_y_neg.abs()),
                 ]
             };
-            
+
             let (dir, sense, value) = candidates
                 .into_iter()
                 .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
@@ -142,7 +146,7 @@ pub(crate) fn build_drift_output_directional(
         })
         .max_by(|a, b| a.3.partial_cmp(&b.3).unwrap_or(std::cmp::Ordering::Equal))
         .unwrap();
-        
+
     let governing_row = rows_out[governing_index].clone();
 
     let dcr = drift_ratio / drift_limit;
@@ -204,9 +208,9 @@ pub(crate) fn resolve_groups<'a>(
     for group in configured_groups {
         let members = group_map
             .get(group)
-            .ok_or_else(|| anyhow::anyhow!("Configured tracking group '{}' not found", group))?;
+            .ok_or_else(|| anyhow::anyhow!("Configured tracking group '{group}' not found"))?;
         if members.is_empty() {
-            bail!("Configured tracking group '{}' has no members", group);
+            bail!("Configured tracking group '{group}' has no members");
         }
         selected.insert(
             group.as_str(),

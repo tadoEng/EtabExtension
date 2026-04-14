@@ -2,11 +2,16 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use anyhow::{Result, bail};
 
+use super::drift_wind::{
+    DriftDirection, max_negative, max_positive, resolve_groups, sort_rows_by_story,
+};
 use crate::code_params::CodeParams;
-use crate::output::{DisplacementEnvelopeRow, DisplacementOutput, DisplacementWindOutput, JointDisplacementResult, Quantity};
+use crate::output::{
+    DisplacementEnvelopeRow, DisplacementOutput, DisplacementWindOutput, JointDisplacementResult,
+    Quantity,
+};
 use crate::tables::joint_drift::JointDriftRow;
 use crate::tables::story_def::StoryDefRow;
-use super::drift_wind::{max_negative, max_positive, resolve_groups, sort_rows_by_story, DriftDirection};
 
 pub fn run(
     rows: &[JointDriftRow],
@@ -23,7 +28,7 @@ pub fn run(
             &params.displacement_wind.x_cases,
             params.displacement_wind.disp_limit_h,
             DriftDirection::X,
-            &params.unit_context.length_label().to_string(),
+            params.unit_context.length_label(),
         )?,
         y: build_displacement_output_directional(
             rows,
@@ -33,11 +38,12 @@ pub fn run(
             &params.displacement_wind.y_cases,
             params.displacement_wind.disp_limit_h,
             DriftDirection::Y,
-            &params.unit_context.length_label().to_string(),
+            params.unit_context.length_label(),
         )?,
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_displacement_output_directional(
     rows: &[JointDriftRow],
     stories: &[StoryDefRow],
@@ -59,7 +65,11 @@ pub(crate) fn build_displacement_output_directional(
                 story: String::new(),
                 group_name: String::new(),
                 output_case: String::new(),
-                direction: if direction == DriftDirection::X { "X".to_string() } else { "Y".to_string() },
+                direction: if direction == DriftDirection::X {
+                    "X".to_string()
+                } else {
+                    "Y".to_string()
+                },
                 sense: String::new(),
                 displacement: Quantity::new(0.0, length_label),
                 dcr: 0.0,
@@ -123,7 +133,7 @@ pub(crate) fn build_displacement_output_directional(
                     ("Y", "negative", row.max_disp_y_neg_ft.abs()),
                 ]
             };
-            
+
             let (dir, sense, value) = candidates
                 .into_iter()
                 .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
@@ -145,7 +155,11 @@ pub(crate) fn build_displacement_output_directional(
     }
 
     let limit_val = max_elev / (disp_limit_h as f64);
-    let dcr = if limit_val > 1e-9 { max_disp_val / limit_val } else { 0.0 };
+    let dcr = if limit_val > 1e-9 {
+        max_disp_val / limit_val
+    } else {
+        0.0
+    };
     let pass = dcr <= 1.0;
 
     Ok(DisplacementOutput {

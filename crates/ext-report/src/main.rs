@@ -70,8 +70,8 @@ fn preview_report(options: PreviewOptions) -> Result<()> {
 
     println!("Config Root : {}", config_root.display());
     println!("Results Dir : {}", results_dir.display());
-    println!("Version     : {}", version_id);
-    println!("Branch      : {}", branch);
+    println!("Version     : {version_id}");
+    println!("Branch      : {branch}");
     println!("Output PDF  : {}", output_path.display());
     Ok(())
 }
