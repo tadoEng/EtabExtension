@@ -2546,6 +2546,7 @@ dependencies = [
  "ext-calc",
  "ext-db",
  "ext-render",
+ "serde",
  "serde_json",
  "typst",
  "typst-assets",

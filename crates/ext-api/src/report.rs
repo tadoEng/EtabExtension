@@ -5,7 +5,7 @@ use chrono::Utc;
 use ext_calc::{CalcRunner, code_params::CodeParams, output::CalcOutput};
 use ext_core::vcs::current_branch;
 use ext_render::{BaseReactionGroup, RenderConfig, render_all_svg, write_svg_assets};
-use ext_report::{ChartRef, ReportProjectMeta, build_report_document, render_pdf, write_pdf};
+use ext_report::{ReportProjectMeta, TABLOID_LANDSCAPE, render_pdf, write_pdf};
 use serde::{Deserialize, Serialize};
 
 use crate::context::AppContext;
@@ -167,21 +167,13 @@ pub fn report_version(
     let version = resolve_version_ref(ctx, version_ref)?;
     let calc_output = load_calc_output(ctx, version_ref)?;
     let rendered = render_all_svg(&calc_output, &build_render_config(ctx))?;
-    let charts = rendered
-        .assets
-        .iter()
-        .map(|asset| ChartRef {
-            logical_name: asset.logical_name.clone(),
-            caption: asset.caption.clone(),
-        })
-        .collect::<Vec<_>>();
-    let document = build_report_document(&calc_output, &charts, build_project_meta(ctx, &version));
     let svg_map = rendered
         .assets
-        .into_iter()
-        .map(|asset| (asset.logical_name, asset.svg))
+        .iter()
+        .map(|asset| (asset.logical_name.clone(), asset.svg.clone()))
         .collect();
-    let pdf = render_pdf(&document, svg_map)?;
+    let project = build_project_meta(ctx, &version);
+    let pdf = render_pdf(&calc_output, &project, svg_map, &TABLOID_LANDSCAPE)?;
 
     let output_dir = report_output_dir(ctx, &version, output_root);
     let pdf_path = output_dir.join(format!("{report_name}.pdf"));
@@ -192,7 +184,7 @@ pub fn report_version(
         branch: version.branch,
         output_dir,
         pdf_path,
-        logical_images: charts.into_iter().map(|chart| chart.logical_name).collect(),
+        logical_images: rendered.assets.into_iter().map(|asset| asset.logical_name).collect(),
     })
 }
 
@@ -310,13 +302,13 @@ fn build_render_config(ctx: &AppContext) -> RenderConfig {
 }
 
 fn default_base_reaction_groups() -> Vec<BaseReactionGroup> {
-    ["Dead", "SDL", "Live_red", "Live_unred"]
-        .into_iter()
-        .map(|name| BaseReactionGroup {
-            label: name.to_string(),
-            load_cases: vec![name.to_string()],
-        })
-        .collect()
+    vec![BaseReactionGroup {
+        label: "Gravity".to_string(),
+        load_cases: ["Dead", "SDL", "Live (red)", "Live (non-red)", "Live (roof)"]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+    }]
 }
 
 #[cfg(test)]

@@ -11,6 +11,7 @@ anyhow = { workspace = true }
 ext-calc = { path = "../ext-calc" }
 ext-db = { path = "../ext-db" }
 ext-render = { path = "../ext-render" }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 typst = { workspace = true }
 typst-pdf = { workspace = true }
