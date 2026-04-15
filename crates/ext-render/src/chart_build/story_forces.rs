@@ -1,4 +1,4 @@
-use ext_calc::output::StoryForcesOutput;
+use ext_calc::output::{StoryForceCaseProfile, StoryForcesOutput};
 
 use crate::chart_build::{
     STORY_FORCE_MX_IMAGE, STORY_FORCE_MY_IMAGE, STORY_FORCE_VX_IMAGE, STORY_FORCE_VY_IMAGE,
@@ -16,38 +16,38 @@ pub fn build(output: &StoryForcesOutput, _config: &RenderConfig) -> Vec<NamedCha
         build_force_chart(
             STORY_FORCE_VX_IMAGE,
             "Story Shear VX",
-            "Maximum shear force Vx per story (X-direction excitation, kip).",
+            "Story shear Vx per load case (X-direction excitation, kip).",
+            &output.x_profiles,
             output,
+            |row| row.vx_kip,
             |row| row.max_vx_kip,
-            "#1f77b4",
-            "Vx (kip)",
         ),
         build_force_chart(
             STORY_FORCE_VY_IMAGE,
             "Story Shear VY",
-            "Maximum shear force Vy per story (Y-direction excitation, kip).",
+            "Story shear Vy per load case (Y-direction excitation, kip).",
+            &output.y_profiles,
             output,
+            |row| row.vy_kip,
             |row| row.max_vy_kip,
-            "#ff7f0e",
-            "Vy (kip)",
         ),
         build_force_chart(
             STORY_FORCE_MY_IMAGE,
             "Story Moment MY",
-            "Maximum moment My per story (X-direction excitation, kip·ft).",
+            "Story moment My per load case (X-direction excitation, kip·ft).",
+            &output.x_profiles,
             output,
+            |row| row.my_kip_ft,
             |row| row.max_my_kip_ft,
-            "#2ca02c",
-            "My (kip·ft)",
         ),
         build_force_chart(
             STORY_FORCE_MX_IMAGE,
             "Story Moment MX",
-            "Maximum moment Mx per story (Y-direction excitation, kip·ft).",
+            "Story moment Mx per load case (Y-direction excitation, kip·ft).",
+            &output.y_profiles,
             output,
+            |row| row.mx_kip_ft,
             |row| row.max_mx_kip_ft,
-            "#d62728",
-            "Mx (kip·ft)",
         ),
     ]
 }
@@ -56,16 +56,61 @@ fn build_force_chart(
     logical_name: &str,
     title: &str,
     caption: &str,
+    profiles: &[StoryForceCaseProfile],
     output: &StoryForcesOutput,
-    value_fn: impl Fn(&ext_calc::output::StoryForceEnvelopeRow) -> f64,
-    color: &str,
-    series_name: &str,
+    value_fn: impl Fn(&ext_calc::output::StoryForceCaseRow) -> f64,
+    fallback_value_fn: impl Fn(&ext_calc::output::StoryForceEnvelopeRow) -> f64,
 ) -> NamedChartSpec {
-    // Rows are already sorted top-down from calc; reverse for bottom-up chart display.
-    let rows: Vec<_> = output.rows.iter().rev().collect();
+    let categories = if output.story_order.is_empty() {
+        output
+            .rows
+            .iter()
+            .map(|row| row.story.clone())
+            .collect::<Vec<_>>()
+    } else {
+        output.story_order.clone()
+    };
 
-    let categories: Vec<String> = rows.iter().map(|r| r.story.clone()).collect();
-    let values: Vec<f64> = rows.iter().map(|r| value_fn(r).abs()).collect();
+    let palette = [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#8c564b", "#17becf", "#bcbd22", "#7f7f7f",
+    ];
+
+    let mut series = Vec::new();
+    for (idx, profile) in profiles.iter().enumerate() {
+        let mut by_story = std::collections::HashMap::new();
+        for row in &profile.rows {
+            by_story.insert(row.story.as_str(), value_fn(row).abs());
+        }
+        series.push(CartesianSeries {
+            name: profile.output_case.clone(),
+            data: categories
+                .iter()
+                .map(|story| by_story.get(story.as_str()).copied().unwrap_or(0.0))
+                .collect(),
+            kind: SeriesType::Line,
+            color: Some(palette[idx % palette.len()].to_string()),
+            line_style: None,
+            smooth: false,
+        });
+    }
+
+    if series.is_empty() {
+        let mut by_story = std::collections::HashMap::new();
+        for row in &output.rows {
+            by_story.insert(row.story.as_str(), fallback_value_fn(row).abs());
+        }
+        series.push(CartesianSeries {
+            name: "Envelope".to_string(),
+            data: categories
+                .iter()
+                .map(|story| by_story.get(story.as_str()).copied().unwrap_or(0.0))
+                .collect(),
+            kind: SeriesType::Line,
+            color: Some("#1f77b4".to_string()),
+            line_style: None,
+            smooth: false,
+        });
+    }
 
     let story_count = categories.len() as u32;
     let height = config_height_for_story_count(story_count);
@@ -80,14 +125,7 @@ fn build_force_chart(
             kind: ChartKind::Cartesian {
                 categories,
                 swap_axes: true, // Y-axis = story, X-axis = force magnitude
-                series: vec![CartesianSeries {
-                    name: series_name.to_string(),
-                    data: values,
-                    kind: SeriesType::Bar,
-                    color: Some(color.to_string()),
-                    line_style: None,
-                    smooth: false,
-                }],
+                series,
             },
         },
     }
@@ -100,12 +138,12 @@ fn config_height_for_story_count(count: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use ext_calc::output::{StoryForceEnvelopeRow, StoryForcesOutput};
+    use super::build;
     use crate::chart_build::{
         STORY_FORCE_MX_IMAGE, STORY_FORCE_MY_IMAGE, STORY_FORCE_VX_IMAGE, STORY_FORCE_VY_IMAGE,
     };
     use crate::chart_types::RenderConfig;
-    use super::build;
+    use ext_calc::output::{StoryForceEnvelopeRow, StoryForcesOutput};
 
     fn make_output() -> StoryForcesOutput {
         StoryForcesOutput {
@@ -132,6 +170,9 @@ mod tests {
                     max_mx_kip_ft: 1200.0,
                 },
             ],
+            story_order: vec!["L3".to_string(), "L2".to_string(), "L1".to_string()],
+            x_profiles: vec![],
+            y_profiles: vec![],
         }
     }
 

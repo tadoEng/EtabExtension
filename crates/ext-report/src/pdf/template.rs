@@ -1,6 +1,5 @@
-use ext_calc::output::CalcOutput;
 use crate::pdf::procedures;
-
+use ext_calc::output::CalcOutput;
 
 pub fn build_typst_document(calc: &CalcOutput) -> String {
     let mut doc = String::new();
@@ -424,9 +423,9 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
     ..data.rows.map(row => (
       row.output-case,
       row.case-type,
-      str(calc.round(row.fx-kip, digits: 1)),
-      str(calc.round(row.fy-kip, digits: 1)),
-      str(calc.round(row.fz-kip, digits: 1)),
+      str(calc.round(row.fx-kip, digits: 5)),
+      str(calc.round(row.fy-kip, digits: 5)),
+      str(calc.round(row.fz-kip, digits: 5)),
     )).flatten(),
   )
 }
@@ -455,20 +454,20 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
 
 #let drift-table(data-node) = {
   table(
-    columns: (auto, 1fr, auto, auto, auto),
-    fill: (x, y) => if y == 0 { luma(220) } else { row-fill(data-node.annotations.at(y - 1, default: ""), y) },
-    align: (x, y) => if x >= 2 { right } else { left },
-    table.header(
-      ..("Story", "Case", "Demand (ratio)", "Limit (ratio)", "DCR")
-        .map(h => table.cell(fill: luma(220))[#h])
-    ),
-    ..data-node.rows.map(row => (
-      row.story,
-      row.output-case,
-      str(calc.round(row.drift-ratio, digits: 5)),
-      str(calc.round(data-node.allowable-ratio, digits: 5)),
-      str(calc.round(row.dcr, digits: 3)),
-    )).flatten(),
+    columns: data-node.groups.len() + 1,
+    fill: (x, y) => if y == 0 { luma(220) } else { row-fill("", y) },
+    align: (x, y) => if x == 0 { left } else { right },
+    table.header([Level], ..data-node.groups.map(g => [#g])),
+    ..range(data-node.levels.len()).map(i => {
+      let row = data-node.matrix.at(i, default: ())
+      (
+        data-node.levels.at(i, default: "-"),
+        ..range(data-node.groups.len()).map(j => {
+          let value = row.at(j, default: none)
+          if value == none { "-" } else { str(calc.round(value, digits: 5)) }
+        }),
+      )
+    }).flatten(),
   )
 }
 
@@ -480,6 +479,8 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
     #text(size: parse-pt(theme.label-size), weight: "bold")[
       Governing: #data-node.governing-story #data-node.governing-direction #data-node.governing-case (#pass-str)
     ]
+    #v(3pt)
+    #text(size: parse-pt(theme.label-size))[Allowable ratio: #calc.round(data-node.allowable-ratio, digits: 5)]
     #v(4pt)
     #drift-table(data-node)
   ]]
@@ -494,20 +495,20 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
 
 #let displacement-table(data-node) = {
   table(
-    columns: (auto, 1fr, auto, auto, auto),
-    fill: (x, y) => if y == 0 { luma(220) } else { row-fill(data-node.annotations.at(y - 1, default: ""), y) },
-    align: (x, y) => if x >= 2 { right } else { left },
-    table.header(
-      ..("Story", "Case", "Demand (in)", "Limit (in)", "DCR")
-        .map(h => table.cell(fill: luma(220))[#h])
-    ),
-    ..data-node.rows.map(row => (
-      row.story,
-      row.output-case,
-      str(calc.round(row.demand-in, digits: 4)),
-      str(calc.round(data-node.limit-in, digits: 4)),
-      str(calc.round(row.dcr, digits: 3)),
-    )).flatten(),
+    columns: data-node.groups.len() + 1,
+    fill: (x, y) => if y == 0 { luma(220) } else { row-fill("", y) },
+    align: (x, y) => if x == 0 { left } else { right },
+    table.header([Level], ..data-node.groups.map(g => [#g])),
+    ..range(data-node.levels.len()).map(i => {
+      let row = data-node.matrix-in.at(i, default: ())
+      (
+        data-node.levels.at(i, default: "-"),
+        ..range(data-node.groups.len()).map(j => {
+          let value = row.at(j, default: none)
+          if value == none { "-" } else { str(calc.round(value, digits: 4)) }
+        }),
+      )
+    }).flatten(),
   )
 }
 
@@ -519,6 +520,8 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
     #text(size: parse-pt(theme.label-size), weight: "bold")[
       Governing: #data-node.governing-story #data-node.governing-direction #data-node.governing-case (#pass-str)
     ]
+    #v(3pt)
+    #text(size: parse-pt(theme.label-size))[Per-level limits shown in charts; matrix shows demand values only.]
     #v(4pt)
     #displacement-table(data-node)
   ]]
@@ -567,22 +570,20 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
         r#"
 #let pier-shear-table(data) = {
   table(
-    columns: (0.8fr, 0.8fr, 1.9fr, 1fr, 1fr, 1fr, 0.8fr),
-    fill: (x, y) => if y == 0 { luma(220) } else { row-fill(data.annotations.at(y - 1, default: ""), y) },
-    align: (x, y) => if x >= 3 { right } else { left },
-    table.header(
-      ..("Story", "Pier", "Combo", "Stress (psi)", "Limit", "DCR", "Status")
-        .map(h => table.cell(fill: luma(220))[#h])
-    ),
-    ..data.rows.map(row => (
-      row.story,
-      row.pier,
-      row.combo,
-      str(calc.round(row.stress-psi, digits: 1)),
-      str(calc.round(row.limit-individual, digits: 3)),
-      str(calc.round(row.dcr, digits: 3)),
-      if row.pass { "PASS" } else { "FAIL" },
-    )).flatten(),
+    columns: data.piers.len() + 1,
+    fill: (x, y) => if y == 0 { luma(220) } else { row-fill("", y) },
+    align: (x, y) => if x == 0 { left } else { right },
+    table.header([Level], ..data.piers.map(p => [#p])),
+    ..range(data.levels.len()).map(i => {
+      let row = data.matrix-psi.at(i, default: ())
+      (
+        data.levels.at(i, default: "-"),
+        ..range(data.piers.len()).map(j => {
+          let value = row.at(j, default: none)
+          if value == none { "-" } else { str(calc.round(value, digits: 3)) }
+        }),
+      )
+    }).flatten(),
   )
 }
 
@@ -592,7 +593,7 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
   text(size: parse-pt(theme.title-size), weight: "bold")[#title]
   v(parse-pt(theme.section-gap))
   let table-body = [#align(top)[
-    #text(size: parse-pt(theme.label-size), weight: "bold")[Rows: #data.rows.len() | Overall: #pass-str]
+    #text(size: parse-pt(theme.label-size), weight: "bold")[Levels: #data.levels.len() | Piers: #data.piers.len() | Overall: #pass-str]
     #v(4pt)
     #pier-shear-table(data)
   ]]

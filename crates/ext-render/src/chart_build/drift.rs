@@ -1,8 +1,7 @@
-use ext_calc::output::{DriftOutput, DriftWindOutput, DriftSeismicOutput};
+use ext_calc::output::{DriftOutput, DriftSeismicOutput, DriftWindOutput};
 
 use crate::chart_build::{
     DRIFT_SEISMIC_X_IMAGE, DRIFT_SEISMIC_Y_IMAGE, DRIFT_WIND_X_IMAGE, DRIFT_WIND_Y_IMAGE,
-    aggregate_story_max,
 };
 use crate::chart_types::{
     CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
@@ -58,25 +57,52 @@ fn build_chart(
     config: &RenderConfig,
     is_x: bool,
 ) -> NamedChartSpec {
-    // Use only the direction-specific drift columns so X and Y charts are truly independent.
-    let story_values = aggregate_story_max(drift.rows.iter().map(|row| {
-        let value = if is_x {
-            row.max_drift_x_pos.abs().max(row.max_drift_x_neg.abs())
-        } else {
-            row.max_drift_y_pos.abs().max(row.max_drift_y_neg.abs())
-        };
-        (row.story.clone(), value)
-    }));
+    let categories = if drift.story_order.is_empty() {
+        ordered_unique(drift.rows.iter().map(|row| row.story.clone()))
+    } else {
+        drift.story_order.clone()
+    };
+    let groups = ordered_unique(drift.rows.iter().map(|row| row.group_name.clone()));
 
-    let categories = story_values
-        .iter()
-        .map(|(story, _)| story.clone())
-        .collect();
-    let values = story_values.iter().map(|(_, value)| *value).collect();
-    let limits = vec![drift.allowable_ratio; story_values.len()];
+    let palette = [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#8c564b", "#17becf", "#bcbd22", "#7f7f7f",
+    ];
+    let mut series = Vec::new();
+    for (idx, group) in groups.iter().enumerate() {
+        let mut by_story = std::collections::HashMap::new();
+        for row in drift.rows.iter().filter(|row| row.group_name == *group) {
+            let demand = if is_x {
+                row.max_drift_x_pos.abs().max(row.max_drift_x_neg.abs())
+            } else {
+                row.max_drift_y_pos.abs().max(row.max_drift_y_neg.abs())
+            };
+            let entry = by_story.entry(row.story.as_str()).or_insert(0.0_f64);
+            *entry = entry.max(demand);
+        }
+        series.push(CartesianSeries {
+            name: group.clone(),
+            data: categories
+                .iter()
+                .map(|story| by_story.get(story.as_str()).copied().unwrap_or(0.0))
+                .collect(),
+            kind: SeriesType::Line,
+            color: Some(palette[idx % palette.len()].to_string()),
+            line_style: Some(LinePattern::Solid),
+            smooth: false,
+        });
+    }
+
+    series.push(CartesianSeries {
+        name: "Limit".to_string(),
+        data: vec![drift.allowable_ratio; categories.len()],
+        kind: SeriesType::Line,
+        color: Some("#cc0000".to_string()),
+        line_style: Some(LinePattern::Dashed),
+        smooth: false,
+    });
 
     // Scale chart height so bars don't compress on tall buildings (35+ stories).
-    let story_count = story_values.len() as u32;
+    let story_count = categories.len() as u32;
     let height = config.height.max(story_count * 18 + 100);
 
     NamedChartSpec {
@@ -89,37 +115,31 @@ fn build_chart(
             kind: ChartKind::Cartesian {
                 categories,
                 swap_axes: true,
-                series: vec![
-                    CartesianSeries {
-                        name: "Demand".to_string(),
-                        data: values,
-                        kind: SeriesType::Line,
-                        color: Some("#1f77b4".to_string()),
-                        line_style: Some(LinePattern::Solid),
-                        smooth: true,
-                    },
-                    CartesianSeries {
-                        name: "Limit".to_string(),
-                        data: limits,
-                        kind: SeriesType::Line,
-                        color: Some("#cc0000".to_string()),
-                        line_style: Some(LinePattern::Dashed),
-                        smooth: false,
-                    },
-                ],
+                series,
             },
         },
     }
 }
 
+fn ordered_unique(iter: impl Iterator<Item = String>) -> Vec<String> {
+    let mut out = Vec::new();
+    for value in iter {
+        if !out.contains(&value) {
+            out.push(value);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use ext_calc::output::{DriftEnvelopeRow, DriftOutput, DriftWindOutput, StoryDriftResult};
-    use crate::chart_types::{ChartKind, RenderConfig};
     use super::build_wind;
+    use crate::chart_types::{ChartKind, RenderConfig};
+    use ext_calc::output::{DriftEnvelopeRow, DriftOutput, DriftWindOutput, StoryDriftResult};
 
     fn make_drift_row(
         story: &str,
+        group: &str,
         x_pos: f64,
         x_neg: f64,
         y_pos: f64,
@@ -127,7 +147,7 @@ mod tests {
     ) -> DriftEnvelopeRow {
         DriftEnvelopeRow {
             story: story.to_string(),
-            group_name: "ALL".to_string(),
+            group_name: group.to_string(),
             output_case: "WIND".to_string(),
             max_disp_x_pos_ft: 0.0,
             max_disp_x_neg_ft: 0.0,
@@ -144,6 +164,7 @@ mod tests {
         DriftOutput {
             allowable_ratio: 0.004,
             rows,
+            story_order: vec!["L1".to_string(), "L2".to_string()],
             governing: StoryDriftResult {
                 story: "L1".to_string(),
                 group_name: "ALL".to_string(),
@@ -167,8 +188,8 @@ mod tests {
         // L1: large X drift, tiny Y drift
         // L2: tiny X drift, large Y drift
         let rows = vec![
-            make_drift_row("L1", 0.010, 0.008, 0.001, 0.001),
-            make_drift_row("L2", 0.001, 0.001, 0.010, 0.009),
+            make_drift_row("L1", "ALL", 0.010, 0.008, 0.001, 0.001),
+            make_drift_row("L2", "ALL", 0.001, 0.001, 0.010, 0.009),
         ];
         let wind = DriftWindOutput {
             x: dummy_drift_output(rows.clone()),
@@ -187,11 +208,34 @@ mod tests {
         let y_demands = extract_demands(&charts[1]);
 
         // Charts must differ because X/Y inputs differ.
-        assert_ne!(x_demands, y_demands, "X and Y charts must differ when inputs differ");
+        assert_ne!(
+            x_demands, y_demands,
+            "X and Y charts must differ when inputs differ"
+        );
 
         // X chart: largest demand from L1 (0.010), then L2 (0.001)
         assert!((x_demands.iter().cloned().fold(f64::NEG_INFINITY, f64::max) - 0.010).abs() < 1e-9);
         // Y chart: largest demand from L2 (0.010), L1 has 0.001
         assert!((y_demands.iter().cloned().fold(f64::NEG_INFINITY, f64::max) - 0.010).abs() < 1e-9);
+    }
+
+    #[test]
+    fn drift_chart_supports_more_than_four_groups() {
+        let mut rows = Vec::new();
+        for group in ["G1", "G2", "G3", "G4", "G5"] {
+            rows.push(make_drift_row("L2", group, 0.001, 0.0, 0.0, 0.0));
+            rows.push(make_drift_row("L1", group, 0.002, 0.0, 0.0, 0.0));
+        }
+
+        let wind = DriftWindOutput {
+            x: dummy_drift_output(rows.clone()),
+            y: dummy_drift_output(rows),
+        };
+        let charts = build_wind(&wind, &RenderConfig::default());
+        let ChartKind::Cartesian { series, .. } = &charts[0].spec.kind else {
+            panic!("expected cartesian chart");
+        };
+        // 5 tracking-group series + 1 limit series.
+        assert_eq!(series.len(), 6);
     }
 }

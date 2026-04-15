@@ -5,7 +5,7 @@ use chrono::Utc;
 use ext_calc::{CalcRunner, code_params::CodeParams, output::CalcOutput};
 use ext_core::vcs::current_branch;
 use ext_render::{BaseReactionGroup, RenderConfig, render_all_svg, write_svg_assets};
-use ext_report::{ReportProjectMeta, TABLOID_LANDSCAPE, render_pdf, write_pdf};
+use ext_report::{ReportProjectMeta, ReportTheme, render_pdf, write_pdf};
 use serde::{Deserialize, Serialize};
 
 use crate::context::AppContext;
@@ -49,6 +49,7 @@ pub struct RenderArtifacts {
 pub struct ReportArtifacts {
     pub version_id: String,
     pub branch: String,
+    pub theme: ReportTheme,
     pub output_dir: PathBuf,
     pub pdf_path: PathBuf,
     pub logical_images: Vec<String>,
@@ -100,10 +101,8 @@ pub fn run_calc_for_results_dir(ctx: &AppContext, results_dir: &Path) -> Result<
     }
 
     let params = CodeParams::from_config(&ctx.config)?;
-    let calc_output =
-        CalcRunner::run_all(results_dir, results_dir, &params, "direct", "direct").with_context(
-            || format!("Failed to run calculations for {}", results_dir.display()),
-        )?;
+    let calc_output = CalcRunner::run_all(results_dir, results_dir, &params, "direct", "direct")
+        .with_context(|| format!("Failed to run calculations for {}", results_dir.display()))?;
 
     let calc_output_path = results_dir.join("calc_output.json");
     let json = serde_json::to_string_pretty(&calc_output)?;
@@ -163,6 +162,7 @@ pub fn report_version(
     version_ref: &str,
     output_root: Option<&Path>,
     report_name: &str,
+    theme: ReportTheme,
 ) -> Result<ReportArtifacts> {
     let version = resolve_version_ref(ctx, version_ref)?;
     let calc_output = load_calc_output(ctx, version_ref)?;
@@ -173,7 +173,7 @@ pub fn report_version(
         .map(|asset| (asset.logical_name.clone(), asset.svg.clone()))
         .collect();
     let project = build_project_meta(ctx, &version);
-    let pdf = render_pdf(&calc_output, &project, svg_map, &TABLOID_LANDSCAPE)?;
+    let pdf = render_pdf(&calc_output, &project, svg_map, theme.page_theme())?;
 
     let output_dir = report_output_dir(ctx, &version, output_root);
     let pdf_path = output_dir.join(format!("{report_name}.pdf"));
@@ -182,9 +182,14 @@ pub fn report_version(
     Ok(ReportArtifacts {
         version_id: version.version_id,
         branch: version.branch,
+        theme,
         output_dir,
         pdf_path,
-        logical_images: rendered.assets.into_iter().map(|asset| asset.logical_name).collect(),
+        logical_images: rendered
+            .assets
+            .into_iter()
+            .map(|asset| asset.logical_name)
+            .collect(),
     })
 }
 
@@ -313,10 +318,13 @@ fn default_base_reaction_groups() -> Vec<BaseReactionGroup> {
 
 #[cfg(test)]
 mod tests {
-    use super::{load_calc_output, render_version, report_version, run_calc, run_calc_for_results_dir};
+    use super::{
+        load_calc_output, render_version, report_version, run_calc, run_calc_for_results_dir,
+    };
     use crate::AppContext;
     use crate::commit::{CommitOptions, commit_version};
     use crate::init::{InitRequest, init_project};
+    use ext_report::ReportTheme;
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
@@ -464,7 +472,8 @@ mod tests {
         let ctx = AppContext::new(&project_root).unwrap();
         run_calc(&ctx, "v1").unwrap();
 
-        let report = report_version(&ctx, "v1", None, "report").unwrap();
+        let report = report_version(&ctx, "v1", None, "report", ReportTheme::Tabloid).unwrap();
         assert!(report.pdf_path.exists());
+        assert_eq!(report.theme, ReportTheme::Tabloid);
     }
 }

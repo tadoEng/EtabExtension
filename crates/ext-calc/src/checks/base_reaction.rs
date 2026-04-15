@@ -1,15 +1,12 @@
 use anyhow::{Result, bail};
 
+use crate::tables::base_reactions::BaseReactionRow;
 use crate::{
     code_params::CodeParams,
     output::{BaseReactionCheckRow, BaseReactionDir, BaseReactionsOutput, Quantity},
 };
-use crate::tables::base_reactions::BaseReactionRow;
 
-pub fn run(
-    reactions: &[BaseReactionRow],
-    params: &CodeParams,
-) -> Result<BaseReactionsOutput> {
+pub fn run(reactions: &[BaseReactionRow], params: &CodeParams) -> Result<BaseReactionsOutput> {
     let rows = reactions
         .iter()
         .map(|row| BaseReactionCheckRow {
@@ -134,9 +131,9 @@ mod tests {
         let params = CodeParams::for_testing();
         let rows = vec![
             sample_row("ELF_X", 120.0, 10.0, 800.0),
-            sample_row("DBE_X", 150.0, 15.0, 900.0),
+            sample_row("RSA_X", 150.0, 15.0, 900.0),
             sample_row("ELF_Y", 8.0, 100.0, 780.0),
-            sample_row("DBE_Y", 10.0, 130.0, 840.0),
+            sample_row("RSA_Y", 10.0, 130.0, 840.0),
         ];
 
         let output = run(&rows, &params).unwrap();

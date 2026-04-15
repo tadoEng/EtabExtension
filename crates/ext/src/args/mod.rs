@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
 #[command(name = "ext")]
@@ -142,8 +142,17 @@ pub struct ReportArgs {
     #[arg(long)]
     pub output_root: Option<PathBuf>,
 
+    #[arg(long, value_enum, default_value_t = ReportThemeArg::Tabloid)]
+    pub theme: ReportThemeArg,
+
     #[arg(long, default_value = "report")]
     pub name: String,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum ReportThemeArg {
+    Tabloid,
+    A4,
 }
 
 #[derive(Debug, Args)]

@@ -24,10 +24,10 @@ pub fn append_definitions(doc: &mut String) {
   text(weight: "bold")[Pier Shear Stress (ext-calc)]
   v(4pt)
   [
-    1. Collect per-pier stress result rows (`story`, `pier`, `combo`, `stress-psi`, `limit-individual`, `stress-ratio`).\
-    2. Compute demand-capacity ratio as `dcr = stress-ratio / limit-individual`.\
-    3. Sort rows by descending `dcr` to expose governing combinations first.\
-    4. Apply report annotations: `fail` for dcr >= 1.0, `warn` for dcr >= 0.85, otherwise pass.
+    1. Collect per-pier stress result rows (`story`, `pier`, `stress-psi`, limits) and preserve top-to-bottom story order.\
+    2. Individual stress limit uses `10 * sqrt(f'c)`, and average stress limit uses `8 * sqrt(f'c)`.\
+    3. Group data into matrix tables with levels as rows and pier labels as columns.\
+    4. Render line charts by pier series with normalized pier ordering (`PX*`, then `PY*`, then others).
   ]
 }
 "#,
@@ -40,4 +40,3 @@ pub fn append_sequence(doc: &mut String) {
     }
     doc.push_str("#pagebreak()\n#calc-procedure-page()\n\n");
 }
-

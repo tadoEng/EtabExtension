@@ -58,11 +58,16 @@ pub(crate) fn build_drift_output_directional(
         return Ok(DriftOutput {
             allowable_ratio: drift_limit,
             rows: vec![],
+            story_order: vec![],
             governing: StoryDriftResult {
                 story: String::new(),
                 group_name: String::new(),
                 output_case: String::new(),
-                direction: if direction == DriftDirection::X { "X".to_string() } else { "Y".to_string() },
+                direction: if direction == DriftDirection::X {
+                    "X".to_string()
+                } else {
+                    "Y".to_string()
+                },
                 sense: String::new(),
                 drift_ratio: 0.0,
                 dcr: 0.0,
@@ -133,7 +138,7 @@ pub(crate) fn build_drift_output_directional(
                     ("Y", "negative", row.max_drift_y_neg.abs()),
                 ]
             };
-            
+
             let (dir, sense, value) = candidates
                 .into_iter()
                 .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
@@ -142,7 +147,7 @@ pub(crate) fn build_drift_output_directional(
         })
         .max_by(|a, b| a.3.partial_cmp(&b.3).unwrap_or(std::cmp::Ordering::Equal))
         .unwrap();
-        
+
     let governing_row = rows_out[governing_index].clone();
 
     let dcr = drift_ratio / drift_limit;
@@ -150,6 +155,7 @@ pub(crate) fn build_drift_output_directional(
 
     Ok(DriftOutput {
         allowable_ratio: drift_limit,
+        story_order: ordered_stories(&rows_out),
         rows: rows_out,
         governing: StoryDriftResult {
             story: governing_row.story,
@@ -172,8 +178,8 @@ pub(crate) fn build_drift_output_directional(
 pub(crate) fn story_order_lookup(stories: &[StoryDefRow]) -> HashMap<String, usize> {
     let mut ordered = stories.iter().collect::<Vec<_>>();
     ordered.sort_by(|a, b| {
-        a.elevation_ft
-            .partial_cmp(&b.elevation_ft)
+        b.elevation_ft
+            .partial_cmp(&a.elevation_ft)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
@@ -182,6 +188,16 @@ pub(crate) fn story_order_lookup(stories: &[StoryDefRow]) -> HashMap<String, usi
         .enumerate()
         .map(|(index, row)| (row.story.clone(), index))
         .collect()
+}
+
+fn ordered_stories(rows: &[DriftEnvelopeRow]) -> Vec<String> {
+    let mut out = Vec::new();
+    for row in rows {
+        if !out.contains(&row.story) {
+            out.push(row.story.clone());
+        }
+    }
+    out
 }
 
 pub(crate) fn sort_rows_by_story<T, F>(stories: &[StoryDefRow], rows: &mut [T], story_name: F)

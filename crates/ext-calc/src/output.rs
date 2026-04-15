@@ -126,6 +126,30 @@ pub struct StoryForceEnvelopeRow {
 #[serde(rename_all = "camelCase")]
 pub struct StoryForcesOutput {
     pub rows: Vec<StoryForceEnvelopeRow>,
+    #[serde(default)]
+    pub story_order: Vec<String>,
+    #[serde(default)]
+    pub x_profiles: Vec<StoryForceCaseProfile>,
+    #[serde(default)]
+    pub y_profiles: Vec<StoryForceCaseProfile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoryForceCaseProfile {
+    pub output_case: String,
+    pub rows: Vec<StoryForceCaseRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoryForceCaseRow {
+    pub story: String,
+    pub elevation_ft: f64,
+    pub vx_kip: f64,
+    pub vy_kip: f64,
+    pub mx_kip_ft: f64,
+    pub my_kip_ft: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,6 +186,8 @@ pub struct StoryDriftResult {
 pub struct DriftOutput {
     pub allowable_ratio: f64,
     pub rows: Vec<DriftEnvelopeRow>,
+    #[serde(default)]
+    pub story_order: Vec<String>,
     pub governing: StoryDriftResult,
     pub pass: bool,
     pub roof_disp_x: Option<Quantity>,
@@ -213,9 +239,21 @@ pub struct JointDisplacementResult {
 #[serde(rename_all = "camelCase")]
 pub struct DisplacementOutput {
     pub rows: Vec<DisplacementEnvelopeRow>,
+    #[serde(default)]
+    pub story_order: Vec<String>,
+    #[serde(default)]
+    pub story_limits: Vec<DisplacementLimitRow>,
     pub governing: JointDisplacementResult,
     pub disp_limit: Quantity,
     pub pass: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisplacementLimitRow {
+    pub story: String,
+    pub elevation_ft: f64,
+    pub limit_ft: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -300,6 +338,8 @@ pub struct PierShearStressOutput {
     pub phi_v: f64,
     pub limit_individual: f64,
     pub limit_average: f64,
+    #[serde(default)]
+    pub story_order: Vec<String>,
     pub per_pier: Vec<PierShearStressRow>,
     pub x_average: Vec<PierShearStressAverageRow>,
     pub y_average: Vec<PierShearStressAverageRow>,

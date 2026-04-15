@@ -126,6 +126,28 @@ fn cli_calc_render_report_json_outputs() {
     let report_json: serde_json::Value = serde_json::from_slice(&report.stdout).unwrap();
     let pdf_path = PathBuf::from(report_json["pdfPath"].as_str().unwrap());
     assert!(pdf_path.exists());
+    assert_eq!(report_json["theme"].as_str(), Some("tabloid"));
+
+    let report_a4 = run_ext(&[
+        "--json",
+        "--project-path",
+        project,
+        "report",
+        "v1",
+        "--theme",
+        "a4",
+        "--name",
+        "report_a4",
+    ]);
+    assert!(
+        report_a4.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&report_a4.stderr)
+    );
+    let report_a4_json: serde_json::Value = serde_json::from_slice(&report_a4.stdout).unwrap();
+    assert_eq!(report_a4_json["theme"].as_str(), Some("a4"));
+    let pdf_a4_path = PathBuf::from(report_a4_json["pdfPath"].as_str().unwrap());
+    assert!(pdf_a4_path.exists());
 
     let render = run_ext(&["--json", "--project-path", project, "render", "v1"]);
     assert!(

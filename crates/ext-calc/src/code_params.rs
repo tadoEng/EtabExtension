@@ -192,7 +192,10 @@ impl CodeParams {
             let mut x_pairs = Vec::new();
             for pair in &config.calc.torsional.x_joints {
                 if pair.len() != 2 {
-                    bail!("[calc.torsional].x-joints: each pair must have exactly 2 joint names, found {}", pair.len());
+                    bail!(
+                        "[calc.torsional].x-joints: each pair must have exactly 2 joint names, found {}",
+                        pair.len()
+                    );
                 }
                 x_pairs.push(TorsionalJointPair {
                     joint_a: pair[0].clone(),
@@ -203,7 +206,10 @@ impl CodeParams {
             let mut y_pairs = Vec::new();
             for pair in &config.calc.torsional.y_joints {
                 if pair.len() != 2 {
-                    bail!("[calc.torsional].y-joints: each pair must have exactly 2 joint names, found {}", pair.len());
+                    bail!(
+                        "[calc.torsional].y-joints: each pair must have exactly 2 joint names, found {}",
+                        pair.len()
+                    );
                 }
                 y_pairs.push(TorsionalJointPair {
                     joint_a: pair[0].clone(),
@@ -263,6 +269,9 @@ impl CodeParams {
             None
         };
 
+        let mut check_selection = CheckSelection::default();
+        check_selection.torsional = torsional.is_some();
+
         Ok(Self {
             code: config.calc.code_or_default().to_string(),
             occupancy_category: config.calc.occupancy_or_default().to_string(),
@@ -297,7 +306,7 @@ impl CodeParams {
             pier_shear_stress_wind,
             pier_shear_stress_seismic,
             pier_axial_stress,
-            check_selection: CheckSelection::default(),
+            check_selection,
             unit_context: UnitContext::from_config(config)?,
         })
     }
@@ -310,32 +319,32 @@ impl CodeParams {
         config.calc.joint_tracking_groups = vec!["Tracking_Points".into()];
         config.calc.modal.min_mass_participation = Some(0.90);
         config.calc.modal.display_mode_limit = Some(20);
-        
+
         config.calc.base_reactions.elf_case_x = Some("ELF_X".into());
         config.calc.base_reactions.elf_case_y = Some("ELF_Y".into());
         config.calc.base_reactions.rsa_case_x = Some("RSA_X".into());
         config.calc.base_reactions.rsa_case_y = Some("RSA_Y".into());
         config.calc.base_reactions.rsa_scale_min = Some(1.0);
-        
+
         config.calc.drift_wind.drift_x_cases = vec!["Wind_ASCE_10yr_X".into()];
         config.calc.drift_wind.drift_y_cases = vec!["Wind_ASCE_10yr_Y".into()];
         config.calc.drift_wind.drift_limit = Some(0.0025);
-        
+
         config.calc.drift_seismic.drift_x_cases = vec!["RSA_X_Drift".into()];
         config.calc.drift_seismic.drift_y_cases = vec!["RSA_Y_Drift".into()];
         config.calc.drift_seismic.drift_limit = Some(0.020);
-        
+
         config.calc.displacement_wind.disp_x_cases = vec!["Wind_10yr_X".into()];
         config.calc.displacement_wind.disp_y_cases = vec!["Wind_10yr_Y".into()];
         config.calc.displacement_wind.disp_limit_h = Some(500);
-        
+
         config.calc.pier_shear_stress_wind.stress_combos = vec!["EVN_LRFD_WIND".into()];
         config.calc.pier_shear_stress_seismic.stress_combos = vec!["EVN_LRFD_EQ".into()];
-        
+
         config.calc.pier_axial_stress.stress_gravity_combos = vec!["LC1_Grav".into()];
         config.calc.pier_axial_stress.stress_wind_combos = vec!["LC2_Wind".into()];
         config.calc.pier_axial_stress.stress_seismic_combos = vec!["LC3_EQ".into()];
-        
+
         Self::from_config(&config).unwrap()
     }
 }
@@ -472,5 +481,18 @@ mod tests {
             err.to_string()
                 .contains("missing required config: [calc.displacement-wind].disp-x-cases")
         );
+    }
+
+    #[test]
+    fn code_params_enable_torsional_when_configured() {
+        let mut config = base_valid_config();
+        config.calc.torsional.torsional_x_case = vec!["ELF_X".into()];
+        config.calc.torsional.torsional_y_case = vec!["ELF_Y".into()];
+        config.calc.torsional.x_joints = vec![vec!["J1".into(), "J2".into()]];
+        config.calc.torsional.y_joints = vec![vec!["J3".into(), "J4".into()]];
+
+        let params = CodeParams::from_config(&config).unwrap();
+        assert!(params.torsional.is_some());
+        assert!(params.check_selection.torsional);
     }
 }

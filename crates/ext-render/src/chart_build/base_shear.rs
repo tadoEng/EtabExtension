@@ -8,7 +8,10 @@ use crate::chart_types::{ChartKind, ChartSpec, NamedChartSpec, RenderConfig};
 
 pub fn build(base_shear: &BaseReactionsOutput, config: &RenderConfig) -> NamedChartSpec {
     let data = build_pie_groups(base_shear, config);
-    let group_label = config.base_reaction_groups.first().map(|group| group.label.trim());
+    let group_label = config
+        .base_reaction_groups
+        .first()
+        .map(|group| group.label.trim());
     let title = match group_label {
         Some(label) if !label.is_empty() => format!("{label} Load Distribution"),
         _ => "Gravity Load Distribution".to_string(),
@@ -42,6 +45,9 @@ fn build_pie_groups(base_shear: &BaseReactionsOutput, config: &RenderConfig) -> 
         let mut grouped: Vec<(String, f64)> = Vec::new();
 
         for row in &base_shear.rows {
+            if row.case_type == "Combination" {
+                continue;
+            }
             if !whitelist.contains(row.output_case.as_str()) {
                 continue;
             }
@@ -49,9 +55,9 @@ fn build_pie_groups(base_shear: &BaseReactionsOutput, config: &RenderConfig) -> 
                 .iter_mut()
                 .find(|(name, _)| name == &row.output_case)
             {
-                *total += row.fz_kip.abs();
+                *total += round5(row.fz_kip.abs());
             } else {
-                grouped.push((row.output_case.clone(), row.fz_kip.abs()));
+                grouped.push((row.output_case.clone(), round5(row.fz_kip.abs())));
             }
         }
 
@@ -60,13 +66,16 @@ fn build_pie_groups(base_shear: &BaseReactionsOutput, config: &RenderConfig) -> 
 
     let mut fallback: Vec<(String, f64)> = Vec::new();
     for row in &base_shear.rows {
+        if row.case_type == "Combination" {
+            continue;
+        }
         if let Some((_, total)) = fallback
             .iter_mut()
             .find(|(name, _)| name == &row.output_case)
         {
-            *total += row.fz_kip.abs();
+            *total += round5(row.fz_kip.abs());
         } else {
-            fallback.push((row.output_case.clone(), row.fz_kip.abs()));
+            fallback.push((row.output_case.clone(), round5(row.fz_kip.abs())));
         }
     }
 
@@ -77,10 +86,14 @@ fn sort_pie_data(values: Vec<(String, f64)>) -> Vec<(f64, String)> {
     let mut pie = values
         .into_iter()
         .filter(|(_, total)| *total > 0.0)
-        .map(|(label, total)| (total, label))
+        .map(|(label, total)| (round5(total), label))
         .collect::<Vec<_>>();
     pie.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(Ordering::Equal));
     pie
+}
+
+fn round5(value: f64) -> f64 {
+    (value * 100_000.0).round() / 100_000.0
 }
 
 #[cfg(test)]
@@ -104,6 +117,21 @@ mod tests {
         BaseReactionCheckRow {
             output_case: case_name.to_string(),
             case_type: "Combo".to_string(),
+            step_type: "Max".to_string(),
+            step_number: None,
+            fx_kip: 0.0,
+            fy_kip: 0.0,
+            fz_kip,
+            mx_kip_ft: 0.0,
+            my_kip_ft: 0.0,
+            mz_kip_ft: 0.0,
+        }
+    }
+
+    fn sample_row_with_type(case_name: &str, case_type: &str, fz_kip: f64) -> BaseReactionCheckRow {
+        BaseReactionCheckRow {
+            output_case: case_name.to_string(),
+            case_type: case_type.to_string(),
             step_type: "Max".to_string(),
             step_number: None,
             fx_kip: 0.0,
@@ -222,5 +250,17 @@ mod tests {
         let chart = build(&output, &config);
         assert_eq!(chart.spec.title, "Lateral Load Distribution");
         assert!(chart.caption.contains("Lateral"));
+    }
+
+    #[test]
+    fn pie_groups_skip_combination_case_type_rows() {
+        let output = sample_output(vec![
+            sample_row_with_type("Dead", "Combo", 100.0),
+            sample_row_with_type("Dead", "Combination", 200.0),
+        ]);
+        let config = gravity_config(vec!["Dead"]);
+        let grouped = build_pie_groups(&output, &config);
+        assert_eq!(grouped.len(), 1);
+        assert!((slice_total(&grouped, "Dead") - 100.0).abs() < 1e-9);
     }
 }

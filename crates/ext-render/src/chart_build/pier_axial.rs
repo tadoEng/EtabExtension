@@ -4,6 +4,7 @@ use ext_calc::output::PierAxialStressOutput;
 
 use crate::chart_build::{
     PIER_AXIAL_GRAVITY_IMAGE, PIER_AXIAL_SEISMIC_IMAGE, PIER_AXIAL_WIND_IMAGE,
+    is_default_pier_label, normalized_pier_labels,
 };
 use crate::chart_types::{
     CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
@@ -13,13 +14,34 @@ use crate::chart_types::{
 /// Returns only assets for categories that have at least one result row.
 pub fn build_all(output: &PierAxialStressOutput, config: &RenderConfig) -> Vec<NamedChartSpec> {
     let mut charts = Vec::new();
-    if let Some(chart) = build_category(output, config, "gravity", PIER_AXIAL_GRAVITY_IMAGE, "Pier Axial — Gravity", "Signed axial stress envelope per pier under gravity combos (ksi).") {
+    if let Some(chart) = build_category(
+        output,
+        config,
+        "gravity",
+        PIER_AXIAL_GRAVITY_IMAGE,
+        "Pier Axial — Gravity",
+        "Signed axial stress envelope per pier under gravity combos (ksi).",
+    ) {
         charts.push(chart);
     }
-    if let Some(chart) = build_category(output, config, "wind", PIER_AXIAL_WIND_IMAGE, "Pier Axial — Wind", "Signed axial stress envelope per pier under wind combos (ksi).") {
+    if let Some(chart) = build_category(
+        output,
+        config,
+        "wind",
+        PIER_AXIAL_WIND_IMAGE,
+        "Pier Axial — Wind",
+        "Signed axial stress envelope per pier under wind combos (ksi).",
+    ) {
         charts.push(chart);
     }
-    if let Some(chart) = build_category(output, config, "seismic", PIER_AXIAL_SEISMIC_IMAGE, "Pier Axial — Seismic", "Signed axial stress envelope per pier under seismic combos (ksi).") {
+    if let Some(chart) = build_category(
+        output,
+        config,
+        "seismic",
+        PIER_AXIAL_SEISMIC_IMAGE,
+        "Pier Axial — Seismic",
+        "Signed axial stress envelope per pier under seismic combos (ksi).",
+    ) {
         charts.push(chart);
     }
     charts
@@ -55,6 +77,9 @@ fn build_category(
     // Keep the governing (max absolute) value per story per pier.
     let mut pier_map: Vec<(String, HashMap<String, f64>)> = Vec::new();
     for row in &filtered {
+        if is_default_pier_label(&row.pier_label) {
+            continue;
+        }
         if let Some((_, map)) = pier_map
             .iter_mut()
             .find(|(label, _)| label == &row.pier_label)
@@ -69,11 +94,23 @@ fn build_category(
             pier_map.push((row.pier_label.clone(), map));
         }
     }
+    let ordered_labels = normalized_pier_labels(pier_map.iter().map(|(label, _)| label.clone()));
+    pier_map.sort_by(|a, b| {
+        let a_idx = ordered_labels
+            .iter()
+            .position(|label| label == &a.0)
+            .unwrap_or(usize::MAX);
+        let b_idx = ordered_labels
+            .iter()
+            .position(|label| label == &b.0)
+            .unwrap_or(usize::MAX);
+        a_idx.cmp(&b_idx)
+    });
 
     let palette = [
         "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
     ];
-    let mut series: Vec<CartesianSeries> = pier_map
+    let series: Vec<CartesianSeries> = pier_map
         .iter()
         .enumerate()
         .map(|(idx, (pier_label, val_map))| {
@@ -91,16 +128,6 @@ fn build_category(
             }
         })
         .collect();
-
-    // Zero-reference dashed line.
-    series.push(CartesianSeries {
-        name: "Zero".to_string(),
-        data: vec![0.0; stories.len()],
-        kind: SeriesType::Line,
-        color: Some("#aaaaaa".to_string()),
-        line_style: Some(LinePattern::Dashed),
-        smooth: false,
-    });
 
     let story_count = stories.len() as u32;
     let height = config.height.max(story_count * 18 + 100);
@@ -123,12 +150,12 @@ fn build_category(
 
 #[cfg(test)]
 mod tests {
-    use ext_calc::output::{PierAxialResult, PierAxialStressOutput, Quantity};
+    use super::build_all;
     use crate::chart_build::{
         PIER_AXIAL_GRAVITY_IMAGE, PIER_AXIAL_SEISMIC_IMAGE, PIER_AXIAL_WIND_IMAGE,
     };
     use crate::chart_types::RenderConfig;
-    use super::build_all;
+    use ext_calc::output::{PierAxialResult, PierAxialStressOutput, Quantity};
 
     fn make_result(pier: &str, story: &str, category: &str, fa_ksi: f64) -> PierAxialResult {
         PierAxialResult {
@@ -175,9 +202,15 @@ mod tests {
         assert_eq!(charts.len(), 3, "expected 3 category chart assets");
 
         let names: Vec<&str> = charts.iter().map(|c| c.logical_name.as_str()).collect();
-        assert!(names.contains(&PIER_AXIAL_GRAVITY_IMAGE), "missing gravity chart");
+        assert!(
+            names.contains(&PIER_AXIAL_GRAVITY_IMAGE),
+            "missing gravity chart"
+        );
         assert!(names.contains(&PIER_AXIAL_WIND_IMAGE), "missing wind chart");
-        assert!(names.contains(&PIER_AXIAL_SEISMIC_IMAGE), "missing seismic chart");
+        assert!(
+            names.contains(&PIER_AXIAL_SEISMIC_IMAGE),
+            "missing seismic chart"
+        );
     }
 
     #[test]
@@ -185,9 +218,7 @@ mod tests {
         // Only gravity rows — wind and seismic charts must be absent.
         let output = PierAxialStressOutput {
             phi_axial: 0.65,
-            piers: vec![
-                make_result("P1", "L1", "gravity", 0.5),
-            ],
+            piers: vec![make_result("P1", "L1", "gravity", 0.5)],
             governing_gravity: Some(make_result("P1", "L1", "gravity", 0.5)),
             governing_wind: None,
             governing_seismic: None,

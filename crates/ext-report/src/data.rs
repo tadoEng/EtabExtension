@@ -45,7 +45,7 @@ impl ReportData {
         let mut files = HashMap::new();
 
         // Always present
-        files.insert(pb("theme.json"),   to_json(theme)?);
+        files.insert(pb("theme.json"), to_json(theme)?);
         files.insert(pb("project.json"), to_json(project)?);
 
         // Summary — always present
@@ -56,28 +56,40 @@ impl ReportData {
             files.insert(pb("modal.json"), to_json(&build_modal(v))?);
         }
         if let Some(v) = &calc.base_reactions {
-            files.insert(pb("base_reactions.json"), to_json(&build_base_reactions(v))?);
+            files.insert(
+                pb("base_reactions.json"),
+                to_json(&build_base_reactions(v))?,
+            );
         }
         if let Some(v) = &calc.story_forces {
             files.insert(pb("story_forces.json"), to_json(&build_story_forces(v))?);
         }
         if let Some(v) = &calc.drift_wind {
-            files.insert(pb("drift_wind.json"), to_json(&DriftReportData {
-                x: build_drift_dir(&v.x),
-                y: build_drift_dir(&v.y),
-            })?);
+            files.insert(
+                pb("drift_wind.json"),
+                to_json(&DriftReportData {
+                    x: build_drift_dir(&v.x),
+                    y: build_drift_dir(&v.y),
+                })?,
+            );
         }
         if let Some(v) = &calc.drift_seismic {
-            files.insert(pb("drift_seismic.json"), to_json(&DriftReportData {
-                x: build_drift_dir(&v.x),
-                y: build_drift_dir(&v.y),
-            })?);
+            files.insert(
+                pb("drift_seismic.json"),
+                to_json(&DriftReportData {
+                    x: build_drift_dir(&v.x),
+                    y: build_drift_dir(&v.y),
+                })?,
+            );
         }
         if let Some(v) = &calc.displacement_wind {
-            files.insert(pb("displacement_wind.json"), to_json(&DisplacementReportData {
-                x: build_displacement_dir(&v.x),
-                y: build_displacement_dir(&v.y),
-            })?);
+            files.insert(
+                pb("displacement_wind.json"),
+                to_json(&DisplacementReportData {
+                    x: build_displacement_dir(&v.x),
+                    y: build_displacement_dir(&v.y),
+                })?,
+            );
         }
         if let Some(v) = &calc.torsional {
             files.insert(pb("torsional.json"), to_json(&build_torsional(v))?);
@@ -89,7 +101,10 @@ impl ReportData {
             files.insert(pb("pier_shear_wind.json"), to_json(&build_pier_shear(v))?);
         }
         if let Some(v) = &calc.pier_shear_stress_seismic {
-            files.insert(pb("pier_shear_seismic.json"), to_json(&build_pier_shear(v))?);
+            files.insert(
+                pb("pier_shear_seismic.json"),
+                to_json(&build_pier_shear(v))?,
+            );
         }
 
         // SVG charts from ext-render
@@ -101,7 +116,9 @@ impl ReportData {
     }
 }
 
-fn pb(s: &str) -> PathBuf { PathBuf::from(s) }
+fn pb(s: &str) -> PathBuf {
+    PathBuf::from(s)
+}
 
 fn to_json<T: Serialize>(v: &T) -> Result<Bytes> {
     Ok(Bytes::new(serde_json::to_vec(v)?))
@@ -143,11 +160,16 @@ fn build_summary(calc: &CalcOutput) -> SummaryReportData {
         branch: calc.meta.branch.clone(),
         version_id: calc.meta.version_id.clone(),
         code: calc.meta.code.clone(),
-        lines: calc.summary.lines.iter().map(|l| SummaryLineReport {
-            key: l.key.clone(),
-            status: l.status.clone(),
-            message: l.message.clone(),
-        }).collect(),
+        lines: calc
+            .summary
+            .lines
+            .iter()
+            .map(|l| SummaryLineReport {
+                key: l.key.clone(),
+                status: l.status.clone(),
+                message: l.message.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -181,11 +203,15 @@ fn build_modal(modal: &ModalOutput) -> ModalReportData {
         let is_ux = modal.mode_reaching_ux == Some(row.mode);
         let is_uy = modal.mode_reaching_uy == Some(row.mode);
         let annotation = match (is_ux, is_uy) {
-            (true, true)   => "ux_uy_threshold",
-            (true, false)  => "ux_threshold",
-            (false, true)  => "uy_threshold",
+            (true, true) => "ux_uy_threshold",
+            (true, false) => "ux_threshold",
+            (false, true) => "uy_threshold",
             (false, false) => {
-                if row.ux >= 0.10 || row.uy >= 0.10 { "high" } else { "" }
+                if row.ux >= 0.10 || row.uy >= 0.10 {
+                    "high"
+                } else {
+                    ""
+                }
             }
         };
         annotations.push(annotation.to_string());
@@ -230,31 +256,35 @@ fn build_base_reactions(base: &BaseReactionsOutput) -> BaseReactionsReportData {
     // Group by output_case, take max absolute values
     let mut grouped = Vec::<(String, String, f64, f64, f64)>::new();
     for row in &base.rows {
+        if row.case_type == "Combination" {
+            continue;
+        }
         if let Some(existing) = grouped.iter_mut().find(|e| e.0 == row.output_case) {
-            existing.2 = existing.2.max(row.fx_kip.abs());
-            existing.3 = existing.3.max(row.fy_kip.abs());
-            existing.4 = existing.4.max(row.fz_kip.abs());
+            existing.2 = existing.2.max(round5(row.fx_kip.abs()));
+            existing.3 = existing.3.max(round5(row.fy_kip.abs()));
+            existing.4 = existing.4.max(round5(row.fz_kip.abs()));
         } else {
             grouped.push((
                 row.output_case.clone(),
                 row.case_type.clone(),
-                row.fx_kip.abs(),
-                row.fy_kip.abs(),
-                row.fz_kip.abs(),
+                round5(row.fx_kip.abs()),
+                round5(row.fy_kip.abs()),
+                round5(row.fz_kip.abs()),
             ));
         }
     }
 
     let row_count = grouped.len();
-    let rows = grouped.into_iter().map(|(case, case_type, fx, fy, fz)| {
-        BaseReactionsReportRow {
+    let rows = grouped
+        .into_iter()
+        .map(|(case, case_type, fx, fy, fz)| BaseReactionsReportRow {
             output_case: wrap_load_case_label(&case),
             case_type,
             fx_kip: fx,
             fy_kip: fy,
             fz_kip: fz,
-        }
-    }).collect();
+        })
+        .collect();
 
     BaseReactionsReportData {
         rows,
@@ -282,13 +312,17 @@ struct StoryForcesReportRow {
 
 fn build_story_forces(story_forces: &StoryForcesOutput) -> StoryForcesReportData {
     StoryForcesReportData {
-        rows: story_forces.rows.iter().map(|row| StoryForcesReportRow {
-            story: row.story.clone(),
-            max_vx_kip: row.max_vx_kip,
-            max_my_kip_ft: row.max_my_kip_ft,
-            max_vy_kip: row.max_vy_kip,
-            max_mx_kip_ft: row.max_mx_kip_ft,
-        }).collect(),
+        rows: story_forces
+            .rows
+            .iter()
+            .map(|row| StoryForcesReportRow {
+                story: row.story.clone(),
+                max_vx_kip: row.max_vx_kip,
+                max_my_kip_ft: row.max_my_kip_ft,
+                max_vy_kip: row.max_vy_kip,
+                max_mx_kip_ft: row.max_mx_kip_ft,
+            })
+            .collect(),
     }
 }
 
@@ -304,6 +338,10 @@ fn wrap_load_case_label(value: &str) -> String {
     out
 }
 
+fn round5(value: f64) -> f64 {
+    (value * 100_000.0).round() / 100_000.0
+}
+
 // ── Drift ────────────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
@@ -316,8 +354,9 @@ struct DriftReportData {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct DriftDirReport {
-    rows: Vec<DriftReportRow>,
-    annotations: Vec<String>,
+    levels: Vec<String>,
+    groups: Vec<String>,
+    matrix: Vec<Vec<Option<f64>>>,
     allowable_ratio: f64,
     governing_story: String,
     governing_direction: String,
@@ -325,56 +364,40 @@ struct DriftDirReport {
     pass: bool,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct DriftReportRow {
-    story: String,
-    output_case: String,
-    drift_ratio: f64,
-    dcr: f64,
-}
-
 fn build_drift_dir(drift: &DriftOutput) -> DriftDirReport {
-    // Aggregate per-story max drift
-    let mut story_max: Vec<(String, String, f64)> = Vec::new();
-    for row in &drift.rows {
-        let demand = [
-            row.max_drift_x_pos.abs(),
-            row.max_drift_x_neg.abs(),
-            row.max_drift_y_pos.abs(),
-            row.max_drift_y_neg.abs(),
-        ].into_iter().fold(0.0_f64, f64::max);
+    let levels = if drift.story_order.is_empty() {
+        ordered_unique(drift.rows.iter().map(|row| row.story.clone()))
+    } else {
+        drift.story_order.clone()
+    };
+    let groups = ordered_unique(drift.rows.iter().map(|row| row.group_name.clone()));
+    let is_x = drift.governing.direction.eq_ignore_ascii_case("X");
 
-        if let Some(entry) = story_max.iter_mut().find(|e| e.0 == row.story) {
-            if demand > entry.2 {
-                entry.1 = row.output_case.clone();
-                entry.2 = demand;
-            }
+    let mut values: HashMap<(String, String), f64> = HashMap::new();
+    for row in &drift.rows {
+        let demand = if is_x {
+            row.max_drift_x_pos.abs().max(row.max_drift_x_neg.abs())
         } else {
-            story_max.push((row.story.clone(), row.output_case.clone(), demand));
-        }
+            row.max_drift_y_pos.abs().max(row.max_drift_y_neg.abs())
+        };
+        let key = (row.story.clone(), row.group_name.clone());
+        let entry = values.entry(key).or_insert(0.0);
+        *entry = entry.max(demand);
     }
 
-    let mut rows = Vec::with_capacity(story_max.len());
-    let mut annotations = Vec::with_capacity(story_max.len());
-
-    for (story, case, demand) in &story_max {
-        let dcr = demand / drift.allowable_ratio;
-        let annotation = if dcr >= 1.0 { "fail" }
-                         else if dcr >= 0.85 { "warn" }
-                         else { "" };
-        annotations.push(annotation.to_string());
-        rows.push(DriftReportRow {
-            story: story.clone(),
-            output_case: case.clone(),
-            drift_ratio: *demand,
-            dcr,
-        });
+    let mut matrix = Vec::with_capacity(levels.len());
+    for level in &levels {
+        let mut row_values = Vec::with_capacity(groups.len());
+        for group in &groups {
+            row_values.push(values.get(&(level.clone(), group.clone())).copied());
+        }
+        matrix.push(row_values);
     }
 
     DriftDirReport {
-        rows,
-        annotations,
+        levels,
+        groups,
+        matrix,
         allowable_ratio: drift.allowable_ratio,
         governing_story: drift.governing.story.clone(),
         governing_direction: drift.governing.direction.clone(),
@@ -395,70 +418,71 @@ struct DisplacementReportData {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct DisplacementDirReport {
-    rows: Vec<DisplacementReportRow>,
-    annotations: Vec<String>,
-    limit_in: f64,
+    levels: Vec<String>,
+    groups: Vec<String>,
+    matrix_in: Vec<Vec<Option<f64>>>,
+    level_limits_in: Vec<f64>,
     governing_story: String,
     governing_direction: String,
     governing_case: String,
     pass: bool,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct DisplacementReportRow {
-    story: String,
-    output_case: String,
-    demand_in: f64,
-    dcr: f64,
-}
-
 fn build_displacement_dir(disp: &DisplacementOutput) -> DisplacementDirReport {
     let to_in = |ft: f64| ft * 12.0;
-    let limit_in = to_in(disp.disp_limit.value);
+    let levels = if disp.story_order.is_empty() {
+        ordered_unique(disp.rows.iter().map(|row| row.story.clone()))
+    } else {
+        disp.story_order.clone()
+    };
+    let groups = ordered_unique(disp.rows.iter().map(|row| row.group_name.clone()));
+    let is_x = disp.governing.direction.eq_ignore_ascii_case("X");
 
-    // Aggregate per-story max displacement
-    let mut story_max: Vec<(String, String, f64)> = Vec::new();
+    let mut values: HashMap<(String, String), f64> = HashMap::new();
     for row in &disp.rows {
-        let demand = [
-            row.max_disp_x_pos_ft.abs(),
-            row.max_disp_x_neg_ft.abs(),
-            row.max_disp_y_pos_ft.abs(),
-            row.max_disp_y_neg_ft.abs(),
-        ].into_iter().fold(0.0_f64, f64::max);
-
-        if let Some(entry) = story_max.iter_mut().find(|e| e.0 == row.story) {
-            if demand > entry.2 {
-                entry.1 = row.output_case.clone();
-                entry.2 = demand;
-            }
+        let demand_ft = if is_x {
+            row.max_disp_x_pos_ft.abs().max(row.max_disp_x_neg_ft.abs())
         } else {
-            story_max.push((row.story.clone(), row.output_case.clone(), demand));
+            row.max_disp_y_pos_ft.abs().max(row.max_disp_y_neg_ft.abs())
+        };
+        let key = (row.story.clone(), row.group_name.clone());
+        let entry = values.entry(key).or_insert(0.0);
+        *entry = entry.max(demand_ft);
+    }
+
+    let mut limits_by_level = HashMap::new();
+    for row in &disp.story_limits {
+        limits_by_level.insert(row.story.clone(), to_in(row.limit_ft));
+    }
+
+    let mut matrix_in = Vec::with_capacity(levels.len());
+    for level in &levels {
+        let mut row_values = Vec::with_capacity(groups.len());
+        for group in &groups {
+            row_values.push(
+                values
+                    .get(&(level.clone(), group.clone()))
+                    .copied()
+                    .map(to_in),
+            );
         }
+        matrix_in.push(row_values);
     }
-
-    let mut rows = Vec::with_capacity(story_max.len());
-    let mut annotations = Vec::with_capacity(story_max.len());
-
-    for (story, case, demand_ft) in &story_max {
-        let demand_in = to_in(*demand_ft);
-        let dcr = demand_in / limit_in;
-        let annotation = if dcr >= 1.0 { "fail" }
-                         else if dcr >= 0.85 { "warn" }
-                         else { "" };
-        annotations.push(annotation.to_string());
-        rows.push(DisplacementReportRow {
-            story: story.clone(),
-            output_case: case.clone(),
-            demand_in,
-            dcr,
-        });
-    }
+    let level_limits_in = levels
+        .iter()
+        .map(|level| {
+            limits_by_level
+                .get(level)
+                .copied()
+                .unwrap_or(to_in(disp.disp_limit.value))
+        })
+        .collect();
 
     DisplacementDirReport {
-        rows,
-        annotations,
-        limit_in,
+        levels,
+        groups,
+        matrix_in,
+        level_limits_in,
         governing_story: disp.governing.story.clone(),
         governing_direction: disp.governing.direction.clone(),
         governing_case: disp.governing.output_case.clone(),
@@ -515,9 +539,13 @@ fn build_torsional_dir(dir: &TorsionalDirectionOutput) -> TorsionalDirReport {
     let mut annotations = Vec::with_capacity(dir.rows.len());
 
     for row in &dir.rows {
-        let annotation = if row.is_type_b { "fail" }
-                         else if row.is_type_a { "warn" }
-                         else { "" };
+        let annotation = if row.is_type_b {
+            "fail"
+        } else if row.is_type_a {
+            "warn"
+        } else {
+            ""
+        };
         annotations.push(annotation.to_string());
         rows.push(TorsionalReportRow {
             story: row.story.clone(),
@@ -564,63 +592,153 @@ fn build_pier_axial(axial: &PierAxialStressOutput) -> PierAxialReportData {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct PierShearReportData {
-    rows: Vec<PierShearReportRow>,
-    annotations: Vec<String>,
-    pass: bool,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct PierShearReportRow {
-    story: String,
-    pier: String,
-    combo: String,
-    stress_psi: f64,
-    limit_individual: f64,
-    stress_ratio: f64,
-    dcr: f64,
+    levels: Vec<String>,
+    piers: Vec<String>,
+    matrix_psi: Vec<Vec<Option<f64>>>,
     pass: bool,
 }
 
 fn build_pier_shear(pier: &ext_calc::output::PierShearStressOutput) -> PierShearReportData {
-    let mut rows: Vec<PierShearReportRow> = pier
+    let levels = if pier.story_order.is_empty() {
+        ordered_unique(pier.per_pier.iter().map(|row| row.story.clone()))
+    } else {
+        pier.story_order.clone()
+    };
+    let mut piers = pier
         .per_pier
         .iter()
-        .map(|row| {
-            let dcr = row.stress_ratio / row.limit_individual;
-            PierShearReportRow {
-                story: row.story.clone(),
-                pier: row.pier.clone(),
-                combo: wrap_load_case_label(&row.combo),
-                stress_psi: row.stress_psi,
-                limit_individual: row.limit_individual,
-                stress_ratio: row.stress_ratio,
-                dcr,
-                pass: row.pass,
-            }
-        })
-        .collect();
+        .map(|row| row.pier.clone())
+        .filter(|label| !is_default_pier_label(label))
+        .collect::<Vec<_>>();
+    piers = ordered_unique(piers.into_iter());
+    piers = normalized_pier_labels(piers);
 
-    // Sort by DCR descending (approximating old logic)
-    rows.sort_by(|left, right| right.dcr.total_cmp(&left.dcr));
+    let mut values: HashMap<(String, String), f64> = HashMap::new();
+    for row in &pier.per_pier {
+        if is_default_pier_label(&row.pier) {
+            continue;
+        }
+        let key = (row.story.clone(), row.pier.clone());
+        let entry = values.entry(key).or_insert(0.0);
+        *entry = entry.max(row.stress_psi);
+    }
 
-    let annotations: Vec<String> = rows
-        .iter()
-        .map(|row| {
-            if row.dcr >= 1.0 {
-                "fail".to_string()
-            } else if row.dcr >= 0.85 {
-                "warn".to_string()
-            } else {
-                "".to_string()
-            }
-        })
-        .collect();
+    let mut matrix_psi = Vec::with_capacity(levels.len());
+    for level in &levels {
+        let mut row_values = Vec::with_capacity(piers.len());
+        for pier_name in &piers {
+            row_values.push(values.get(&(level.clone(), pier_name.clone())).copied());
+        }
+        matrix_psi.push(row_values);
+    }
 
     PierShearReportData {
-        rows,
-        annotations,
+        levels,
+        piers,
+        matrix_psi,
         pass: pier.pass,
+    }
+}
+
+fn ordered_unique(iter: impl Iterator<Item = String>) -> Vec<String> {
+    let mut out = Vec::new();
+    for value in iter {
+        if !out.contains(&value) {
+            out.push(value);
+        }
+    }
+    out
+}
+
+fn is_default_pier_label(label: &str) -> bool {
+    let trimmed = label.trim();
+    trimmed.is_empty() || trimmed == "0"
+}
+
+fn normalized_pier_labels(labels: Vec<String>) -> Vec<String> {
+    let mut out = labels;
+    out.sort_by(|left, right| compare_pier_labels(left, right));
+    out
+}
+
+fn compare_pier_labels(left: &str, right: &str) -> std::cmp::Ordering {
+    let left_key = pier_label_key(left);
+    let right_key = pier_label_key(right);
+    left_key
+        .0
+        .cmp(&right_key.0)
+        .then_with(|| left_key.1.cmp(&right_key.1))
+        .then_with(|| natural_cmp(left, right))
+}
+
+fn pier_label_key(label: &str) -> (u8, u32) {
+    if let Some(num) = parse_prefixed_number(label, "PX") {
+        return (0, num);
+    }
+    if let Some(num) = parse_prefixed_number(label, "PY") {
+        return (1, num);
+    }
+    (2, u32::MAX)
+}
+
+fn parse_prefixed_number(label: &str, prefix: &str) -> Option<u32> {
+    let upper = label.trim().to_ascii_uppercase();
+    if !upper.starts_with(prefix) {
+        return None;
+    }
+    let suffix = &upper[prefix.len()..];
+    if suffix.is_empty() || !suffix.chars().all(|ch| ch.is_ascii_digit()) {
+        return None;
+    }
+    suffix.parse::<u32>().ok()
+}
+
+fn natural_cmp(left: &str, right: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+
+    let mut li = left.chars().peekable();
+    let mut ri = right.chars().peekable();
+
+    loop {
+        match (li.peek(), ri.peek()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(lc), Some(rc)) if lc.is_ascii_digit() && rc.is_ascii_digit() => {
+                let mut l_num = String::new();
+                let mut r_num = String::new();
+                while let Some(ch) = li.peek() {
+                    if ch.is_ascii_digit() {
+                        l_num.push(*ch);
+                        li.next();
+                    } else {
+                        break;
+                    }
+                }
+                while let Some(ch) = ri.peek() {
+                    if ch.is_ascii_digit() {
+                        r_num.push(*ch);
+                        ri.next();
+                    } else {
+                        break;
+                    }
+                }
+                let l_val = l_num.parse::<u64>().unwrap_or(0);
+                let r_val = r_num.parse::<u64>().unwrap_or(0);
+                match l_val.cmp(&r_val) {
+                    Ordering::Equal => continue,
+                    other => return other,
+                }
+            }
+            (Some(_), Some(_)) => {
+                let l = li.next().unwrap().to_ascii_lowercase();
+                let r = ri.next().unwrap().to_ascii_lowercase();
+                match l.cmp(&r) {
+                    Ordering::Equal => continue,
+                    other => return other,
+                }
+            }
+        }
     }
 }
 
@@ -676,6 +794,9 @@ mod tests {
             .get(&PathBuf::from("summary.json"))
             .expect("summary.json must exist");
         let value: serde_json::Value = serde_json::from_slice(bytes.as_slice()).unwrap();
-        assert_eq!(value.get("code").and_then(|v| v.as_str()), Some(calc.meta.code.as_str()));
+        assert_eq!(
+            value.get("code").and_then(|v| v.as_str()),
+            Some(calc.meta.code.as_str())
+        );
     }
 }

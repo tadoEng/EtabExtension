@@ -9,7 +9,7 @@ use ext_calc::code_params::CodeParams;
 use ext_calc::output::CalcOutput;
 use ext_db::config::Config;
 use ext_render::{BaseReactionGroup, RenderConfig, render_all_svg};
-use ext_report::{A4_PORTRAIT, PageTheme, ReportProjectMeta, TABLOID_LANDSCAPE, render_pdf, write_pdf};
+use ext_report::{ReportProjectMeta, ReportTheme, render_pdf, write_pdf};
 
 fn main() {
     if let Err(err) = run() {
@@ -52,7 +52,7 @@ fn preview_report(options: PreviewOptions) -> Result<()> {
         .collect();
 
     let project = build_project_meta(&config, &version_id, &branch);
-    let pdf = render_pdf(&calc_output, &project, svg_map, options.theme.theme())?;
+    let pdf = render_pdf(&calc_output, &project, svg_map, options.theme.page_theme())?;
 
     let output_path = options.out.unwrap_or_else(default_preview_path);
     write_pdf(&output_path, &pdf)?;
@@ -165,38 +165,8 @@ struct PreviewOptions {
     results_dir: Option<PathBuf>,
     version_id: Option<String>,
     branch: Option<String>,
-    theme: PreviewTheme,
+    theme: ReportTheme,
     out: Option<PathBuf>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PreviewTheme {
-    Tabloid,
-    A4,
-}
-
-impl PreviewTheme {
-    fn parse(value: &str) -> Result<Self> {
-        match value {
-            "tabloid" => Ok(Self::Tabloid),
-            "a4" => Ok(Self::A4),
-            _ => bail!("Unknown theme: {value}. Use 'tabloid' or 'a4'."),
-        }
-    }
-
-    fn theme(self) -> &'static PageTheme {
-        match self {
-            Self::Tabloid => &TABLOID_LANDSCAPE,
-            Self::A4 => &A4_PORTRAIT,
-        }
-    }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Tabloid => "tabloid",
-            Self::A4 => "a4",
-        }
-    }
 }
 
 impl CliOptions {
@@ -233,7 +203,7 @@ impl PreviewOptions {
         let mut results_dir = None;
         let mut version_id = None;
         let mut branch = None;
-        let mut theme = PreviewTheme::Tabloid;
+        let mut theme = ReportTheme::Tabloid;
         let mut out = None;
 
         let mut iter = args.into_iter();
@@ -251,7 +221,7 @@ impl PreviewOptions {
                 "--results-dir" => results_dir = Some(next_path(&mut iter, "--results-dir")?),
                 "--version-id" => version_id = Some(next_string(&mut iter, "--version-id")?),
                 "--branch" => branch = Some(next_string(&mut iter, "--branch")?),
-                "--theme" => theme = PreviewTheme::parse(&next_string(&mut iter, "--theme")?)?,
+                "--theme" => theme = next_string(&mut iter, "--theme")?.parse::<ReportTheme>()?,
                 "--out" => out = Some(next_path(&mut iter, "--out")?),
                 flag if flag.starts_with("--") => bail!("Unknown flag: {flag}"),
                 path => {
@@ -408,9 +378,10 @@ mod tests {
 
     #[test]
     fn preview_theme_defaults_to_tabloid() {
-        let parsed = CliOptions::parse(vec![OsString::from("preview"), OsString::from("in")]).unwrap();
+        let parsed =
+            CliOptions::parse(vec![OsString::from("preview"), OsString::from("in")]).unwrap();
         let Command::Preview(opts) = parsed.command;
-        assert_eq!(opts.theme, PreviewTheme::Tabloid);
+        assert_eq!(opts.theme, ReportTheme::Tabloid);
     }
 
     #[test]
@@ -423,7 +394,7 @@ mod tests {
         ])
         .unwrap();
         let Command::Preview(opts) = parsed.command;
-        assert_eq!(opts.theme, PreviewTheme::A4);
+        assert_eq!(opts.theme, ReportTheme::A4);
     }
 
     #[test]

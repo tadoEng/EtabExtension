@@ -34,12 +34,19 @@ impl CalcRunner {
         let group_map = tables::group_assignments::load_group_assignments(results_dir)?;
 
         let mut pier_fc_map = std::collections::HashMap::new();
-        // Since we removed checks::pier_shear::build_pier_fc_map, we can quickly reconstruct it here 
+        // Since we removed checks::pier_shear::build_pier_fc_map, we can quickly reconstruct it here
         // to map Pier -> fc (ksi) based on section and material_props.
         // For now, we use default fc_default_ksi.
         for sp in &pier_sections {
-            let default_fc = params.pier_shear_stress_seismic.as_ref().map(|p| p.fc_default_ksi).unwrap_or(8.0);
-            let fc = material_props.get(&sp.material).map(|m| m.fc_ksi).unwrap_or(default_fc);
+            let default_fc = params
+                .pier_shear_stress_seismic
+                .as_ref()
+                .map(|p| p.fc_default_ksi)
+                .unwrap_or(8.0);
+            let fc = material_props
+                .get(&sp.material)
+                .map(|m| m.fc_ksi)
+                .unwrap_or(default_fc);
             pier_fc_map.insert((sp.pier.clone(), sp.story.clone()), fc);
         }
 
@@ -49,13 +56,17 @@ impl CalcRunner {
             None
         };
         let base_reactions_output = if params.check_selection.base_reactions {
-            Some(checks::base_reaction::run(&base_reactions, params)?) 
+            Some(checks::base_reaction::run(&base_reactions, params)?)
         } else {
             None
         };
         let story_forces_output = if params.check_selection.story_forces {
             if let Some(sf_params) = &params.story_forces {
-                Some(checks::story_forces::run(&story_forces, &story_defs, sf_params)?)
+                Some(checks::story_forces::run(
+                    &story_forces,
+                    &story_defs,
+                    sf_params,
+                )?)
             } else {
                 None
             }
@@ -94,31 +105,47 @@ impl CalcRunner {
         };
         let torsional_output = if params.check_selection.torsional {
             if let Some(tor_params) = &params.torsional {
-                Some(checks::torsional::run(&joint_drifts, &story_defs, tor_params)?)
+                Some(checks::torsional::run(
+                    &joint_drifts,
+                    &story_defs,
+                    tor_params,
+                )?)
             } else {
                 None
             }
         } else {
             None
         };
-        
+
         let pier_shear_stress_wind_output = if params.check_selection.pier_shear_stress_wind {
             match &params.pier_shear_stress_wind {
-                Some(p) => {
-                    Some(checks::pier_shear_stress::run(&pier_forces, &pier_sections, &pier_fc_map, p)?)
-                }
+                Some(p) => Some(checks::pier_shear_stress::run(
+                    &pier_forces,
+                    &pier_sections,
+                    &story_defs,
+                    &pier_fc_map,
+                    p,
+                )?),
                 None => None,
             }
-        } else { None };
+        } else {
+            None
+        };
 
         let pier_shear_stress_seismic_output = if params.check_selection.pier_shear_stress_seismic {
             match &params.pier_shear_stress_seismic {
-                Some(p) => {
-                    Some(checks::pier_shear_stress::run(&pier_forces, &pier_sections, &pier_fc_map, p)?)
-                }
+                Some(p) => Some(checks::pier_shear_stress::run(
+                    &pier_forces,
+                    &pier_sections,
+                    &story_defs,
+                    &pier_fc_map,
+                    p,
+                )?),
                 None => None,
             }
-        } else { None };
+        } else {
+            None
+        };
 
         let pier_axial_output = if params.check_selection.pier_axial_stress {
             Some(checks::pier_axial::run(
@@ -146,7 +173,10 @@ impl CalcRunner {
             },
             summary: CalcSummary {
                 overall_status: "pending".to_string(),
-                check_count: 0, pass_count: 0, fail_count: 0, lines: vec![]
+                check_count: 0,
+                pass_count: 0,
+                fail_count: 0,
+                lines: vec![],
             },
             modal: modal_output,
             base_reactions: base_reactions_output,
@@ -166,11 +196,7 @@ impl CalcRunner {
     }
 }
 
-fn build_summary(
-    output: &CalcOutput,
-    material_count: usize,
-    group_count: usize,
-) -> CalcSummary {
+fn build_summary(output: &CalcOutput, material_count: usize, group_count: usize) -> CalcSummary {
     let mut lines = Vec::new();
     let mut check_count = 0_u32;
     let mut pass_count = 0_u32;
@@ -178,21 +204,32 @@ fn build_summary(
 
     if let Some(modal) = &output.modal {
         check_count += 1;
-        if modal.pass { pass_count += 1; } else { fail_count += 1; }
-        lines.push(SummaryLine { key: "modal".to_string(), status: if modal.pass { "pass" } else { "fail" }.to_string(), message: "Modal check".to_string(), });
+        if modal.pass {
+            pass_count += 1;
+        } else {
+            fail_count += 1;
+        }
+        lines.push(SummaryLine {
+            key: "modal".to_string(),
+            status: if modal.pass { "pass" } else { "fail" }.to_string(),
+            message: "Modal check".to_string(),
+        });
     }
 
     if let Some(base_reactions) = &output.base_reactions {
         check_count += 1;
         let pass = base_reactions.direction_x.pass && base_reactions.direction_y.pass;
-        if pass { pass_count += 1; } else { fail_count += 1; }
+        if pass {
+            pass_count += 1;
+        } else {
+            fail_count += 1;
+        }
         lines.push(SummaryLine {
             key: "baseReactions".to_string(),
             status: if pass { "pass" } else { "fail" }.to_string(),
             message: format!(
                 "Base reactions review (X {:.2}, Y {:.2})",
-                base_reactions.direction_x.ratio,
-                base_reactions.direction_y.ratio
+                base_reactions.direction_x.ratio, base_reactions.direction_y.ratio
             ),
         });
     }
@@ -207,26 +244,69 @@ fn build_summary(
 
     if let Some(dw) = &output.drift_wind {
         check_count += 1;
-        if dw.x.pass && dw.y.pass { pass_count += 1; } else { fail_count += 1; }
-        lines.push(SummaryLine { key: "driftWind".to_string(), status: if dw.x.pass && dw.y.pass { "pass" } else { "fail" }.to_string(), message: "Wind drift check".to_string() });
+        if dw.x.pass && dw.y.pass {
+            pass_count += 1;
+        } else {
+            fail_count += 1;
+        }
+        lines.push(SummaryLine {
+            key: "driftWind".to_string(),
+            status: if dw.x.pass && dw.y.pass {
+                "pass"
+            } else {
+                "fail"
+            }
+            .to_string(),
+            message: "Wind drift check".to_string(),
+        });
     }
 
     if let Some(ds) = &output.drift_seismic {
         check_count += 1;
-        if ds.x.pass && ds.y.pass { pass_count += 1; } else { fail_count += 1; }
-        lines.push(SummaryLine { key: "driftSeismic".to_string(), status: if ds.x.pass && ds.y.pass { "pass" } else { "fail" }.to_string(), message: "Seismic drift check".to_string() });
+        if ds.x.pass && ds.y.pass {
+            pass_count += 1;
+        } else {
+            fail_count += 1;
+        }
+        lines.push(SummaryLine {
+            key: "driftSeismic".to_string(),
+            status: if ds.x.pass && ds.y.pass {
+                "pass"
+            } else {
+                "fail"
+            }
+            .to_string(),
+            message: "Seismic drift check".to_string(),
+        });
     }
 
     if let Some(dw) = &output.displacement_wind {
         check_count += 1;
-        if dw.x.pass && dw.y.pass { pass_count += 1; } else { fail_count += 1; }
-        lines.push(SummaryLine { key: "displacementWind".to_string(), status: if dw.x.pass && dw.y.pass { "pass" } else { "fail" }.to_string(), message: "Wind displacement check".to_string() });
+        if dw.x.pass && dw.y.pass {
+            pass_count += 1;
+        } else {
+            fail_count += 1;
+        }
+        lines.push(SummaryLine {
+            key: "displacementWind".to_string(),
+            status: if dw.x.pass && dw.y.pass {
+                "pass"
+            } else {
+                "fail"
+            }
+            .to_string(),
+            message: "Wind displacement check".to_string(),
+        });
     }
 
     if let Some(tor) = &output.torsional {
-        check_count += 1; 
-        if tor.pass { pass_count += 1; } else { fail_count += 1; }
-        
+        check_count += 1;
+        if tor.pass {
+            pass_count += 1;
+        } else {
+            fail_count += 1;
+        }
+
         let status = if !tor.pass {
             "fail".to_string()
         } else if tor.x.has_type_a || tor.y.has_type_a {
@@ -234,26 +314,54 @@ fn build_summary(
         } else {
             "pass".to_string()
         };
-        
-        lines.push(SummaryLine { key: "torsional".to_string(), status, message: "Torsional irregularity check".to_string() });
+
+        lines.push(SummaryLine {
+            key: "torsional".to_string(),
+            status,
+            message: "Torsional irregularity check".to_string(),
+        });
     }
 
     if let Some(psw) = &output.pier_shear_stress_wind {
         check_count += 1;
-        if psw.pass { pass_count += 1; } else { fail_count += 1; }
-        lines.push(SummaryLine { key: "pierShearStressWind".to_string(), status: if psw.pass { "pass" } else { "fail" }.to_string(), message: "Pier shear stress wind".to_string() });
+        if psw.pass {
+            pass_count += 1;
+        } else {
+            fail_count += 1;
+        }
+        lines.push(SummaryLine {
+            key: "pierShearStressWind".to_string(),
+            status: if psw.pass { "pass" } else { "fail" }.to_string(),
+            message: "Pier shear stress wind".to_string(),
+        });
     }
 
     if let Some(pse) = &output.pier_shear_stress_seismic {
         check_count += 1;
-        if pse.pass { pass_count += 1; } else { fail_count += 1; }
-        lines.push(SummaryLine { key: "pierShearStressSeismic".to_string(), status: if pse.pass { "pass" } else { "fail" }.to_string(), message: "Pier shear stress seismic".to_string() });
+        if pse.pass {
+            pass_count += 1;
+        } else {
+            fail_count += 1;
+        }
+        lines.push(SummaryLine {
+            key: "pierShearStressSeismic".to_string(),
+            status: if pse.pass { "pass" } else { "fail" }.to_string(),
+            message: "Pier shear stress seismic".to_string(),
+        });
     }
 
     if let Some(pa) = &output.pier_axial_stress {
         check_count += 1;
-        if pa.pass { pass_count += 1; } else { fail_count += 1; }
-        lines.push(SummaryLine { key: "pierAxialStress".to_string(), status: if pa.pass { "pass" } else { "fail" }.to_string(), message: "Pier axial stress".to_string() });
+        if pa.pass {
+            pass_count += 1;
+        } else {
+            fail_count += 1;
+        }
+        lines.push(SummaryLine {
+            key: "pierAxialStress".to_string(),
+            status: if pa.pass { "pass" } else { "fail" }.to_string(),
+            message: "Pier axial stress".to_string(),
+        });
     }
 
     lines.push(SummaryLine {
