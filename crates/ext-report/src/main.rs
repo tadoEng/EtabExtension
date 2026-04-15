@@ -132,13 +132,13 @@ fn build_render_config(config: &Config) -> RenderConfig {
 }
 
 fn default_base_reaction_groups() -> Vec<BaseReactionGroup> {
-    ["Dead", "SDL", "Live (red)", "Live (non-red)", "Live (roof)"]
-        .into_iter()
-        .map(|name| BaseReactionGroup {
-            label: name.to_string(),
-            load_cases: vec![name.to_string()],
-        })
-        .collect()
+    vec![BaseReactionGroup {
+        label: "Gravity".to_string(),
+        load_cases: ["Dead", "SDL", "Live (red)", "Live (non-red)", "Live (roof)"]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+    }]
 }
 
 fn default_preview_path() -> PathBuf {
