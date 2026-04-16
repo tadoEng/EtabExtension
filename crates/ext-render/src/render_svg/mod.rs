@@ -61,14 +61,31 @@ mod tests {
     };
     use crate::chart_types::RenderConfig;
     use crate::render_svg::render_all_svg;
+    use ext_calc::CalcRunner;
+    use ext_calc::code_params::CodeParams;
     use ext_calc::output::CalcOutput;
+    use ext_db::config::Config;
     use std::path::PathBuf;
 
     fn fixture_calc_output() -> CalcOutput {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../ext-calc/tests/fixtures/results_realistic/calc_output.json");
-        let text = std::fs::read_to_string(path).unwrap();
-        serde_json::from_str(&text).unwrap()
+        let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../ext-calc/tests/fixtures/results_realistic");
+        let path = fixture_dir.join("calc_output.json");
+        if path.exists() {
+            let text = std::fs::read_to_string(path).unwrap();
+            serde_json::from_str(&text).unwrap()
+        } else {
+            let config = Config::load(&fixture_dir).unwrap();
+            let params = CodeParams::from_config(&config).unwrap();
+            CalcRunner::run_all(
+                fixture_dir.as_path(),
+                fixture_dir.as_path(),
+                &params,
+                "fixture",
+                "main",
+            )
+            .unwrap()
+        }
     }
 
     #[test]

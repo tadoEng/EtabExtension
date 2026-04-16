@@ -279,8 +279,11 @@ pub async fn init_project(req: InitRequest) -> Result<InitResult> {
     let config_dir = Config::config_dir(&project_root);
     std::fs::create_dir_all(&config_dir)
         .with_context(|| format!("Failed to create {}", config_dir.display()))?;
-    std::fs::write(config_dir.join("config.toml"), shared_config_template(&req.name))
-        .with_context(|| "Failed to write shared config template".to_string())?;
+    std::fs::write(
+        config_dir.join("config.toml"),
+        shared_config_template(&req.name),
+    )
+    .with_context(|| "Failed to write shared config template".to_string())?;
 
     let mut local = Config::default();
     local.git = GitConfig {

@@ -70,6 +70,9 @@ fn build_force_chart(
     } else {
         output.story_order.clone()
     };
+    // Swapped-axis category plots place the first category at the bottom.
+    // Reverse here so visual Y order remains top story -> bottom story.
+    let display_categories = categories.iter().rev().cloned().collect::<Vec<_>>();
 
     let palette = [
         "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#8c564b", "#17becf", "#bcbd22", "#7f7f7f",
@@ -83,7 +86,7 @@ fn build_force_chart(
         }
         series.push(CartesianSeries {
             name: profile.output_case.clone(),
-            data: categories
+            data: display_categories
                 .iter()
                 .map(|story| by_story.get(story.as_str()).copied().unwrap_or(0.0))
                 .collect(),
@@ -101,7 +104,7 @@ fn build_force_chart(
         }
         series.push(CartesianSeries {
             name: "Envelope".to_string(),
-            data: categories
+            data: display_categories
                 .iter()
                 .map(|story| by_story.get(story.as_str()).copied().unwrap_or(0.0))
                 .collect(),
@@ -112,7 +115,7 @@ fn build_force_chart(
         });
     }
 
-    let story_count = categories.len() as u32;
+    let story_count = display_categories.len() as u32;
     let height = config_height_for_story_count(story_count);
 
     NamedChartSpec {
@@ -123,7 +126,7 @@ fn build_force_chart(
             width: 620,
             height,
             kind: ChartKind::Cartesian {
-                categories,
+                categories: display_categories,
                 swap_axes: true, // Y-axis = story, X-axis = force magnitude
                 series,
             },
@@ -210,5 +213,20 @@ mod tests {
         let vy_vals = get_values(STORY_FORCE_VY_IMAGE);
         // VX max is 300 (L1 bottom), VY max is 240 — must differ.
         assert_ne!(vx_vals, vy_vals, "VX and VY series must differ");
+    }
+
+    #[test]
+    fn story_forces_chart_reverses_category_order_for_swapped_axis() {
+        use crate::chart_types::ChartKind;
+        let output = make_output();
+        let charts = build(&output, &RenderConfig::default());
+        let vx = charts
+            .iter()
+            .find(|chart| chart.logical_name == STORY_FORCE_VX_IMAGE)
+            .unwrap();
+        let ChartKind::Cartesian { categories, .. } = &vx.spec.kind else {
+            panic!("expected cartesian");
+        };
+        assert_eq!(categories, &vec!["L1", "L2", "L3"]);
     }
 }

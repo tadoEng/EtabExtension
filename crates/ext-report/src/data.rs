@@ -141,6 +141,7 @@ struct SummaryReportData {
     version_id: String,
     code: String,
     lines: Vec<SummaryLineReport>,
+    checker_rows: Vec<SummaryCheckerRow>,
 }
 
 #[derive(Serialize)]
@@ -149,6 +150,20 @@ struct SummaryLineReport {
     key: String,
     status: String,
     message: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct SummaryCheckerRow {
+    check: String,
+    status: String,
+    governing_case: String,
+    governing_story: String,
+    demand: String,
+    limit: String,
+    utilization: String,
+    margin: String,
+    reason: String,
 }
 
 fn build_summary(calc: &CalcOutput) -> SummaryReportData {
@@ -170,7 +185,237 @@ fn build_summary(calc: &CalcOutput) -> SummaryReportData {
                 message: l.message.clone(),
             })
             .collect(),
+        checker_rows: build_checker_rows(calc),
     }
+}
+
+fn build_checker_rows(calc: &CalcOutput) -> Vec<SummaryCheckerRow> {
+    let mut rows = Vec::new();
+
+    if let Some(value) = &calc.drift_wind {
+        rows.push(build_drift_checker_row("Drift (Wind)", &value.x, &value.y));
+    }
+    if let Some(value) = &calc.drift_seismic {
+        rows.push(build_drift_checker_row(
+            "Drift (Seismic)",
+            &value.x,
+            &value.y,
+        ));
+    }
+    if let Some(value) = &calc.displacement_wind {
+        rows.push(build_displacement_checker_row(
+            "Displacement (Wind)",
+            &value.x,
+            &value.y,
+        ));
+    }
+    if let Some(value) = &calc.torsional {
+        rows.push(build_torsional_checker_row("Torsional", value));
+    }
+    if let Some(value) = &calc.base_reactions {
+        rows.push(build_base_reactions_checker_row("Base Reactions", value));
+    }
+    if let Some(value) = &calc.pier_shear_stress_wind {
+        rows.push(build_pier_shear_checker_row("Pier Shear (Wind)", value));
+    }
+    if let Some(value) = &calc.pier_shear_stress_seismic {
+        rows.push(build_pier_shear_checker_row("Pier Shear (Seismic)", value));
+    }
+    if let Some(value) = &calc.pier_axial_stress {
+        rows.push(build_pier_axial_checker_row("Pier Axial Screening", value));
+    }
+
+    rows
+}
+
+fn build_drift_checker_row(
+    check: &str,
+    x: &ext_calc::output::DriftOutput,
+    y: &ext_calc::output::DriftOutput,
+) -> SummaryCheckerRow {
+    let (governing, direction) = if x.governing.dcr >= y.governing.dcr {
+        (&x.governing, "X")
+    } else {
+        (&y.governing, "Y")
+    };
+    let limit = if x.allowable_ratio > 0.0 {
+        x.allowable_ratio
+    } else {
+        y.allowable_ratio
+    };
+    let utilization = governing.dcr;
+    let margin = 1.0 - utilization;
+    let status = if x.pass && y.pass { "pass" } else { "fail" };
+    SummaryCheckerRow {
+        check: check.to_string(),
+        status: status.to_string(),
+        governing_case: governing.output_case.clone(),
+        governing_story: governing.story.clone(),
+        demand: fmt_float(governing.drift_ratio),
+        limit: fmt_float(limit),
+        utilization: fmt_percent(utilization),
+        margin: fmt_percent(margin),
+        reason: format!(
+            "Direction {direction}, drift ratio demand/allowable check ({:.5} / {:.5})",
+            governing.drift_ratio, limit
+        ),
+    }
+}
+
+fn build_displacement_checker_row(
+    check: &str,
+    x: &ext_calc::output::DisplacementOutput,
+    y: &ext_calc::output::DisplacementOutput,
+) -> SummaryCheckerRow {
+    let (governing, selected, direction) = if x.governing.dcr >= y.governing.dcr {
+        (&x.governing, x, "X")
+    } else {
+        (&y.governing, y, "Y")
+    };
+    let limit_ft = selected
+        .story_limits
+        .iter()
+        .find(|row| row.story == governing.story)
+        .map(|row| row.limit_ft)
+        .unwrap_or(selected.disp_limit.value);
+    let utilization = governing.dcr;
+    let margin = 1.0 - utilization;
+    let status = if x.pass && y.pass { "pass" } else { "fail" };
+    SummaryCheckerRow {
+        check: check.to_string(),
+        status: status.to_string(),
+        governing_case: governing.output_case.clone(),
+        governing_story: governing.story.clone(),
+        demand: fmt_with_unit(governing.displacement.value * 12.0, "in"),
+        limit: fmt_with_unit(limit_ft * 12.0, "in"),
+        utilization: fmt_percent(utilization),
+        margin: fmt_percent(margin),
+        reason: format!(
+            "Direction {direction}, per-level displacement limit from elevation/limit ratio"
+        ),
+    }
+}
+
+fn build_torsional_checker_row(check: &str, torsional: &TorsionalOutput) -> SummaryCheckerRow {
+    let x_ratio = torsional.x.max_ratio;
+    let y_ratio = torsional.y.max_ratio;
+    let (direction, governing) = if x_ratio >= y_ratio {
+        ("X", &torsional.x)
+    } else {
+        ("Y", &torsional.y)
+    };
+    let threshold = 1.4;
+    let utilization = if threshold > 0.0 {
+        governing.max_ratio / threshold
+    } else {
+        0.0
+    };
+    let margin = threshold - governing.max_ratio;
+    let classification = if governing.has_type_b {
+        "Type B"
+    } else if governing.has_type_a {
+        "Type A"
+    } else {
+        "None"
+    };
+    SummaryCheckerRow {
+        check: check.to_string(),
+        status: if torsional.pass { "pass" } else { "fail" }.to_string(),
+        governing_case: governing.governing_case.clone(),
+        governing_story: governing.governing_story.clone(),
+        demand: fmt_float(governing.max_ratio),
+        limit: fmt_float(threshold),
+        utilization: fmt_percent(utilization),
+        margin: fmt_float(margin),
+        reason: format!(
+            "Direction {direction}, ratio basis dmax/davg, classification {classification}"
+        ),
+    }
+}
+
+fn build_base_reactions_checker_row(check: &str, base: &BaseReactionsOutput) -> SummaryCheckerRow {
+    let min_ratio = base.direction_x.ratio.min(base.direction_y.ratio);
+    let utilization = min_ratio;
+    let margin = min_ratio - 1.0;
+    let pass = base.direction_x.pass && base.direction_y.pass;
+    SummaryCheckerRow {
+        check: check.to_string(),
+        status: if pass { "pass" } else { "fail" }.to_string(),
+        governing_case: format!(
+            "X {} / Y {}",
+            base.direction_x.rsa_case, base.direction_y.rsa_case
+        ),
+        governing_story: "-".to_string(),
+        demand: fmt_float(min_ratio),
+        limit: ">= 1.00000".to_string(),
+        utilization: fmt_percent(utilization),
+        margin: fmt_float(margin),
+        reason: format!(
+            "RSA/ELF ratio check, X={:.5}, Y={:.5}",
+            base.direction_x.ratio, base.direction_y.ratio
+        ),
+    }
+}
+
+fn build_pier_shear_checker_row(
+    check: &str,
+    value: &ext_calc::output::PierShearStressOutput,
+) -> SummaryCheckerRow {
+    let util_individual = if value.limit_individual > 0.0 {
+        value.max_individual_ratio / value.limit_individual
+    } else {
+        0.0
+    };
+    let util_average = if value.limit_average > 0.0 {
+        value.max_average_ratio / value.limit_average
+    } else {
+        0.0
+    };
+    let utilization = util_individual.max(util_average);
+    let margin = 1.0 - utilization;
+    SummaryCheckerRow {
+        check: check.to_string(),
+        status: if value.pass { "pass" } else { "fail" }.to_string(),
+        governing_case: "-".to_string(),
+        governing_story: "-".to_string(),
+        demand: format!(
+            "ind {:.5}, avg {:.5}",
+            value.max_individual_ratio, value.max_average_ratio
+        ),
+        limit: format!(
+            "ind {:.5}, avg {:.5}",
+            value.limit_individual, value.limit_average
+        ),
+        utilization: fmt_percent(utilization),
+        margin: fmt_percent(margin),
+        reason: "Stress-ratio checks against individual and average limits".to_string(),
+    }
+}
+
+fn build_pier_axial_checker_row(check: &str, value: &PierAxialStressOutput) -> SummaryCheckerRow {
+    SummaryCheckerRow {
+        check: check.to_string(),
+        status: if value.pass { "pass" } else { "fail" }.to_string(),
+        governing_case: value.governing.combo.clone(),
+        governing_story: value.governing.story.clone(),
+        demand: fmt_with_unit(value.governing.fa.value, "ksi"),
+        limit: fmt_with_unit(0.85 * value.governing.fc_ksi, "ksi"),
+        utilization: fmt_percent(value.governing.dcr),
+        margin: fmt_percent(1.0 - value.governing.dcr),
+        reason: "Preliminary axial screening check".to_string(),
+    }
+}
+
+fn fmt_float(value: f64) -> String {
+    format!("{value:.5}")
+}
+
+fn fmt_percent(value: f64) -> String {
+    format!("{:.2}%", value * 100.0)
+}
+
+fn fmt_with_unit(value: f64, unit: &str) -> String {
+    format!("{} {}", fmt_float(value), unit)
 }
 
 // ── Modal ────────────────────────────────────────────────────────────────────
@@ -240,6 +485,9 @@ fn build_modal(modal: &ModalOutput) -> ModalReportData {
 struct BaseReactionsReportData {
     rows: Vec<BaseReactionsReportRow>,
     annotations: Vec<String>,
+    pass: bool,
+    ratio_x: f64,
+    ratio_y: f64,
 }
 
 #[derive(Serialize)]
@@ -256,7 +504,7 @@ fn build_base_reactions(base: &BaseReactionsOutput) -> BaseReactionsReportData {
     // Group by output_case, take max absolute values
     let mut grouped = Vec::<(String, String, f64, f64, f64)>::new();
     for row in &base.rows {
-        if row.case_type == "Combination" {
+        if should_exclude_base_case_type(&row.case_type) {
             continue;
         }
         if let Some(existing) = grouped.iter_mut().find(|e| e.0 == row.output_case) {
@@ -289,6 +537,9 @@ fn build_base_reactions(base: &BaseReactionsOutput) -> BaseReactionsReportData {
     BaseReactionsReportData {
         rows,
         annotations: vec![String::new(); row_count],
+        pass: base.direction_x.pass && base.direction_y.pass,
+        ratio_x: base.direction_x.ratio,
+        ratio_y: base.direction_y.ratio,
     }
 }
 
@@ -342,6 +593,11 @@ fn round5(value: f64) -> f64 {
     (value * 100_000.0).round() / 100_000.0
 }
 
+fn should_exclude_base_case_type(case_type: &str) -> bool {
+    let normalized = case_type.trim().to_ascii_lowercase();
+    normalized == "combination" || normalized == "linmodritz" || normalized == "eigen"
+}
+
 // ── Drift ────────────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
@@ -358,6 +614,9 @@ struct DriftDirReport {
     groups: Vec<String>,
     matrix: Vec<Vec<Option<f64>>>,
     allowable_ratio: f64,
+    governing_demand_ratio: f64,
+    governing_utilization: f64,
+    governing_margin_ratio: f64,
     governing_story: String,
     governing_direction: String,
     governing_case: String,
@@ -399,6 +658,9 @@ fn build_drift_dir(drift: &DriftOutput) -> DriftDirReport {
         groups,
         matrix,
         allowable_ratio: drift.allowable_ratio,
+        governing_demand_ratio: drift.governing.drift_ratio,
+        governing_utilization: drift.governing.dcr,
+        governing_margin_ratio: drift.allowable_ratio - drift.governing.drift_ratio,
         governing_story: drift.governing.story.clone(),
         governing_direction: drift.governing.direction.clone(),
         governing_case: drift.governing.output_case.clone(),
@@ -421,7 +683,13 @@ struct DisplacementDirReport {
     levels: Vec<String>,
     groups: Vec<String>,
     matrix_in: Vec<Vec<Option<f64>>>,
+    level_elevations_ft: Vec<f64>,
     level_limits_in: Vec<f64>,
+    level_max_demand_in: Vec<f64>,
+    level_utilization: Vec<f64>,
+    governing_limit_in: f64,
+    governing_utilization: f64,
+    governing_margin: f64,
     governing_story: String,
     governing_direction: String,
     governing_case: String,
@@ -451,11 +719,19 @@ fn build_displacement_dir(disp: &DisplacementOutput) -> DisplacementDirReport {
     }
 
     let mut limits_by_level = HashMap::new();
+    let mut elevations_by_level = HashMap::new();
     for row in &disp.story_limits {
         limits_by_level.insert(row.story.clone(), to_in(row.limit_ft));
+        elevations_by_level.insert(row.story.clone(), row.elevation_ft);
     }
 
     let mut matrix_in = Vec::with_capacity(levels.len());
+    let mut level_max_demand_in = Vec::with_capacity(levels.len());
+    let mut level_utilization = Vec::with_capacity(levels.len());
+    let level_elevations_ft = levels
+        .iter()
+        .map(|level| elevations_by_level.get(level).copied().unwrap_or(0.0))
+        .collect::<Vec<_>>();
     for level in &levels {
         let mut row_values = Vec::with_capacity(groups.len());
         for group in &groups {
@@ -466,7 +742,19 @@ fn build_displacement_dir(disp: &DisplacementOutput) -> DisplacementDirReport {
                     .map(to_in),
             );
         }
+        let max_demand = row_values.iter().flatten().copied().fold(0.0_f64, f64::max);
+        let limit_in = limits_by_level
+            .get(level)
+            .copied()
+            .unwrap_or(to_in(disp.disp_limit.value));
+        let utilization = if limit_in > 1e-9 {
+            max_demand / limit_in
+        } else {
+            0.0
+        };
         matrix_in.push(row_values);
+        level_max_demand_in.push(max_demand);
+        level_utilization.push(utilization);
     }
     let level_limits_in = levels
         .iter()
@@ -477,12 +765,22 @@ fn build_displacement_dir(disp: &DisplacementOutput) -> DisplacementDirReport {
                 .unwrap_or(to_in(disp.disp_limit.value))
         })
         .collect();
+    let governing_limit_in = limits_by_level
+        .get(&disp.governing.story)
+        .copied()
+        .unwrap_or(to_in(disp.disp_limit.value));
 
     DisplacementDirReport {
         levels,
         groups,
         matrix_in,
+        level_elevations_ft,
         level_limits_in,
+        level_max_demand_in,
+        level_utilization,
+        governing_limit_in,
+        governing_utilization: disp.governing.dcr,
+        governing_margin: 1.0 - disp.governing.dcr,
         governing_story: disp.governing.story.clone(),
         governing_direction: disp.governing.direction.clone(),
         governing_case: disp.governing.output_case.clone(),
@@ -507,18 +805,29 @@ struct TorsionalDirReport {
     annotations: Vec<String>,
     governing_story: String,
     governing_case: String,
+    governing_joint_a: String,
+    governing_joint_b: String,
+    governing_delta_max: f64,
+    governing_delta_avg: f64,
     max_ratio: f64,
+    type_a_threshold: f64,
+    type_b_threshold: f64,
+    classification: String,
     has_type_a: bool,
     has_type_b: bool,
+    has_rows: bool,
+    no_data_note: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct TorsionalReportRow {
     story: String,
     case: String,
     joint_a: String,
     joint_b: String,
+    delta_max: f64,
+    delta_avg: f64,
     ratio: f64,
     is_type_a: bool,
     is_type_b: bool,
@@ -535,10 +844,14 @@ fn build_torsional(torsional: &TorsionalOutput) -> TorsionalReportData {
 }
 
 fn build_torsional_dir(dir: &TorsionalDirectionOutput) -> TorsionalDirReport {
+    let type_a_threshold = 1.2;
+    let type_b_threshold = 1.4;
     let mut rows = Vec::with_capacity(dir.rows.len());
     let mut annotations = Vec::with_capacity(dir.rows.len());
 
     for row in &dir.rows {
+        let delta_max = row.delta_max_steps.iter().copied().fold(0.0_f64, f64::max);
+        let delta_avg = row.delta_avg_steps.iter().copied().fold(0.0_f64, f64::max);
         let annotation = if row.is_type_b {
             "fail"
         } else if row.is_type_a {
@@ -552,6 +865,8 @@ fn build_torsional_dir(dir: &TorsionalDirectionOutput) -> TorsionalDirReport {
             case: wrap_load_case_label(&row.case),
             joint_a: row.joint_a.clone(),
             joint_b: row.joint_b.clone(),
+            delta_max,
+            delta_avg,
             ratio: row.ratio,
             is_type_a: row.is_type_a,
             is_type_b: row.is_type_b,
@@ -560,14 +875,60 @@ fn build_torsional_dir(dir: &TorsionalDirectionOutput) -> TorsionalDirReport {
         });
     }
 
+    let governing_row = rows
+        .iter()
+        .max_by(|left, right| {
+            left.ratio
+                .partial_cmp(&right.ratio)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .cloned();
+    let classification = if dir.has_type_b {
+        "Type B".to_string()
+    } else if dir.has_type_a {
+        "Type A".to_string()
+    } else if rows.is_empty() {
+        "No data".to_string()
+    } else {
+        "None".to_string()
+    };
+    let has_rows = !rows.is_empty();
+
     TorsionalDirReport {
         rows,
         annotations,
         governing_story: dir.governing_story.clone(),
         governing_case: dir.governing_case.clone(),
+        governing_joint_a: governing_row
+            .as_ref()
+            .map(|row| row.joint_a.clone())
+            .or_else(|| dir.governing_joints.first().cloned())
+            .unwrap_or_default(),
+        governing_joint_b: governing_row
+            .as_ref()
+            .map(|row| row.joint_b.clone())
+            .or_else(|| dir.governing_joints.get(1).cloned())
+            .unwrap_or_default(),
+        governing_delta_max: governing_row
+            .as_ref()
+            .map(|row| row.delta_max)
+            .unwrap_or_default(),
+        governing_delta_avg: governing_row
+            .as_ref()
+            .map(|row| row.delta_avg)
+            .unwrap_or_default(),
         max_ratio: dir.max_ratio,
+        type_a_threshold,
+        type_b_threshold,
+        classification,
         has_type_a: dir.has_type_a,
         has_type_b: dir.has_type_b,
+        has_rows,
+        no_data_note: if has_rows {
+            String::new()
+        } else {
+            "No qualifying rows for configured pairs and cases.".to_string()
+        },
     }
 }
 
@@ -595,6 +956,11 @@ struct PierShearReportData {
     levels: Vec<String>,
     piers: Vec<String>,
     matrix_psi: Vec<Vec<Option<f64>>>,
+    stress_unit: String,
+    limit_individual_ratio: f64,
+    limit_average_ratio: f64,
+    max_individual_ratio: f64,
+    max_average_ratio: f64,
     pass: bool,
 }
 
@@ -636,6 +1002,11 @@ fn build_pier_shear(pier: &ext_calc::output::PierShearStressOutput) -> PierShear
         levels,
         piers,
         matrix_psi,
+        stress_unit: "psi".to_string(),
+        limit_individual_ratio: pier.limit_individual,
+        limit_average_ratio: pier.limit_average,
+        max_individual_ratio: pier.max_individual_ratio,
+        max_average_ratio: pier.max_average_ratio,
         pass: pier.pass,
     }
 }
@@ -746,12 +1117,29 @@ fn natural_cmp(left: &str, right: &str) -> std::cmp::Ordering {
 mod tests {
     use super::*;
     use crate::theme::TABLOID_LANDSCAPE;
+    use ext_calc::CalcRunner;
+    use ext_calc::code_params::CodeParams;
+    use ext_db::config::Config;
 
     fn fixture_calc_output() -> CalcOutput {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../ext-calc/tests/fixtures/results_realistic/calc_output.json");
-        let text = std::fs::read_to_string(path).unwrap();
-        serde_json::from_str(&text).unwrap()
+        let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../ext-calc/tests/fixtures/results_realistic");
+        let path = fixture_dir.join("calc_output.json");
+        if path.exists() {
+            let text = std::fs::read_to_string(path).unwrap();
+            serde_json::from_str(&text).unwrap()
+        } else {
+            let config = Config::load(&fixture_dir).unwrap();
+            let params = CodeParams::from_config(&config).unwrap();
+            CalcRunner::run_all(
+                fixture_dir.as_path(),
+                fixture_dir.as_path(),
+                &params,
+                "fixture",
+                "main",
+            )
+            .unwrap()
+        }
     }
 
     fn sample_project() -> ReportProjectMeta {
@@ -798,5 +1186,30 @@ mod tests {
             value.get("code").and_then(|v| v.as_str()),
             Some(calc.meta.code.as_str())
         );
+    }
+
+    #[test]
+    fn base_reactions_json_excludes_unscoped_case_types() {
+        let calc = fixture_calc_output();
+        let report_data =
+            ReportData::from_calc(&calc, &sample_project(), &TABLOID_LANDSCAPE, HashMap::new())
+                .unwrap();
+        let bytes = report_data
+            .files
+            .get(&PathBuf::from("base_reactions.json"))
+            .expect("base_reactions.json must exist");
+        let value: serde_json::Value = serde_json::from_slice(bytes.as_slice()).unwrap();
+        let rows = value
+            .get("rows")
+            .and_then(|node| node.as_array())
+            .expect("rows should be array");
+        assert!(rows.iter().all(|row| {
+            let case_type = row
+                .get("case-type")
+                .and_then(|node| node.as_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            case_type != "combination" && case_type != "linmodritz" && case_type != "eigen"
+        }));
     }
 }

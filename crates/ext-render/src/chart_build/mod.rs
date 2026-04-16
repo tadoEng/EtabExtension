@@ -213,6 +213,37 @@ fn build_swapped_axis_points(categories: &[String], values: &[f64]) -> Vec<DataP
         .collect()
 }
 
+/// Convert a `story_order` slice (top → bottom, as stored in `CalcOutput`) into the
+/// display order expected by an ECharts swapped-axis category axis (bottom → top).
+///
+/// ECharts renders swapped-axis categories from bottom to top, so the first element
+/// of the `categories` array ends up at the bottom of the chart.  Every chart builder
+/// must therefore pass stories in ascending order (ground floor first, roof last).
+///
+/// # Arguments
+/// * `story_order` – stories in top-down order (index 0 = roof, last = ground), as
+///   populated by the calc layer from ETABS story definitions.
+/// * `has_data` – predicate returning `true` when a story has at least one data point
+///   and should appear on the axis.  Pass `|_| true` to keep all stories.
+///
+/// # Example
+/// ```
+/// let order = ["L3".to_string(), "L2".to_string(), "L1".to_string()];
+/// let cats = story_display_order(&order, |_| true);
+/// assert_eq!(cats, ["L1", "L2", "L3"]); // L1 at bottom, L3 at top
+/// ```
+pub fn story_display_order(
+    story_order: &[String],
+    has_data: impl Fn(&str) -> bool,
+) -> Vec<String> {
+    story_order
+        .iter()
+        .filter(|s| has_data(s.as_str()))
+        .rev() // flip top→bottom into bottom→top so ECharts places them correctly
+        .cloned()
+        .collect()
+}
+
 pub(crate) fn is_default_pier_label(label: &str) -> bool {
     let trimmed = label.trim();
     trimmed.is_empty() || trimmed == "0"

@@ -155,9 +155,18 @@ mod tests {
 
     #[test]
     fn timeout_mapping_matches_manual_test_budget() {
-        assert_eq!(SidecarClient::timeout_for("get-status"), Duration::from_secs(15));
-        assert_eq!(SidecarClient::timeout_for("open-model"), Duration::from_secs(120));
-        assert_eq!(SidecarClient::timeout_for("close-model"), Duration::from_secs(30));
+        assert_eq!(
+            SidecarClient::timeout_for("get-status"),
+            Duration::from_secs(15)
+        );
+        assert_eq!(
+            SidecarClient::timeout_for("open-model"),
+            Duration::from_secs(120)
+        );
+        assert_eq!(
+            SidecarClient::timeout_for("close-model"),
+            Duration::from_secs(30)
+        );
         assert_eq!(
             SidecarClient::timeout_for("generate-e2k"),
             Duration::from_secs(300)

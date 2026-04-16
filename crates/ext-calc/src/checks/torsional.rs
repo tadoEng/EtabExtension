@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use crate::code_params::{TorsionalParams, TorsionalJointPair};
+use crate::code_params::{TorsionalJointPair, TorsionalParams};
 use crate::output::{TorsionalDirectionOutput, TorsionalOutput, TorsionalRow};
 use crate::tables::joint_drift::JointDriftRow;
 use crate::tables::story_def::StoryDefRow;
@@ -11,13 +11,28 @@ pub fn run(
     stories: &[StoryDefRow],
     params: &TorsionalParams,
 ) -> Result<TorsionalOutput> {
-    
     // Sort stories bottom-up
     let mut sorted_stories = stories.to_vec();
     sorted_stories.sort_by(|a, b| a.elevation_ft.partial_cmp(&b.elevation_ft).unwrap());
-    
-    let x_out = process_direction(rows, &sorted_stories, &params.x_cases, &params.x_pairs, params.ecc_ratio, params.building_dim_y_ft, true)?;
-    let y_out = process_direction(rows, &sorted_stories, &params.y_cases, &params.y_pairs, params.ecc_ratio, params.building_dim_x_ft, false)?;
+
+    let x_out = process_direction(
+        rows,
+        &sorted_stories,
+        &params.x_cases,
+        &params.x_pairs,
+        params.ecc_ratio,
+        params.building_dim_y_ft,
+        true,
+    )?;
+    let y_out = process_direction(
+        rows,
+        &sorted_stories,
+        &params.y_cases,
+        &params.y_pairs,
+        params.ecc_ratio,
+        params.building_dim_x_ft,
+        false,
+    )?;
 
     let pass = !x_out.has_type_b && !y_out.has_type_b;
 
@@ -55,12 +70,20 @@ fn process_direction(
 
     // Optimize by creating a lookup map: (UniqueName, Story, OutputCase, StepNumber) -> Disp
     let mut disp_map: HashMap<(&str, &str, &str, i32), f64> = HashMap::new();
-    
+
     for r in rows {
         if selected_cases.contains(r.output_case.as_str()) {
             let step = r.step_number.unwrap_or(1.0).round() as i32;
             let disp = if is_x { r.disp_x_ft } else { r.disp_y_ft };
-            disp_map.insert((r.unique_name.as_str(), r.story.as_str(), r.output_case.as_str(), step), disp);
+            disp_map.insert(
+                (
+                    r.unique_name.as_str(),
+                    r.story.as_str(),
+                    r.output_case.as_str(),
+                    step,
+                ),
+                disp,
+            );
             available_steps_by_case
                 .entry(r.output_case.as_str())
                 .or_default()
@@ -94,11 +117,13 @@ fn process_direction(
                     let b_top = disp_map.get(&(j_b, &story_top.story, case, *step));
                     let b_bot = disp_map.get(&(j_b, &story_bot.story, case, *step));
 
-                    if let (Some(&at), Some(&ab), Some(&bt), Some(&bb)) = (a_top, a_bot, b_top, b_bot) {
+                    if let (Some(&at), Some(&ab), Some(&bt), Some(&bb)) =
+                        (a_top, a_bot, b_top, b_bot)
+                    {
                         // Drift is |DispTop - DispBot|. We multiply by 12.0 to get Inches.
                         let d_a = (at - ab).abs() * 12.0;
                         let d_b = (bt - bb).abs() * 12.0;
-                        
+
                         drift_a_steps.push(d_a);
                         drift_b_steps.push(d_b);
                         delta_max_steps.push(d_a.max(d_b));
@@ -124,21 +149,23 @@ fn process_direction(
                         if ratio > max_ratio {
                             max_ratio = ratio;
                         }
-                        
+
                         let ax_val = (max / (1.2 * avg)).powi(2);
                         if ax_val > max_ax_base {
                             max_ax_base = ax_val;
                         }
                     } else {
                         // If avg is 0, ratio is essentially 1.0 (no torsion)
-                        if 1.0 > max_ratio { max_ratio = 1.0; }
+                        if 1.0 > max_ratio {
+                            max_ratio = 1.0;
+                        }
                     }
                 }
 
                 let ax = max_ax_base.min(3.0).max(1.0);
-                
+
                 let ecc_ft = ecc_ratio * perp_dim_ft;
-                
+
                 let is_type_a = max_ratio > 1.2;
                 let is_type_b = max_ratio > 1.4;
                 let rho = if is_type_b { 1.3 } else { 1.0 };
@@ -176,10 +203,17 @@ fn process_direction(
     }
 
     // Gov is max ratio
-    let gov = out_rows.iter().max_by(|a, b| a.ratio.partial_cmp(&b.ratio).unwrap()).unwrap().clone();
-    
+    let gov = out_rows
+        .iter()
+        .max_by(|a, b| a.ratio.partial_cmp(&b.ratio).unwrap())
+        .unwrap()
+        .clone();
+
     // Spec says sort by story elevation descending
-    let story_map: HashMap<&str, f64> = stories.iter().map(|s| (s.story.as_str(), s.elevation_ft)).collect();
+    let story_map: HashMap<&str, f64> = stories
+        .iter()
+        .map(|s| (s.story.as_str(), s.elevation_ft))
+        .collect();
     out_rows.sort_by(|a, b| {
         let elev_a = story_map.get(a.story.as_str()).unwrap_or(&0.0);
         let elev_b = story_map.get(b.story.as_str()).unwrap_or(&0.0);
@@ -202,11 +236,11 @@ fn process_direction(
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use ext_db::config::Config;
+    use super::run;
     use crate::code_params::CodeParams;
     use crate::tables::{joint_drift::load_joint_drifts, story_def::load_story_definitions};
-    use super::run;
+    use ext_db::config::Config;
+    use std::path::PathBuf;
 
     fn fixture_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -220,76 +254,138 @@ mod tests {
         let results_dir = fixture_dir();
         let config = Config::load(&results_dir).unwrap();
         let params = CodeParams::from_config(&config).unwrap();
-        
+
         let drifts = load_joint_drifts(&results_dir).unwrap();
         let stories = load_story_definitions(&results_dir).unwrap();
-        
+
         // Let's artificially get the raw data inside the test and run a hand-calc loop!
         let t_params = params.torsional.as_ref().unwrap();
         let _output = run(&drifts, &stories, t_params).unwrap();
 
         // Let's create an explicit hand-calc trace to prove the math works isolated from the parquet
         use crate::tables::joint_drift::JointDriftRow;
-        
+
         let mut mock_drifts = vec![];
         let cases = t_params.x_cases.clone();
         let target_case = cases[0].clone();
-        
+
         // Define Top and Bottom Story Displacements (X direction)
         // Joint47 Top Step 1=1.5, Step 2=1.6, Step 3=1.4  / Bot = 0.5, 0.6, 0.4. Drift = 1.0 everywhere.
         // Joint50 Top Step 1=2.5, Step 2=2.8, Step 3=2.2  / Bot = 1.0, 1.3, 0.7. Drift = 1.5 everywhere.
-        
+
         for step in 1..=3 {
             let s = step as f64;
             let top = stories[1].story.clone();
             // Floor 2 (Top)
             mock_drifts.push(JointDriftRow {
-                story: top.clone(), unique_name: "Joint47".into(), output_case: target_case.clone(), step_type: "Step".into(),
-                step_number: Some(s), disp_x_ft: if step==1{1.5}else if step==2{1.6}else{1.4}, disp_y_ft: 0.0, drift_x: 0.0, drift_y: 0.0,
-                case_type: "".into(), label: 0,
+                story: top.clone(),
+                unique_name: "Joint47".into(),
+                output_case: target_case.clone(),
+                step_type: "Step".into(),
+                step_number: Some(s),
+                disp_x_ft: if step == 1 {
+                    1.5
+                } else if step == 2 {
+                    1.6
+                } else {
+                    1.4
+                },
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                case_type: "".into(),
+                label: 0,
             });
             mock_drifts.push(JointDriftRow {
-                story: top.clone(), unique_name: "Joint50".into(), output_case: target_case.clone(), step_type: "Step".into(),
-                step_number: Some(s), disp_x_ft: if step==1{2.5}else if step==2{2.8}else{2.2}, disp_y_ft: 0.0, drift_x: 0.0, drift_y: 0.0,
-                case_type: "".into(), label: 0,
+                story: top.clone(),
+                unique_name: "Joint50".into(),
+                output_case: target_case.clone(),
+                step_type: "Step".into(),
+                step_number: Some(s),
+                disp_x_ft: if step == 1 {
+                    2.5
+                } else if step == 2 {
+                    2.8
+                } else {
+                    2.2
+                },
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                case_type: "".into(),
+                label: 0,
             });
-            
+
             let bot = stories[0].story.clone();
             // Floor 1 (Bottom)
             mock_drifts.push(JointDriftRow {
-                story: bot.clone(), unique_name: "Joint47".into(), output_case: target_case.clone(), step_type: "Step".into(),
-                step_number: Some(s), disp_x_ft: if step==1{0.5}else if step==2{0.6}else{0.4}, disp_y_ft: 0.0, drift_x: 0.0, drift_y: 0.0,
-                case_type: "".into(), label: 0,
+                story: bot.clone(),
+                unique_name: "Joint47".into(),
+                output_case: target_case.clone(),
+                step_type: "Step".into(),
+                step_number: Some(s),
+                disp_x_ft: if step == 1 {
+                    0.5
+                } else if step == 2 {
+                    0.6
+                } else {
+                    0.4
+                },
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                case_type: "".into(),
+                label: 0,
             });
             mock_drifts.push(JointDriftRow {
-                story: bot.clone(), unique_name: "Joint50".into(), output_case: target_case.clone(), step_type: "Step".into(),
-                step_number: Some(s), disp_x_ft: if step==1{1.0}else if step==2{1.3}else{0.7}, disp_y_ft: 0.0, drift_x: 0.0, drift_y: 0.0,
-                case_type: "".into(), label: 0,
+                story: bot.clone(),
+                unique_name: "Joint50".into(),
+                output_case: target_case.clone(),
+                step_type: "Step".into(),
+                step_number: Some(s),
+                disp_x_ft: if step == 1 {
+                    1.0
+                } else if step == 2 {
+                    1.3
+                } else {
+                    0.7
+                },
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                case_type: "".into(),
+                label: 0,
             });
         }
-        
+
         let mut t_custom = t_params.clone();
-        t_custom.x_pairs = vec![crate::code_params::TorsionalJointPair { joint_a: "Joint47".into(), joint_b: "Joint50".into() }];
-        
+        t_custom.x_pairs = vec![crate::code_params::TorsionalJointPair {
+            joint_a: "Joint47".into(),
+            joint_b: "Joint50".into(),
+        }];
+
         let output = run(&mock_drifts, &stories, &t_custom).unwrap();
-        
+
         let gov = &output.x.rows[0];
         assert_eq!(gov.joint_a, "Joint47");
         assert_eq!(gov.joint_b, "Joint50");
-        
+
         // Drift A should be |1.5-0.5|*12 = 12.0 inches for step 1
         assert!((gov.drift_a_steps[0] - 12.0).abs() < 1e-4);
         // Drift B should be |2.5-1.0|*12 = 18.0 inches for step 1
         assert!((gov.drift_b_steps[0] - 18.0).abs() < 1e-4);
-        
+
         // Max = 18.0, Avg = 15.0
         assert!((gov.delta_max_steps[0] - 18.0).abs() < 1e-4);
         assert!((gov.delta_avg_steps[0] - 15.0).abs() < 1e-4);
-        
+
         // Ratio = 18.0 / 15.0 = 1.2
         assert!((gov.ratio - 1.2).abs() < 1e-4);
-        
-        assert!(!output.x.rows.is_empty(), "X Torsion rows must be populated");
+
+        assert!(
+            !output.x.rows.is_empty(),
+            "X Torsion rows must be populated"
+        );
     }
 
     #[test]

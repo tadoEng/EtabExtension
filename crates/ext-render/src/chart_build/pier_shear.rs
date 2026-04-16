@@ -11,8 +11,8 @@ use crate::chart_types::{
 pub fn build_wind(output: &PierShearStressOutput, config: &RenderConfig) -> NamedChartSpec {
     build_chart(
         PIER_SHEAR_STRESS_WIND_IMAGE,
-        "Pier Shear Wind — Vu/Acv vs 8√f'c",
-        "All pier shear stresses vs ACI 318 maximum stress limit 8√f’c (psi).",
+        "Pier Shear Wind — Stress by Pier (psi)",
+        "Pier shear stress trends by level. Report page defines individual (10*sqrt(fc)) and average (8*sqrt(fc)) ratio limits.",
         output,
         config,
     )
@@ -21,8 +21,8 @@ pub fn build_wind(output: &PierShearStressOutput, config: &RenderConfig) -> Name
 pub fn build_seismic(output: &PierShearStressOutput, config: &RenderConfig) -> NamedChartSpec {
     build_chart(
         PIER_SHEAR_STRESS_SEISMIC_IMAGE,
-        "Pier Shear Seismic — Vu/Acv vs 8√f'c",
-        "All pier shear stresses vs ACI 318 maximum stress limit 8√f’c (psi).",
+        "Pier Shear Seismic — Stress by Pier (psi)",
+        "Pier shear stress trends by level. Report page defines individual (10*sqrt(fc)) and average (8*sqrt(fc)) ratio limits.",
         output,
         config,
     )
@@ -40,6 +40,9 @@ fn build_chart(
     } else {
         output.story_order.clone()
     };
+    // Swapped-axis category plots place the first category at the bottom.
+    // Reverse here so visual Y order remains top story -> bottom story.
+    let display_categories = categories.iter().rev().cloned().collect::<Vec<_>>();
 
     let mut pier_names = output
         .per_pier
@@ -62,7 +65,7 @@ fn build_chart(
         }
         series.push(CartesianSeries {
             name: pier.clone(),
-            data: categories
+            data: display_categories
                 .iter()
                 .map(|story| by_story.get(story.as_str()).copied().unwrap_or(0.0))
                 .collect(),
@@ -80,9 +83,9 @@ fn build_chart(
             title: title.to_string(),
             width: config.width,
             // Scale height with pier count so bars don't squish on tall buildings.
-            height: (config.height).max(24 * categories.len() as u32 + 100),
+            height: (config.height).max(24 * display_categories.len() as u32 + 100),
             kind: ChartKind::Cartesian {
-                categories,
+                categories: display_categories,
                 swap_axes: true,
                 series,
             },
@@ -149,7 +152,32 @@ mod tests {
         let ChartKind::Cartesian { series, .. } = chart.spec.kind else {
             panic!("expected cartesian chart");
         };
-        let names = series.iter().map(|item| item.name.as_str()).collect::<Vec<_>>();
+        let names = series
+            .iter()
+            .map(|item| item.name.as_str())
+            .collect::<Vec<_>>();
         assert_eq!(names, vec!["PX1", "PX2", "PY1", "PY2"]);
+    }
+
+    #[test]
+    fn pier_shear_chart_reverses_category_order_for_swapped_axis() {
+        let output = PierShearStressOutput {
+            phi_v: 0.75,
+            limit_individual: 10.0,
+            limit_average: 8.0,
+            story_order: vec!["L2".into(), "L1".into()],
+            per_pier: vec![make_row("L2", "PX1", 10.0), make_row("L1", "PX1", 9.0)],
+            x_average: vec![],
+            y_average: vec![],
+            max_individual_ratio: 1.0,
+            max_average_ratio: 1.0,
+            pass: true,
+        };
+
+        let chart = build_wind(&output, &RenderConfig::default());
+        let ChartKind::Cartesian { categories, .. } = chart.spec.kind else {
+            panic!("expected cartesian chart");
+        };
+        assert_eq!(categories, vec!["L1", "L2"]);
     }
 }

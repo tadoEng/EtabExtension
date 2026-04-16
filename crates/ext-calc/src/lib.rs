@@ -151,6 +151,7 @@ impl CalcRunner {
             Some(checks::pier_axial::run(
                 &pier_forces,
                 &pier_sections,
+                &story_defs,
                 &pier_fc_map,
                 params,
             )?)

@@ -39,6 +39,9 @@ fn build_inner(
     } else {
         displacement.story_order.clone()
     };
+    // Swapped-axis category plots place the first category at the bottom.
+    // Reverse here so visual Y order remains top story -> bottom story.
+    let display_categories = categories.iter().rev().cloned().collect::<Vec<_>>();
     let groups = ordered_unique(displacement.rows.iter().map(|row| row.group_name.clone()));
 
     let palette = [
@@ -63,7 +66,7 @@ fn build_inner(
 
         series.push(CartesianSeries {
             name: group.clone(),
-            data: categories
+            data: display_categories
                 .iter()
                 .map(|story| by_story.get(story.as_str()).copied().unwrap_or(0.0))
                 .collect(),
@@ -80,7 +83,7 @@ fn build_inner(
     }
     series.push(CartesianSeries {
         name: "Limit (ft)".to_string(),
-        data: categories
+        data: display_categories
             .iter()
             .map(|story| {
                 limits_by_story
@@ -96,7 +99,7 @@ fn build_inner(
     });
 
     // Scale chart height with story count.
-    let story_count = categories.len() as u32;
+    let story_count = display_categories.len() as u32;
     let height = config.height.max(story_count * 18 + 100);
 
     NamedChartSpec {
@@ -107,7 +110,7 @@ fn build_inner(
             width: config.width,
             height,
             kind: ChartKind::Cartesian {
-                categories,
+                categories: display_categories,
                 swap_axes: true,
                 series,
             },
@@ -229,5 +232,22 @@ mod tests {
         };
         // 5 tracking-group series + 1 limit series.
         assert_eq!(series.len(), 6);
+    }
+
+    #[test]
+    fn displacement_chart_reverses_category_order_for_swapped_axis() {
+        let rows = vec![
+            make_disp_row("L1", "ALL", 0.050, 0.040, 0.005, 0.005),
+            make_disp_row("L2", "ALL", 0.005, 0.005, 0.050, 0.045),
+        ];
+        let wind = DisplacementWindOutput {
+            x: dummy_disp_output(rows.clone()),
+            y: dummy_disp_output(rows),
+        };
+        let charts = build(&wind, &RenderConfig::default());
+        let ChartKind::Cartesian { categories, .. } = &charts[0].spec.kind else {
+            panic!("expected cartesian");
+        };
+        assert_eq!(categories, &vec!["L2", "L1"]);
     }
 }

@@ -372,6 +372,8 @@ pub struct PierAxialResult {
 #[serde(rename_all = "camelCase")]
 pub struct PierAxialStressOutput {
     pub phi_axial: f64,
+    #[serde(default)]
+    pub story_order: Vec<String>,
     pub piers: Vec<PierAxialResult>,
     pub governing_gravity: Option<PierAxialResult>,
     pub governing_wind: Option<PierAxialResult>,

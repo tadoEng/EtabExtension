@@ -342,14 +342,11 @@ fn resolve_sidecar_for(project_root: Option<&Path>) -> Result<SidecarClient> {
         None => std::env::current_dir().context("Failed to get current directory")?,
     };
 
-    let path =
-        config
-            .resolve_sidecar_path(&base)
-            .with_context(|| {
-                "etab-cli sidecar not found.\n  \
+    let path = config.resolve_sidecar_path(&base).with_context(|| {
+        "etab-cli sidecar not found.\n  \
                  Set project.sidecar-path in .etabs-ext/config.local.toml or config.toml\n  \
                  or set ETABS_SIDECAR_PATH environment variable"
-            })?;
+    })?;
 
     Ok(SidecarClient::new(path))
 }
@@ -364,7 +361,10 @@ fn build_extract_request(config: &ext_db::TableSelections) -> TableSelections {
             config.pier_section_properties.clone(),
             default_geometry_table(),
         ),
-        base_reactions: merge_table_selection(config.base_reactions.clone(), default_results_table()),
+        base_reactions: merge_table_selection(
+            config.base_reactions.clone(),
+            default_results_table(),
+        ),
         story_forces: merge_table_selection(config.story_forces.clone(), default_results_table()),
         joint_drifts: merge_table_selection(config.joint_drifts.clone(), default_results_table()),
         pier_forces: merge_table_selection(config.pier_forces.clone(), default_results_table()),
@@ -530,8 +530,9 @@ mod tests {
 
     #[test]
     fn resolve_sidecar_units_override_wins() {
-        let units = resolve_sidecar_units_from(Some("SI_kN_m"), Some("US_Kip_Ft"), Some("US_Lb_In"))
-            .unwrap();
+        let units =
+            resolve_sidecar_units_from(Some("SI_kN_m"), Some("US_Kip_Ft"), Some("US_Lb_In"))
+                .unwrap();
         assert_eq!(units, "US_Lb_In");
     }
 }

@@ -17,6 +17,7 @@ ext-calc = { path = "../ext-calc" }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+ext-db = { workspace = true }
 
 [lints]
 workspace = true

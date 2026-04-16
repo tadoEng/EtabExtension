@@ -60,8 +60,7 @@ async fn main() -> Result<()> {
                 commands::etabs_analyze::execute(&out, cli.project_path.as_ref(), args).await
             }
             EtabsSubcommand::ExportResults(args) => {
-                commands::etabs_export_results::execute(&out, cli.project_path.as_ref(), args)
-                    .await
+                commands::etabs_export_results::execute(&out, cli.project_path.as_ref(), args).await
             }
             EtabsSubcommand::Status => {
                 commands::etabs_status::execute(&out, cli.project_path.as_ref()).await

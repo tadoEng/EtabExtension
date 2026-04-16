@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ext_calc::output::PierAxialStressOutput;
 
 use crate::chart_build::{
     PIER_AXIAL_GRAVITY_IMAGE, PIER_AXIAL_SEISMIC_IMAGE, PIER_AXIAL_WIND_IMAGE,
-    is_default_pier_label, normalized_pier_labels,
+    is_default_pier_label, normalized_pier_labels, story_display_order,
 };
 use crate::chart_types::{
     CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
@@ -65,11 +65,18 @@ fn build_category(
         return None;
     }
 
-    // Collect all stories in natural order (first seen).
-    let mut stories: Vec<String> = Vec::new();
+    let present_stories = filtered
+        .iter()
+        .map(|row| row.story.clone())
+        .collect::<HashSet<_>>();
+
+    // Build display order: bottom → top (ECharts swapped-axis renders first entry at bottom).
+    // story_order is top → bottom, so story_display_order reverses it and filters to present stories.
+    // Any story present in data but missing from story_order is prepended at the ground end.
+    let mut stories = story_display_order(&output.story_order, |s| present_stories.contains(s));
     for row in &filtered {
         if !stories.contains(&row.story) {
-            stories.push(row.story.clone());
+            stories.insert(0, row.story.clone()); // unknown stories go at the bottom
         }
     }
 
@@ -183,6 +190,7 @@ mod tests {
     fn pier_axial_build_all_returns_three_category_assets() {
         let output = PierAxialStressOutput {
             phi_axial: 0.65,
+            story_order: vec!["L2".to_string(), "L1".to_string()],
             piers: vec![
                 make_result("P1", "L1", "gravity", 0.5),
                 make_result("P1", "L2", "gravity", 0.4),
@@ -218,6 +226,7 @@ mod tests {
         // Only gravity rows — wind and seismic charts must be absent.
         let output = PierAxialStressOutput {
             phi_axial: 0.65,
+            story_order: vec!["L1".to_string()],
             piers: vec![make_result("P1", "L1", "gravity", 0.5)],
             governing_gravity: Some(make_result("P1", "L1", "gravity", 0.5)),
             governing_wind: None,
@@ -236,6 +245,7 @@ mod tests {
         // build_all should never return a chart whose logical_name contains "torsional".
         let output = PierAxialStressOutput {
             phi_axial: 0.65,
+            story_order: vec!["L1".to_string()],
             piers: vec![make_result("P1", "L1", "gravity", 0.5)],
             governing_gravity: Some(make_result("P1", "L1", "gravity", 0.5)),
             governing_wind: None,
@@ -251,5 +261,35 @@ mod tests {
                 chart.logical_name
             );
         }
+    }
+
+    #[test]
+    fn pier_axial_uses_story_order_for_categories() {
+        use crate::chart_types::ChartKind;
+
+        let output = PierAxialStressOutput {
+            phi_axial: 0.65,
+            story_order: vec!["L3".to_string(), "L2".to_string(), "L1".to_string()],
+            piers: vec![
+                make_result("P1", "L1", "gravity", 0.5),
+                make_result("P1", "L3", "gravity", 0.4),
+            ],
+            governing_gravity: Some(make_result("P1", "L1", "gravity", 0.5)),
+            governing_wind: None,
+            governing_seismic: None,
+            governing: dummy_governing(),
+            pass: true,
+        };
+
+        let charts = build_all(&output, &RenderConfig::default());
+        let gravity = charts
+            .into_iter()
+            .find(|chart| chart.logical_name == PIER_AXIAL_GRAVITY_IMAGE)
+            .expect("gravity chart should exist");
+        let ChartKind::Cartesian { categories, .. } = gravity.spec.kind else {
+            panic!("expected cartesian chart");
+        };
+        // story_order is [L3, L2, L1] top→bottom; display order reverses to [L1, L3] (L2 absent).
+        assert_eq!(categories, vec!["L1", "L3"]);
     }
 }

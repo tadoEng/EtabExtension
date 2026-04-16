@@ -24,9 +24,9 @@ pub fn append_definitions(doc: &mut String) {
   text(weight: "bold")[Pier Shear Stress (ext-calc)]
   v(4pt)
   [
-    1. Collect per-pier stress result rows (`story`, `pier`, `stress-psi`, limits) and preserve top-to-bottom story order.\
-    2. Individual stress limit uses `10 * sqrt(f'c)`, and average stress limit uses `8 * sqrt(f'c)`.\
-    3. Group data into matrix tables with levels as rows and pier labels as columns.\
+    1. Collect per-pier stress result rows (`story`, `pier`, `stress-psi`) and preserve top-to-bottom story order.\
+    2. Evaluate stress-ratio limits with individual limit `10 * sqrt(f'c)` and average limit `8 * sqrt(f'c)`.\
+    3. Group data into matrix tables with levels as rows and pier labels as columns (stress values in psi).\
     4. Render line charts by pier series with normalized pier ordering (`PX*`, then `PY*`, then others).
   ]
 }

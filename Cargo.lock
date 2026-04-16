@@ -2535,6 +2535,7 @@ dependencies = [
  "anyhow",
  "charming",
  "ext-calc",
+ "ext-db",
  "serde_json",
 ]
 

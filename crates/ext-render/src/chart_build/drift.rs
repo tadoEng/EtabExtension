@@ -2,6 +2,7 @@ use ext_calc::output::{DriftOutput, DriftSeismicOutput, DriftWindOutput};
 
 use crate::chart_build::{
     DRIFT_SEISMIC_X_IMAGE, DRIFT_SEISMIC_Y_IMAGE, DRIFT_WIND_X_IMAGE, DRIFT_WIND_Y_IMAGE,
+    story_display_order,
 };
 use crate::chart_types::{
     CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
@@ -57,10 +58,16 @@ fn build_chart(
     config: &RenderConfig,
     is_x: bool,
 ) -> NamedChartSpec {
+    // Build bottom→top display order for the swapped Y-axis.
+    // Fall back to insertion order from rows when story_order is empty.
     let categories = if drift.story_order.is_empty() {
-        ordered_unique(drift.rows.iter().map(|row| row.story.clone()))
+        // No story_order: collect unique stories in appearance order then reverse.
+        let raw = ordered_unique(drift.rows.iter().map(|row| row.story.clone()));
+        story_display_order(&raw, |_| true)
     } else {
-        drift.story_order.clone()
+        story_display_order(&drift.story_order, |s| {
+            drift.rows.iter().any(|r| r.story == s)
+        })
     };
     let groups = ordered_unique(drift.rows.iter().map(|row| row.group_name.clone()));
 

@@ -165,7 +165,8 @@ pub fn write_pdf(path: &Path, pdf_bytes: &[u8]) -> Result<()> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create {}", parent.display()))?;
     }
-    std::fs::write(path, pdf_bytes).with_context(|| format!("Failed to write {}", path.display()))?;
+    std::fs::write(path, pdf_bytes)
+        .with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(())
 }
 
@@ -173,16 +174,31 @@ pub fn write_pdf(path: &Path, pdf_bytes: &[u8]) -> Result<()> {
 mod tests {
     use super::*;
     use crate::theme::{A4_PORTRAIT, TABLOID_LANDSCAPE};
-    use ext_calc::output::{
-        CalcOutput, TorsionalDirectionOutput, TorsionalOutput, TorsionalRow,
-    };
+    use ext_calc::CalcRunner;
+    use ext_calc::code_params::CodeParams;
+    use ext_calc::output::{CalcOutput, TorsionalDirectionOutput, TorsionalOutput, TorsionalRow};
+    use ext_db::config::Config;
     use std::path::PathBuf;
 
     fn fixture_calc_output() -> CalcOutput {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../ext-calc/tests/fixtures/results_realistic/calc_output.json");
-        let text = std::fs::read_to_string(path).unwrap();
-        serde_json::from_str(&text).unwrap()
+        let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../ext-calc/tests/fixtures/results_realistic");
+        let path = fixture_dir.join("calc_output.json");
+        if path.exists() {
+            let text = std::fs::read_to_string(path).unwrap();
+            serde_json::from_str(&text).unwrap()
+        } else {
+            let config = Config::load(&fixture_dir).unwrap();
+            let params = CodeParams::from_config(&config).unwrap();
+            CalcRunner::run_all(
+                fixture_dir.as_path(),
+                fixture_dir.as_path(),
+                &params,
+                "fixture",
+                "main",
+            )
+            .unwrap()
+        }
     }
 
     fn dummy_svg_map() -> HashMap<String, String> {
@@ -345,6 +361,24 @@ mod tests {
         let project = ReportProjectMeta::default();
         let pdf = render_pdf(&calc, &project, dummy_svg_map(), &TABLOID_LANDSCAPE).unwrap();
         assert!(pdf.starts_with(b"%PDF"));
+    }
+
+    #[test]
+    fn render_pdf_torsional_with_empty_rows_still_produces_pdf() {
+        let mut calc = fixture_calc_output();
+        calc.torsional = Some(TorsionalOutput {
+            x: build_torsional_direction(vec![]),
+            y: build_torsional_direction(vec![]),
+            pass: true,
+        });
+        let project = ReportProjectMeta::default();
+        let pdf = render_pdf(&calc, &project, dummy_svg_map(), &TABLOID_LANDSCAPE).unwrap();
+        assert!(pdf.starts_with(b"%PDF"));
+        let text = String::from_utf8_lossy(&pdf);
+        assert!(
+            !text.contains("text(weight:"),
+            "template function source should not appear in rendered PDF"
+        );
     }
 
     #[test]

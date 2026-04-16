@@ -7,7 +7,7 @@ use crate::output::DriftSeismicOutput;
 use crate::tables::joint_drift::JointDriftRow;
 use crate::tables::story_def::StoryDefRow;
 
-use super::drift_wind::{build_drift_output_directional, DriftDirection};
+use super::drift_wind::{DriftDirection, build_drift_output_directional};
 
 pub fn run(
     rows: &[JointDriftRow],

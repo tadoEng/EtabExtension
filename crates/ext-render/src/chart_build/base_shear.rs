@@ -45,7 +45,7 @@ fn build_pie_groups(base_shear: &BaseReactionsOutput, config: &RenderConfig) -> 
         let mut grouped: Vec<(String, f64)> = Vec::new();
 
         for row in &base_shear.rows {
-            if row.case_type == "Combination" {
+            if should_exclude_case_type(&row.case_type) {
                 continue;
             }
             if !whitelist.contains(row.output_case.as_str()) {
@@ -66,7 +66,7 @@ fn build_pie_groups(base_shear: &BaseReactionsOutput, config: &RenderConfig) -> 
 
     let mut fallback: Vec<(String, f64)> = Vec::new();
     for row in &base_shear.rows {
-        if row.case_type == "Combination" {
+        if should_exclude_case_type(&row.case_type) {
             continue;
         }
         if let Some((_, total)) = fallback
@@ -94,6 +94,11 @@ fn sort_pie_data(values: Vec<(String, f64)>) -> Vec<(f64, String)> {
 
 fn round5(value: f64) -> f64 {
     (value * 100_000.0).round() / 100_000.0
+}
+
+fn should_exclude_case_type(case_type: &str) -> bool {
+    let normalized = case_type.trim().to_ascii_lowercase();
+    normalized == "combination" || normalized == "linmodritz" || normalized == "eigen"
 }
 
 #[cfg(test)]
@@ -257,6 +262,19 @@ mod tests {
         let output = sample_output(vec![
             sample_row_with_type("Dead", "Combo", 100.0),
             sample_row_with_type("Dead", "Combination", 200.0),
+        ]);
+        let config = gravity_config(vec!["Dead"]);
+        let grouped = build_pie_groups(&output, &config);
+        assert_eq!(grouped.len(), 1);
+        assert!((slice_total(&grouped, "Dead") - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn pie_groups_skip_linmodritz_and_eigen_case_types() {
+        let output = sample_output(vec![
+            sample_row_with_type("Dead", "LinStatic", 100.0),
+            sample_row_with_type("Dead", "LinModRitz", 200.0),
+            sample_row_with_type("Dead", "Eigen", 300.0),
         ]);
         let config = gravity_config(vec!["Dead"]);
         let grouped = build_pie_groups(&output, &config);

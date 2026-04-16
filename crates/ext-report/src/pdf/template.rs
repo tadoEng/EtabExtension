@@ -375,6 +375,40 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
   for line in data.lines [
     - #line.key (#line.status) #line.message
   ]
+  v(10pt)
+  text(size: parse-pt(theme.title-size), weight: "bold")[Checker Summary]
+  v(4pt)
+  table(
+    columns: (1.3fr, 0.6fr, 1fr, 0.9fr, 0.85fr, 0.85fr, 0.8fr, 0.8fr),
+    fill: (x, y) => if y == 0 { luma(220) } else { row-fill("", y) },
+    align: (x, y) => if x <= 3 { left } else { right },
+    table.header(
+      ..("Check", "Status", "Case", "Story", "Demand", "Limit", "Util.", "Margin")
+        .map(h => table.cell(fill: luma(220))[#h])
+    ),
+    ..data.checker-rows.map(row => (
+      row.check,
+      upper(row.status),
+      row.governing-case,
+      row.governing-story,
+      row.demand,
+      row.limit,
+      row.utilization,
+      row.margin,
+    )).flatten(),
+  )
+}
+
+#let scope-limitations-page() = {
+  text(size: parse-pt(theme.title-size), weight: "bold")[Scope and Limitations]
+  v(parse-pt(theme.section-gap))
+  [
+    1. This report is an internal screening/reporting tool generated from ETABS extracted results.\
+    2. Automated pass/fail status does not replace project-specific engineering judgment.\
+    3. Assumptions include load-case mapping, tracking-group selection, and material fallbacks where source data is incomplete.\
+    4. Preliminary checks (for example pier axial screening) are not full code-design verification.\
+    5. Final design and sign-off require responsible engineer review.
+  ]
 }
 
 #let modal-page() = {
@@ -432,10 +466,11 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
 
 #let base-reactions-page() = {
   let data = json("base_reactions.json")
+  let pass-str = if data.pass { "PASS" } else { "FAIL" }
   text(size: parse-pt(theme.title-size), weight: "bold")[Base Reaction Review]
   v(parse-pt(theme.section-gap))
   let table-body = [#align(top)[
-    #text(size: parse-pt(theme.label-size), weight: "bold")[All extracted base reaction load cases. Gravity pie includes configured gravity cases.]
+    #text(size: parse-pt(theme.label-size), weight: "bold")[Main review excludes case types Combination, LinModRitz, and Eigen.]
     #v(4pt)
     #base-reactions-table(data)
   ]]
@@ -444,6 +479,8 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
       image("images/base_reactions.svg", height: parse-in(theme.chart-with-table-normal-h)),
       caption: text(size: parse-pt(theme.caption-size))[Base Reactions (kip)],
     )
+    #v(6pt)
+    #align(right)[#text(size: parse-pt(theme.label-size), weight: "bold")[Status: #pass-str (X ratio #calc.round(data.ratio-x, digits: 5), Y ratio #calc.round(data.ratio-y, digits: 5))]]
   ]]
   chart-table-layout(table-body, chart-body)
 }
@@ -479,34 +516,49 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
     #text(size: parse-pt(theme.label-size), weight: "bold")[
       Governing: #data-node.governing-story #data-node.governing-direction #data-node.governing-case (#pass-str)
     ]
-    #v(3pt)
-    #text(size: parse-pt(theme.label-size))[Allowable ratio: #calc.round(data-node.allowable-ratio, digits: 5)]
     #v(4pt)
     #drift-table(data-node)
   ]]
-  let chart-body = [#align(center)[
-    #figure(
-      image(chart-file, height: parse-in(theme.chart-with-table-chart-h)),
-      caption: text(size: parse-pt(theme.caption-size))[Drift Envelope],
-    )
-  ]]
+  let chart-body = [#stack(
+    spacing: 0pt,
+    align(center)[
+      #figure(
+        image(chart-file, height: parse-in(theme.chart-with-table-chart-h)),
+        caption: text(size: parse-pt(theme.caption-size))[Drift demand ratio by tracking group],
+      )
+    ],
+    v(1fr),
+    align(right)[
+      #stack(
+        spacing: 2pt,
+        text(size: parse-pt(theme.label-size))[Demand ratio: #calc.round(data-node.governing-demand-ratio, digits: 5)],
+        text(size: parse-pt(theme.label-size))[Allowable ratio: #calc.round(data-node.allowable-ratio, digits: 5)],
+        text(size: parse-pt(theme.label-size))[Utilization: #calc.round(data-node.governing-utilization * 100.0, digits: 2)% | Margin: #calc.round(data-node.governing-margin-ratio, digits: 5)],
+        text(size: parse-pt(theme.label-size))[Basis: max drift ratio demand per group/story against allowable ratio.],
+        text(size: parse-pt(theme.label-size), weight: "bold")[Status: #pass-str],
+      )
+    ],
+  )]
   chart-table-layout(table-body, chart-body, emphasized: true)
 }
 
 #let displacement-table(data-node) = {
   table(
-    columns: data-node.groups.len() + 1,
+    columns: data-node.groups.len() + 4,
     fill: (x, y) => if y == 0 { luma(220) } else { row-fill("", y) },
-    align: (x, y) => if x == 0 { left } else { right },
-    table.header([Level], ..data-node.groups.map(g => [#g])),
+    align: (x, y) => if x <= 1 { left } else { right },
+    table.header([Story], [Elevation (ft)], [Limit (in)], ..data-node.groups.map(g => [#g]), [Util.]),
     ..range(data-node.levels.len()).map(i => {
       let row = data-node.matrix-in.at(i, default: ())
       (
         data-node.levels.at(i, default: "-"),
+        str(calc.round(data-node.level-elevations-ft.at(i, default: 0.0), digits: 3)),
+        str(calc.round(data-node.level-limits-in.at(i, default: 0.0), digits: 4)),
         ..range(data-node.groups.len()).map(j => {
           let value = row.at(j, default: none)
           if value == none { "-" } else { str(calc.round(value, digits: 4)) }
         }),
+        str(calc.round(data-node.level-utilization.at(i, default: 0.0) * 100.0, digits: 2)) + "%",
       )
     }).flatten(),
   )
@@ -520,48 +572,81 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
     #text(size: parse-pt(theme.label-size), weight: "bold")[
       Governing: #data-node.governing-story #data-node.governing-direction #data-node.governing-case (#pass-str)
     ]
-    #v(3pt)
-    #text(size: parse-pt(theme.label-size))[Per-level limits shown in charts; matrix shows demand values only.]
     #v(4pt)
     #displacement-table(data-node)
   ]]
-  let chart-body = [#align(center)[
-    #figure(
-      image(chart-file, height: parse-in(theme.chart-with-table-chart-h)),
-      caption: text(size: parse-pt(theme.caption-size))[Displacement Envelope],
-    )
-  ]]
+  let chart-body = [#stack(
+    spacing: 0pt,
+    align(center)[
+      #figure(
+        image(chart-file, height: parse-in(theme.chart-with-table-chart-h)),
+        caption: text(size: parse-pt(theme.caption-size))[Displacement demand by tracking group],
+      )
+    ],
+    v(1fr),
+    align(right)[
+      #stack(
+        spacing: 2pt,
+        text(size: parse-pt(theme.label-size))[Demand (in): #calc.round(data-node.governing-utilization * data-node.governing-limit-in, digits: 4)],
+        text(size: parse-pt(theme.label-size))[Limit (in): #calc.round(data-node.governing-limit-in, digits: 4) | Utilization: #calc.round(data-node.governing-utilization * 100.0, digits: 2)% | Margin: #calc.round(data-node.governing-margin * 100.0, digits: 2)%],
+        text(size: parse-pt(theme.label-size))[Basis: per-level limit = level elevation / configured ratio divisor.],
+        text(size: parse-pt(theme.label-size), weight: "bold")[Status: #pass-str],
+      )
+    ],
+  )]
   chart-table-layout(table-body, chart-body, emphasized: true)
 }
 
 #let torsional-dir-page(title, data-node) = {
   text(size: parse-pt(theme.title-size), weight: "bold")[#title]
   v(parse-pt(theme.section-gap))
-  let warn-str = if data-node.has-type-b { "TYPE B IRREGULARITY" } else if data-node.has-type-a { "Type A irregularity" } else { "No irregularity" }
-  text(size: parse-pt(theme.label-size), weight: "bold")[
-    Governing story: #data-node.governing-story | Case: #data-node.governing-case | Max ratio: #calc.round(data-node.max-ratio, digits: 3) | #warn-str
-  ]
+  let pass-str = if data-node.has-type-b { "FAIL" } else { "PASS" }
+  if data-node.has-rows {
+    text(size: parse-pt(theme.label-size), weight: "bold")[
+      Governing story: #data-node.governing-story | Case: #data-node.governing-case | Pair: #data-node.governing-joint-a / #data-node.governing-joint-b
+    ]
+    text(size: parse-pt(theme.label-size))[
+      DeltaMax: #calc.round(data-node.governing-delta-max, digits: 4) | DeltaAvg: #calc.round(data-node.governing-delta-avg, digits: 4) | Ratio: #calc.round(data-node.max-ratio, digits: 4)
+    ]
+    text(size: parse-pt(theme.label-size))[
+      Thresholds: Type A > #calc.round(data-node.type-a-threshold, digits: 2), Type B > #calc.round(data-node.type-b-threshold, digits: 2) | Classification: #data-node.classification
+    ]
+  } else {
+    text(size: parse-pt(theme.label-size), weight: "bold")[No qualifying rows for configured pairs and cases.]
+    text(size: parse-pt(theme.label-size))[Thresholds: Type A > #calc.round(data-node.type-a-threshold, digits: 2), Type B > #calc.round(data-node.type-b-threshold, digits: 2) | Classification: #data-node.classification]
+  }
   v(4pt)
-  table(
-    columns: (1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr),
-    fill: (x, y) => if y == 0 { luma(220) } else { row-fill(data-node.annotations.at(y - 1, default: ""), y) },
-    align: (x, y) => if x >= 4 { right } else { left },
-    table.header(
-      ..("Story", "Case", "Joint A", "Joint B", "Ratio", "Type A (>1.2)", "Type B (>1.4)", "Ax", "Ecc (ft)")
-        .map(h => table.cell(fill: luma(220))[#h])
-    ),
-    ..data-node.rows.map(row => (
+  let torsion-rows = if data-node.has-rows {
+    data-node.rows.map(row => (
       row.story,
       row.case,
       row.joint-a,
       row.joint-b,
-      str(calc.round(row.ratio, digits: 3)),
+      str(calc.round(row.delta-max, digits: 4)),
+      str(calc.round(row.delta-avg, digits: 4)),
+      str(calc.round(row.ratio, digits: 4)),
       if row.is-type-a { "Type A" } else { "-" },
       if row.is-type-b { "Type B" } else { "-" },
       str(calc.round(row.ax, digits: 2)),
       str(calc.round(row.ecc-ft, digits: 2)),
-    )).flatten(),
+    )).flatten()
+  } else {
+    (
+      data-node.no-data-note, "", "", "", "", "", "", "", "", "", "",
+    )
+  }
+  table(
+    columns: (1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr),
+    fill: (x, y) => if y == 0 { luma(220) } else { row-fill(data-node.annotations.at(y - 1, default: ""), y) },
+    align: (x, y) => if x >= 4 { right } else { left },
+    table.header(
+      ..("Story", "Case", "Joint A", "Joint B", "DeltaMax", "DeltaAvg", "Ratio", "Type A", "Type B", "Ax", "Ecc (ft)")
+        .map(h => table.cell(fill: luma(220))[#h])
+    ),
+    ..torsion-rows,
   )
+  v(6pt)
+  align(right)[#text(size: parse-pt(theme.label-size), weight: "bold")[Status: #pass-str]]
 }
 "#,
     );
@@ -593,32 +678,51 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
   text(size: parse-pt(theme.title-size), weight: "bold")[#title]
   v(parse-pt(theme.section-gap))
   let table-body = [#align(top)[
-    #text(size: parse-pt(theme.label-size), weight: "bold")[Levels: #data.levels.len() | Piers: #data.piers.len() | Overall: #pass-str]
+    #text(size: parse-pt(theme.label-size), weight: "bold")[Levels: #data.levels.len() | Piers: #data.piers.len() | Unit: #data.stress-unit]
     #v(4pt)
     #pier-shear-table(data)
   ]]
-  let chart-body = [#align(center)[
-    #figure(
-      image(chart-file, height: parse-in(theme.chart-with-table-normal-h)),
-      caption: text(size: parse-pt(theme.caption-size))[Pier Shear Envelope],
-    )
-  ]]
+  let chart-body = [#stack(
+    spacing: 0pt,
+    align(center)[
+      #figure(
+        image(chart-file, height: parse-in(theme.chart-with-table-normal-h)),
+        caption: text(size: parse-pt(theme.caption-size))[Pier shear stress trend by level],
+      )
+    ],
+    v(1fr),
+    align(right)[
+      #stack(
+        spacing: 2pt,
+        text(size: parse-pt(theme.label-size))[Limit basis: individual ratio <= #calc.round(data.limit-individual-ratio, digits: 3) (10*sqrt(fc)), average ratio <= #calc.round(data.limit-average-ratio, digits: 3) (8*sqrt(fc))],
+        text(size: parse-pt(theme.label-size))[Observed: max individual #calc.round(data.max-individual-ratio, digits: 3), max average #calc.round(data.max-average-ratio, digits: 3)],
+        text(size: parse-pt(theme.label-size), weight: "bold")[Status: #pass-str],
+      )
+    ],
+  )]
   chart-table-layout(table-body, chart-body)
 }
 
 #let pier-axial-assumptions(data-file) = {
   let data = json(data-file)
   let pass-str = if data.pass { "PASS" } else { "FAIL" }
-  text(size: parse-pt(theme.title-size), weight: "bold")[Pier Axial Assumptions]
+  text(size: parse-pt(theme.title-size), weight: "bold")[Pier Axial Preliminary Screening]
   v(parse-pt(theme.section-gap))
   text(weight: "bold")[Conservative Capacity Basis]
   v(8pt)
   text(size: parse-pt(theme.body-size))[Nominal capacity uses Po = 0.85fcAg and phiPo = phi ** Po.]
+  text(size: parse-pt(theme.body-size))[This section is a preliminary axial screening check, not a full wall/pier axial design check.]
   text(size: parse-pt(theme.body-size))[Rebar contribution is intentionally excluded from this preliminary axial check.]
   text(size: parse-pt(theme.body-size))[Fallback fc reuses the pier section material default when pier/story matching is unavailable.]
   text(size: parse-pt(theme.body-size))[Results are split by gravity, wind, and seismic categories.]
-  v(16pt)
-  text(weight: "bold")[Overall Pass: #pass-str]
+  v(1fr)
+  align(right)[
+    #stack(
+      spacing: 2pt,
+      text(size: parse-pt(theme.label-size))[Preliminary screening only. Final design check requires engineer review.],
+      text(weight: "bold")[Status: #pass-str],
+    )
+  ]
 }
 "#,
     );
@@ -629,6 +733,7 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
     doc.push_str("\n// ── Document Sequence ────────────────────────────────\n");
     doc.push_str("#cover-page()\n\n");
     doc.push_str("#pagebreak()\n#summary-page()\n\n");
+    doc.push_str("#pagebreak()\n#scope-limitations-page()\n\n");
 
     if calc.modal.is_some() {
         doc.push_str("#pagebreak()\n#modal-page()\n\n");
@@ -658,22 +763,14 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
         doc.push_str("#pagebreak()\n#displacement-dir-page([Wind Displacement Review (Y)], dpw.y, \"images/displacement_wind_y.svg\")\n\n");
     }
 
-    if let Some(torsional) = calc.torsional.as_ref() {
-        let has_x = !torsional.x.rows.is_empty();
-        let has_y = !torsional.y.rows.is_empty();
-        if has_x || has_y {
-            doc.push_str("#let tor = json(\"torsional.json\")\n");
-        }
-        if has_x {
-            doc.push_str(
-                "#pagebreak()\n#torsional-dir-page([Torsional Irregularity - X Direction], tor.x)\n\n",
-            );
-        }
-        if has_y {
-            doc.push_str(
-                "#pagebreak()\n#torsional-dir-page([Torsional Irregularity - Y Direction], tor.y)\n\n",
-            );
-        }
+    if calc.torsional.is_some() {
+        doc.push_str("#let tor = json(\"torsional.json\")\n");
+        doc.push_str(
+            "#pagebreak()\n#torsional-dir-page([Torsional Irregularity - X Direction], tor.x)\n\n",
+        );
+        doc.push_str(
+            "#pagebreak()\n#torsional-dir-page([Torsional Irregularity - Y Direction], tor.y)\n\n",
+        );
     }
 
     if calc.pier_shear_stress_wind.is_some() {
