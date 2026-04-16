@@ -108,6 +108,7 @@ impl CalcRunner {
                 Some(checks::torsional::run(
                     &joint_drifts,
                     &story_defs,
+                    &group_map,
                     tor_params,
                 )?)
             } else {

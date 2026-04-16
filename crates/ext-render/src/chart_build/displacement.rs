@@ -1,6 +1,6 @@
 use ext_calc::output::{DisplacementOutput, DisplacementWindOutput};
 
-use crate::chart_build::{DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE};
+use crate::chart_build::{DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE, story_display_order};
 use crate::chart_types::{
     CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
 };
@@ -39,9 +39,8 @@ fn build_inner(
     } else {
         displacement.story_order.clone()
     };
-    // Swapped-axis category plots place the first category at the bottom.
-    // Reverse here so visual Y order remains top story -> bottom story.
-    let display_categories = categories.iter().rev().cloned().collect::<Vec<_>>();
+    // Shared story-order utility keeps swapped-axis category ordering consistent across all charts.
+    let display_categories = story_display_order(&categories, |_| true);
     let groups = ordered_unique(displacement.rows.iter().map(|row| row.group_name.clone()));
 
     let palette = [

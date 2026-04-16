@@ -2,7 +2,7 @@ use ext_calc::output::PierShearStressOutput;
 
 use crate::chart_build::{
     PIER_SHEAR_STRESS_SEISMIC_IMAGE, PIER_SHEAR_STRESS_WIND_IMAGE, is_default_pier_label,
-    normalized_pier_labels,
+    normalized_pier_labels, story_display_order,
 };
 use crate::chart_types::{
     CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
@@ -40,9 +40,8 @@ fn build_chart(
     } else {
         output.story_order.clone()
     };
-    // Swapped-axis category plots place the first category at the bottom.
-    // Reverse here so visual Y order remains top story -> bottom story.
-    let display_categories = categories.iter().rev().cloned().collect::<Vec<_>>();
+    // Shared story-order utility keeps swapped-axis category ordering consistent across all charts.
+    let display_categories = story_display_order(&categories, |_| true);
 
     let mut pier_names = output
         .per_pier

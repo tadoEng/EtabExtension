@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::code_params::{TorsionalJointPair, TorsionalParams};
@@ -9,6 +9,7 @@ use crate::tables::story_def::StoryDefRow;
 pub fn run(
     rows: &[JointDriftRow],
     stories: &[StoryDefRow],
+    group_map: &HashMap<String, Vec<String>>,
     params: &TorsionalParams,
 ) -> Result<TorsionalOutput> {
     // Sort stories bottom-up
@@ -22,6 +23,7 @@ pub fn run(
         &params.x_pairs,
         params.ecc_ratio,
         params.building_dim_y_ft,
+        group_map,
         true,
     )?;
     let y_out = process_direction(
@@ -31,6 +33,7 @@ pub fn run(
         &params.y_pairs,
         params.ecc_ratio,
         params.building_dim_x_ft,
+        group_map,
         false,
     )?;
 
@@ -50,6 +53,7 @@ fn process_direction(
     pairs: &[TorsionalJointPair],
     ecc_ratio: f64,
     perp_dim_ft: f64,
+    group_map: &HashMap<String, Vec<String>>,
     is_x: bool,
 ) -> Result<TorsionalDirectionOutput> {
     if cases.is_empty() || pairs.is_empty() {
@@ -98,8 +102,8 @@ fn process_direction(
             .unwrap_or_else(|| vec![1]);
 
         for pair in pairs {
-            let j_a = pair.joint_a.as_str();
-            let j_b = pair.joint_b.as_str();
+            let token_a = pair.joint_a.as_str();
+            let token_b = pair.joint_b.as_str();
 
             for i in 1..stories.len() {
                 let story_bot = &stories[i - 1];
@@ -112,14 +116,40 @@ fn process_direction(
                 let mut has_data = true;
 
                 for step in &steps {
-                    let a_top = disp_map.get(&(j_a, &story_top.story, case, *step));
-                    let a_bot = disp_map.get(&(j_a, &story_bot.story, case, *step));
-                    let b_top = disp_map.get(&(j_b, &story_top.story, case, *step));
-                    let b_bot = disp_map.get(&(j_b, &story_bot.story, case, *step));
+                    let a_top = resolve_token_disp(
+                        &disp_map,
+                        group_map,
+                        token_a,
+                        story_top.story.as_str(),
+                        case,
+                        *step,
+                    )?;
+                    let a_bot = resolve_token_disp(
+                        &disp_map,
+                        group_map,
+                        token_a,
+                        story_bot.story.as_str(),
+                        case,
+                        *step,
+                    )?;
+                    let b_top = resolve_token_disp(
+                        &disp_map,
+                        group_map,
+                        token_b,
+                        story_top.story.as_str(),
+                        case,
+                        *step,
+                    )?;
+                    let b_bot = resolve_token_disp(
+                        &disp_map,
+                        group_map,
+                        token_b,
+                        story_bot.story.as_str(),
+                        case,
+                        *step,
+                    )?;
 
-                    if let (Some(&at), Some(&ab), Some(&bt), Some(&bb)) =
-                        (a_top, a_bot, b_top, b_bot)
-                    {
+                    if let (Some(at), Some(ab), Some(bt), Some(bb)) = (a_top, a_bot, b_top, b_bot) {
                         // Drift is |DispTop - DispBot|. We multiply by 12.0 to get Inches.
                         let d_a = (at - ab).abs() * 12.0;
                         let d_b = (bt - bb).abs() * 12.0;
@@ -173,8 +203,9 @@ fn process_direction(
                 out_rows.push(TorsionalRow {
                     story: story_top.story.clone(),
                     case: case.clone(),
-                    joint_a: j_a.to_string(),
-                    joint_b: j_b.to_string(),
+                    // Preserve configured labels in output; these may be group-name tokens.
+                    joint_a: token_a.to_string(),
+                    joint_b: token_b.to_string(),
                     drift_a_steps,
                     drift_b_steps,
                     delta_max_steps,
@@ -234,12 +265,63 @@ fn process_direction(
     })
 }
 
+/// Resolve a configured torsional joint token into a displacement value for one
+/// (story, case, step) point.
+///
+/// Token semantics:
+/// - If token matches a `GroupName` in `group_assignments`, resolve from its members.
+/// - Otherwise treat token as a direct `UniqueName`.
+///
+/// Fail-fast policy:
+/// - If multiple members match at the same (story, case, step), return an error.
+fn resolve_token_disp(
+    disp_map: &HashMap<(&str, &str, &str, i32), f64>,
+    group_map: &HashMap<String, Vec<String>>,
+    token: &str,
+    story: &str,
+    case: &str,
+    step: i32,
+) -> Result<Option<f64>> {
+    let candidates = if let Some(members) = group_map.get(token) {
+        members.iter().map(String::as_str).collect::<Vec<_>>()
+    } else {
+        vec![token]
+    };
+
+    let mut matches = Vec::new();
+    for unique_name in candidates {
+        if let Some(value) = disp_map.get(&(unique_name, story, case, step)) {
+            matches.push((unique_name, *value));
+        }
+    }
+
+    match matches.len() {
+        0 => Ok(None),
+        1 => Ok(Some(matches[0].1)),
+        _ => {
+            let names = matches
+                .into_iter()
+                .map(|(name, _)| name)
+                .collect::<Vec<_>>();
+            bail!(
+                "Torsional token '{}' matched multiple unique joints at story '{}' case '{}' step {}: [{}]",
+                token,
+                story,
+                case,
+                step,
+                names.join(", ")
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::run;
     use crate::code_params::CodeParams;
-    use crate::tables::{joint_drift::load_joint_drifts, story_def::load_story_definitions};
+    use crate::tables::story_def::load_story_definitions;
     use ext_db::config::Config;
+    use std::collections::HashMap;
     use std::path::PathBuf;
 
     fn fixture_dir() -> PathBuf {
@@ -255,13 +337,10 @@ mod tests {
         let config = Config::load(&results_dir).unwrap();
         let params = CodeParams::from_config(&config).unwrap();
 
-        let drifts = load_joint_drifts(&results_dir).unwrap();
         let stories = load_story_definitions(&results_dir).unwrap();
 
         // Let's artificially get the raw data inside the test and run a hand-calc loop!
         let t_params = params.torsional.as_ref().unwrap();
-        let _output = run(&drifts, &stories, t_params).unwrap();
-
         // Let's create an explicit hand-calc trace to prove the math works isolated from the parquet
         use crate::tables::joint_drift::JointDriftRow;
 
@@ -364,7 +443,7 @@ mod tests {
             joint_b: "Joint50".into(),
         }];
 
-        let output = run(&mock_drifts, &stories, &t_custom).unwrap();
+        let output = run(&mock_drifts, &stories, &HashMap::new(), &t_custom).unwrap();
 
         let gov = &output.x.rows[0];
         assert_eq!(gov.joint_a, "Joint47");
@@ -389,7 +468,7 @@ mod tests {
     }
 
     #[test]
-    fn torsional_accepts_single_step_cases() {
+    fn torsional_supports_unique_name_fallback_tokens() {
         use crate::code_params::{TorsionalJointPair, TorsionalParams};
         use crate::tables::joint_drift::JointDriftRow;
         use crate::tables::story_def::StoryDefRow;
@@ -475,10 +554,234 @@ mod tests {
             building_dim_y_ft: 50.0,
         };
 
-        let output = run(&rows, &stories, &params).unwrap();
+        let output = run(&rows, &stories, &HashMap::new(), &params).unwrap();
 
         assert_eq!(output.x.rows.len(), 1);
         assert_eq!(output.x.rows[0].delta_avg_steps.len(), 1);
         assert!(output.x.rows[0].ratio >= 1.0);
+    }
+
+    #[test]
+    fn torsional_resolves_group_tokens_before_lookup() {
+        use crate::code_params::{TorsionalJointPair, TorsionalParams};
+        use crate::tables::joint_drift::JointDriftRow;
+        use crate::tables::story_def::StoryDefRow;
+
+        let stories = vec![
+            StoryDefRow {
+                story: "L1".into(),
+                height_ft: 10.0,
+                elevation_ft: 10.0,
+            },
+            StoryDefRow {
+                story: "L2".into(),
+                height_ft: 10.0,
+                elevation_ft: 20.0,
+            },
+        ];
+
+        let rows = vec![
+            JointDriftRow {
+                story: "L2".into(),
+                unique_name: "J1".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.20,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 1,
+            },
+            JointDriftRow {
+                story: "L1".into(),
+                unique_name: "J1".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.05,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 1,
+            },
+            JointDriftRow {
+                story: "L2".into(),
+                unique_name: "J2".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.18,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 2,
+            },
+            JointDriftRow {
+                story: "L1".into(),
+                unique_name: "J2".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.04,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 2,
+            },
+        ];
+
+        let params = TorsionalParams {
+            x_cases: vec!["ELF_X".into()],
+            y_cases: vec![],
+            x_pairs: vec![TorsionalJointPair {
+                joint_a: "TrackingA".into(),
+                joint_b: "TrackingB".into(),
+            }],
+            y_pairs: vec![],
+            ecc_ratio: 0.05,
+            building_dim_x_ft: 100.0,
+            building_dim_y_ft: 50.0,
+        };
+
+        let mut group_map = HashMap::new();
+        group_map.insert("TrackingA".to_string(), vec!["J1".to_string()]);
+        group_map.insert("TrackingB".to_string(), vec!["J2".to_string()]);
+
+        let output = run(&rows, &stories, &group_map, &params).unwrap();
+
+        assert_eq!(output.x.rows.len(), 1);
+        assert_eq!(output.x.rows[0].joint_a, "TrackingA");
+        assert_eq!(output.x.rows[0].joint_b, "TrackingB");
+    }
+
+    #[test]
+    fn torsional_fails_when_group_token_is_ambiguous_per_step() {
+        use crate::code_params::{TorsionalJointPair, TorsionalParams};
+        use crate::tables::joint_drift::JointDriftRow;
+        use crate::tables::story_def::StoryDefRow;
+
+        let stories = vec![
+            StoryDefRow {
+                story: "L1".into(),
+                height_ft: 10.0,
+                elevation_ft: 10.0,
+            },
+            StoryDefRow {
+                story: "L2".into(),
+                height_ft: 10.0,
+                elevation_ft: 20.0,
+            },
+        ];
+
+        let rows = vec![
+            JointDriftRow {
+                story: "L2".into(),
+                unique_name: "J1".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.20,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 1,
+            },
+            JointDriftRow {
+                story: "L2".into(),
+                unique_name: "J1_ALT".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.22,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 2,
+            },
+            JointDriftRow {
+                story: "L1".into(),
+                unique_name: "J1".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.05,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 1,
+            },
+            JointDriftRow {
+                story: "L1".into(),
+                unique_name: "J1_ALT".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.06,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 2,
+            },
+            JointDriftRow {
+                story: "L2".into(),
+                unique_name: "J2".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.18,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 3,
+            },
+            JointDriftRow {
+                story: "L1".into(),
+                unique_name: "J2".into(),
+                output_case: "ELF_X".into(),
+                case_type: "LinStatic".into(),
+                step_type: String::new(),
+                step_number: Some(1.0),
+                disp_x_ft: 0.04,
+                disp_y_ft: 0.0,
+                drift_x: 0.0,
+                drift_y: 0.0,
+                label: 3,
+            },
+        ];
+
+        let params = TorsionalParams {
+            x_cases: vec!["ELF_X".into()],
+            y_cases: vec![],
+            x_pairs: vec![TorsionalJointPair {
+                joint_a: "TrackingA".into(),
+                joint_b: "TrackingB".into(),
+            }],
+            y_pairs: vec![],
+            ecc_ratio: 0.05,
+            building_dim_x_ft: 100.0,
+            building_dim_y_ft: 50.0,
+        };
+
+        let mut group_map = HashMap::new();
+        group_map.insert(
+            "TrackingA".to_string(),
+            vec!["J1".to_string(), "J1_ALT".to_string()],
+        );
+        group_map.insert("TrackingB".to_string(), vec!["J2".to_string()]);
+
+        let err = run(&rows, &stories, &group_map, &params).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("matched multiple unique joints"));
+        assert!(msg.contains("TrackingA"));
     }
 }

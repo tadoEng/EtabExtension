@@ -228,6 +228,8 @@ fn build_swapped_axis_points(categories: &[String], values: &[f64]) -> Vec<DataP
 ///
 /// # Example
 /// ```
+/// use ext_render::chart_build::story_display_order;
+///
 /// let order = ["L3".to_string(), "L2".to_string(), "L1".to_string()];
 /// let cats = story_display_order(&order, |_| true);
 /// assert_eq!(cats, ["L1", "L2", "L3"]); // L1 at bottom, L3 at top

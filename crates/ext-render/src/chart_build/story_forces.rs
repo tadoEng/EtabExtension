@@ -2,6 +2,7 @@ use ext_calc::output::{StoryForceCaseProfile, StoryForcesOutput};
 
 use crate::chart_build::{
     STORY_FORCE_MX_IMAGE, STORY_FORCE_MY_IMAGE, STORY_FORCE_VX_IMAGE, STORY_FORCE_VY_IMAGE,
+    story_display_order,
 };
 use crate::chart_types::{
     CartesianSeries, ChartKind, ChartSpec, NamedChartSpec, RenderConfig, SeriesType,
@@ -70,9 +71,8 @@ fn build_force_chart(
     } else {
         output.story_order.clone()
     };
-    // Swapped-axis category plots place the first category at the bottom.
-    // Reverse here so visual Y order remains top story -> bottom story.
-    let display_categories = categories.iter().rev().cloned().collect::<Vec<_>>();
+    // Shared story-order utility keeps swapped-axis category ordering consistent across all charts.
+    let display_categories = story_display_order(&categories, |_| true);
 
     let palette = [
         "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#8c564b", "#17becf", "#bcbd22", "#7f7f7f",
