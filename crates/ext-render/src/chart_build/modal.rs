@@ -20,6 +20,8 @@ pub fn build(modal: &ModalOutput, config: &RenderConfig) -> NamedChartSpec {
                     .map(|row| format!("Mode {}", row.mode))
                     .collect(),
                 swap_axes: false,
+                x_axis_label: Some("Mode".to_string()),
+                y_axis_label: Some("Cumulative Participation Ratio".to_string()),
                 series: vec![
                     CartesianSeries {
                         name: "Sum UX".to_string(),

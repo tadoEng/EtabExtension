@@ -107,19 +107,19 @@ pub const TABLOID_LANDSCAPE: PageTheme = PageTheme {
     content_height: "9.75in",
     // tb-h = 11 - 0.25 - 0.25 - 9.75 = 0.75in ✓
     body_font: "Linux Libertine",
-    body_size: "9pt",
+    body_size: "10pt",
     title_size: "14pt",
-    label_size: "7pt",
-    caption_size: "8pt",
+    label_size: "8pt",
+    caption_size: "9pt",
 
     chart_single_h: "8.5in",
     chart_two_col_h: "7.5in",
-    chart_with_table_chart_h: "6in",
-    chart_with_table_normal_h: "7in",
+    chart_with_table_chart_h: "6.2in",
+    chart_with_table_normal_h: "6.2in",
 
     two_col_ratio: "(1fr, 1fr)",
-    chart_table_emphasized: "(1.08fr, 0.92fr)",
-    chart_table_normal: "(0.82fr, 1.18fr)",
+    chart_table_emphasized: "(1fr, 1fr)",
+    chart_table_normal: "(1fr, 1fr)",
 
     // Sum = 16.5in = 17in - 0.25in - 0.25in ✓
     title_block_columns: "(3.35in, 3.2in, 4.0in, 1.6in, 2.0in, 2.35in)",

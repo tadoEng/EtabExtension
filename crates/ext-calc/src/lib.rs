@@ -120,13 +120,22 @@ impl CalcRunner {
 
         let pier_shear_stress_wind_output = if params.check_selection.pier_shear_stress_wind {
             match &params.pier_shear_stress_wind {
-                Some(p) => Some(checks::pier_shear_stress::run(
-                    &pier_forces,
-                    &pier_sections,
-                    &story_defs,
-                    &pier_fc_map,
-                    p,
-                )?),
+                Some(p) => {
+                    if params.pier_shear_code_unsupported() {
+                        Some(checks::pier_shear_stress::unsupported_output(format!(
+                            "Pier shear stress ratio check is currently available only for ACI318-14. Configured code '{}' is report-only (skipped).",
+                            params.code
+                        )))
+                    } else {
+                        Some(checks::pier_shear_stress::run(
+                            &pier_forces,
+                            &pier_sections,
+                            &story_defs,
+                            &pier_fc_map,
+                            p,
+                        )?)
+                    }
+                }
                 None => None,
             }
         } else {
@@ -135,13 +144,22 @@ impl CalcRunner {
 
         let pier_shear_stress_seismic_output = if params.check_selection.pier_shear_stress_seismic {
             match &params.pier_shear_stress_seismic {
-                Some(p) => Some(checks::pier_shear_stress::run(
-                    &pier_forces,
-                    &pier_sections,
-                    &story_defs,
-                    &pier_fc_map,
-                    p,
-                )?),
+                Some(p) => {
+                    if params.pier_shear_code_unsupported() {
+                        Some(checks::pier_shear_stress::unsupported_output(format!(
+                            "Pier shear stress ratio check is currently available only for ACI318-14. Configured code '{}' is report-only (skipped).",
+                            params.code
+                        )))
+                    } else {
+                        Some(checks::pier_shear_stress::run(
+                            &pier_forces,
+                            &pier_sections,
+                            &story_defs,
+                            &pier_fc_map,
+                            p,
+                        )?)
+                    }
+                }
                 None => None,
             }
         } else {
@@ -326,29 +344,49 @@ fn build_summary(output: &CalcOutput, material_count: usize, group_count: usize)
 
     if let Some(psw) = &output.pier_shear_stress_wind {
         check_count += 1;
-        if psw.pass {
-            pass_count += 1;
+        let status = if !psw.supported {
+            "warn"
+        } else if psw.pass {
+            "pass"
         } else {
+            "fail"
+        };
+        if status == "pass" {
+            pass_count += 1;
+        } else if status == "fail" {
             fail_count += 1;
         }
         lines.push(SummaryLine {
             key: "pierShearStressWind".to_string(),
-            status: if psw.pass { "pass" } else { "fail" }.to_string(),
-            message: "Pier shear stress wind".to_string(),
+            status: status.to_string(),
+            message: psw
+                .support_note
+                .clone()
+                .unwrap_or_else(|| "Pier shear stress wind".to_string()),
         });
     }
 
     if let Some(pse) = &output.pier_shear_stress_seismic {
         check_count += 1;
-        if pse.pass {
-            pass_count += 1;
+        let status = if !pse.supported {
+            "warn"
+        } else if pse.pass {
+            "pass"
         } else {
+            "fail"
+        };
+        if status == "pass" {
+            pass_count += 1;
+        } else if status == "fail" {
             fail_count += 1;
         }
         lines.push(SummaryLine {
             key: "pierShearStressSeismic".to_string(),
-            status: if pse.pass { "pass" } else { "fail" }.to_string(),
-            message: "Pier shear stress seismic".to_string(),
+            status: status.to_string(),
+            message: pse
+                .support_note
+                .clone()
+                .unwrap_or_else(|| "Pier shear stress seismic".to_string()),
         });
     }
 
@@ -436,5 +474,33 @@ mod tests {
         assert!(output.pier_shear_stress_wind.is_some());
         assert!(output.pier_shear_stress_seismic.is_some());
         assert!(output.pier_axial_stress.is_some());
+    }
+
+    #[test]
+    fn calc_runner_marks_pier_shear_as_unsupported_for_aci19() {
+        let results_dir = fixture_dir();
+        let mut params = configured_params_from_fixture(&results_dir);
+        params.code = "ACI318-19".to_string();
+        let output = CalcRunner::run_all(
+            results_dir.as_path(),
+            results_dir.as_path(),
+            &params,
+            "v1",
+            "main",
+        )
+        .unwrap();
+
+        let wind = output
+            .pier_shear_stress_wind
+            .as_ref()
+            .expect("wind output should exist");
+        assert!(!wind.supported);
+        assert!(wind.per_pier.is_empty());
+        assert!(
+            wind.support_note
+                .as_deref()
+                .unwrap_or("")
+                .contains("ACI318-14")
+        );
     }
 }

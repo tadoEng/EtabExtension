@@ -5,7 +5,7 @@ use chrono::Utc;
 use ext_calc::{CalcRunner, code_params::CodeParams, output::CalcOutput};
 use ext_core::vcs::current_branch;
 use ext_render::{BaseReactionGroup, RenderConfig, render_all_svg, write_svg_assets};
-use ext_report::{ReportProjectMeta, ReportTheme, render_pdf, write_pdf};
+use ext_report::{ReportProjectMeta, ReportTheme, build_typst_document, render_pdf, write_pdf};
 use serde::{Deserialize, Serialize};
 
 use crate::context::AppContext;
@@ -173,9 +173,31 @@ pub fn report_version(
         .map(|asset| (asset.logical_name.clone(), asset.svg.clone()))
         .collect();
     let project = build_project_meta(ctx, &version);
-    let pdf = render_pdf(&calc_output, &project, svg_map, theme.page_theme())?;
-
     let output_dir = report_output_dir(ctx, &version, output_root);
+    let pdf = match render_pdf(&calc_output, &project, svg_map, theme.page_theme()) {
+        Ok(pdf) => pdf,
+        Err(err) => {
+            std::fs::create_dir_all(&output_dir).with_context(|| {
+                format!(
+                    "Failed to create report output dir {}",
+                    output_dir.display()
+                )
+            })?;
+            let debug_typst_path = output_dir.join(format!("{report_name}.failed.typ"));
+            std::fs::write(&debug_typst_path, build_typst_document(&calc_output)).with_context(
+                || {
+                    format!(
+                        "Failed to write Typst debug file {}",
+                        debug_typst_path.display()
+                    )
+                },
+            )?;
+            bail!(
+                "Failed to render PDF: {err}. Debug Typst written to {}",
+                debug_typst_path.display()
+            );
+        }
+    };
     let pdf_path = output_dir.join(format!("{report_name}.pdf"));
     write_pdf(&pdf_path, &pdf)?;
 

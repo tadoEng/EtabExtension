@@ -12,7 +12,7 @@ use crate::chart_types::{
 ///
 /// VX + MY represent the X-direction excitation.
 /// VY + MX represent the Y-direction excitation.
-pub fn build(output: &StoryForcesOutput, _config: &RenderConfig) -> Vec<NamedChartSpec> {
+pub fn build(output: &StoryForcesOutput, config: &RenderConfig) -> Vec<NamedChartSpec> {
     vec![
         build_force_chart(
             STORY_FORCE_VX_IMAGE,
@@ -20,6 +20,7 @@ pub fn build(output: &StoryForcesOutput, _config: &RenderConfig) -> Vec<NamedCha
             "Story shear Vx per load case (X-direction excitation, kip).",
             &output.x_profiles,
             output,
+            config,
             |row| row.vx_kip,
             |row| row.max_vx_kip,
         ),
@@ -29,6 +30,7 @@ pub fn build(output: &StoryForcesOutput, _config: &RenderConfig) -> Vec<NamedCha
             "Story shear Vy per load case (Y-direction excitation, kip).",
             &output.y_profiles,
             output,
+            config,
             |row| row.vy_kip,
             |row| row.max_vy_kip,
         ),
@@ -38,6 +40,7 @@ pub fn build(output: &StoryForcesOutput, _config: &RenderConfig) -> Vec<NamedCha
             "Story moment My per load case (X-direction excitation, kip·ft).",
             &output.x_profiles,
             output,
+            config,
             |row| row.my_kip_ft,
             |row| row.max_my_kip_ft,
         ),
@@ -47,6 +50,7 @@ pub fn build(output: &StoryForcesOutput, _config: &RenderConfig) -> Vec<NamedCha
             "Story moment Mx per load case (Y-direction excitation, kip·ft).",
             &output.y_profiles,
             output,
+            config,
             |row| row.mx_kip_ft,
             |row| row.max_mx_kip_ft,
         ),
@@ -59,20 +63,13 @@ fn build_force_chart(
     caption: &str,
     profiles: &[StoryForceCaseProfile],
     output: &StoryForcesOutput,
+    config: &RenderConfig,
     value_fn: impl Fn(&ext_calc::output::StoryForceCaseRow) -> f64,
     fallback_value_fn: impl Fn(&ext_calc::output::StoryForceEnvelopeRow) -> f64,
 ) -> NamedChartSpec {
-    let categories = if output.story_order.is_empty() {
-        output
-            .rows
-            .iter()
-            .map(|row| row.story.clone())
-            .collect::<Vec<_>>()
-    } else {
-        output.story_order.clone()
-    };
-    // Shared story-order utility keeps swapped-axis category ordering consistent across all charts.
-    let display_categories = story_display_order(&categories, |_| true);
+    let display_categories = story_display_order(&output.story_order, |story| {
+        output.rows.iter().any(|row| row.story == story)
+    });
 
     let palette = [
         "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#8c564b", "#17becf", "#bcbd22", "#7f7f7f",
@@ -123,11 +120,13 @@ fn build_force_chart(
         caption: caption.to_string(),
         spec: ChartSpec {
             title: title.to_string(),
-            width: 620,
+            width: config.width,
             height,
             kind: ChartKind::Cartesian {
                 categories: display_categories,
                 swap_axes: true, // Y-axis = story, X-axis = force magnitude
+                x_axis_label: Some(title_axis_label(title).to_string()),
+                y_axis_label: Some("Story".to_string()),
                 series,
             },
         },
@@ -137,6 +136,14 @@ fn build_force_chart(
 fn config_height_for_story_count(count: u32) -> u32 {
     // 20 px per story, minimum 400.
     (count * 20 + 100).max(400)
+}
+
+fn title_axis_label(title: &str) -> &'static str {
+    if title.contains("Moment") {
+        "Moment [kip-ft]"
+    } else {
+        "Shear [kip]"
+    }
 }
 
 #[cfg(test)]

@@ -80,7 +80,7 @@ fn build_category(
         }
     }
 
-    // Group values by pier label: pier → { story → fa (ksi) }
+    // Group values by pier label: pier → { story → signed fa (ksi) }
     // Keep the governing (max absolute) value per story per pier.
     let mut pier_map: Vec<(String, HashMap<String, f64>)> = Vec::new();
     for row in &filtered {
@@ -91,13 +91,13 @@ fn build_category(
             .iter_mut()
             .find(|(label, _)| label == &row.pier_label)
         {
-            let entry = map.entry(row.story.clone()).or_insert(row.fa.value);
-            if row.fa.value.abs() > entry.abs() {
-                *entry = row.fa.value;
+            let entry = map.entry(row.story.clone()).or_insert(row.fa_signed.value);
+            if row.fa_signed.value.abs() > entry.abs() {
+                *entry = row.fa_signed.value;
             }
         } else {
             let mut map = HashMap::new();
-            map.insert(row.story.clone(), row.fa.value);
+            map.insert(row.story.clone(), row.fa_signed.value);
             pier_map.push((row.pier_label.clone(), map));
         }
     }
@@ -149,6 +149,8 @@ fn build_category(
             kind: ChartKind::Cartesian {
                 categories: stories,
                 swap_axes: true, // Y = story, X = stress (ksi)
+                x_axis_label: Some("Signed Stress [ksi]".to_string()),
+                y_axis_label: Some("Story".to_string()),
                 series,
             },
         },
@@ -171,9 +173,11 @@ mod tests {
             combo: format!("{}-combo", category),
             category: category.to_string(),
             pu: Quantity::new(100.0, "kip"),
+            pu_signed: Quantity::new(-100.0, "kip"),
             ag: Quantity::new(144.0, "in²"),
             phi_po: Quantity::new(500.0, "kip"),
             fa: Quantity::new(fa_ksi, "ksi"),
+            fa_signed: Quantity::new(fa_ksi, "ksi"),
             fa_ratio: fa_ksi / (0.85 * 4.0),
             dcr: fa_ksi / (0.85 * 4.0),
             pass: true,

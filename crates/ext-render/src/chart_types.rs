@@ -35,6 +35,8 @@ pub enum ChartKind {
         categories: Vec<String>,
         series: Vec<CartesianSeries>,
         swap_axes: bool,
+        x_axis_label: Option<String>,
+        y_axis_label: Option<String>,
     },
     Pie {
         data: Vec<(f64, String)>,

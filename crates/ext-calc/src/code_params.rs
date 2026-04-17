@@ -98,6 +98,19 @@ pub struct CodeParams {
 }
 
 impl CodeParams {
+    pub fn normalized_code(&self) -> String {
+        self.code
+            .chars()
+            .filter(|ch| !ch.is_whitespace() && *ch != '-')
+            .collect::<String>()
+            .to_ascii_lowercase()
+    }
+
+    pub fn pier_shear_code_unsupported(&self) -> bool {
+        let code = self.normalized_code();
+        code.contains("aci31819") || code.contains("aci31825")
+    }
+
     pub fn from_config(config: &Config) -> Result<Self> {
         let modal_case = required_string(config.calc.modal_case.as_deref(), "[calc].modal-case")?;
         let modal_threshold = required_positive_f64(
@@ -494,5 +507,18 @@ mod tests {
         let params = CodeParams::from_config(&config).unwrap();
         assert!(params.torsional.is_some());
         assert!(params.check_selection.torsional);
+    }
+
+    #[test]
+    fn code_params_detect_unsupported_pier_shear_codes() {
+        let mut params = CodeParams::for_testing();
+        params.code = "ACI318-19".to_string();
+        assert!(params.pier_shear_code_unsupported());
+
+        params.code = "ACI318-25".to_string();
+        assert!(params.pier_shear_code_unsupported());
+
+        params.code = "ACI318-14".to_string();
+        assert!(!params.pier_shear_code_unsupported());
     }
 }

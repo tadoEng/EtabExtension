@@ -36,19 +36,25 @@ pub fn run(rows: &[ModalParticipationRow], params: &CodeParams) -> Result<ModalO
         .unwrap_or(0);
     let display_limit = required_rows.max(params.modal_display_limit);
 
+    let mut running_sum_uz = 0.0;
     let display_rows = filtered
         .iter()
         .take(display_limit)
-        .map(|row| ModalModeRow {
-            case: row.case_name.clone(),
-            mode: row.mode,
-            period: row.period_sec,
-            ux: row.ux,
-            uy: row.uy,
-            sum_ux: row.sum_ux,
-            sum_uy: row.sum_uy,
-            rz: row.rz,
-            sum_rz: row.sum_rz,
+        .map(|row| {
+            running_sum_uz += row.uz;
+            ModalModeRow {
+                case: row.case_name.clone(),
+                mode: row.mode,
+                period: row.period_sec,
+                ux: row.ux,
+                uy: row.uy,
+                uz: row.uz,
+                sum_ux: row.sum_ux,
+                sum_uy: row.sum_uy,
+                sum_uz: running_sum_uz,
+                rz: row.rz,
+                sum_rz: row.sum_rz,
+            }
         })
         .collect();
 

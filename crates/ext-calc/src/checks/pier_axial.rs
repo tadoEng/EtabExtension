@@ -95,6 +95,7 @@ pub fn run(
             .unwrap_or(axial_params.fc_default_ksi);
         let ag_in2 = section.ag_in2;
         let pu_kip = p_kip.abs();
+        let fa_signed_ksi = -p_kip / ag_in2;
 
         let po_kip = 0.85 * fc_ksi * ag_in2;
         let phi_po_kip = phi_axial * po_kip;
@@ -117,9 +118,11 @@ pub fn run(
             combo: combo.clone(),
             category: category.to_string(),
             pu: uc.qty_force(pu_kip),
+            pu_signed: uc.qty_force(p_kip),
             ag: uc.qty_area_in2(ag_in2),
             phi_po: uc.qty_force(phi_po_kip),
             fa: Quantity::new(fa_ksi, "ksi"),
+            fa_signed: Quantity::new(fa_signed_ksi, "ksi"),
             fa_ratio,
             dcr,
             pass: dcr <= 1.0,
@@ -159,9 +162,11 @@ pub fn run(
                 combo: String::new(),
                 category: String::new(),
                 pu: Quantity::new(0.0, ""),
+                pu_signed: Quantity::new(0.0, ""),
                 ag: Quantity::new(0.0, ""),
                 phi_po: Quantity::new(0.0, ""),
                 fa: Quantity::new(0.0, ""),
+                fa_signed: Quantity::new(0.0, ""),
                 fa_ratio: 0.0,
                 dcr: 0.0,
                 pass: true,
@@ -386,5 +391,75 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["L2", "L1"]
         );
+    }
+
+    #[test]
+    fn pier_axial_reports_signed_stress_with_etabs_sign_convention() {
+        let mut params = CodeParams::for_testing();
+        params.pier_axial_stress = Some(crate::code_params::PierAxialStressParams {
+            phi_axial: 0.65,
+            gravity_combos: vec!["Grav1".into()],
+            wind_combos: vec![],
+            seismic_combos: vec![],
+            fc_default_ksi: 4.0,
+        });
+
+        let sections = vec![PierSectionRow {
+            story: "L1".into(),
+            pier: "P1".into(),
+            axis_angle: 0.0,
+            width_bot_ft: 10.0,
+            thick_bot_ft: 1.0,
+            width_top_ft: 10.0,
+            thick_top_ft: 1.0,
+            material: "C4000".into(),
+            acv_in2: 100.0,
+            ag_in2: 100.0,
+        }];
+        let stories = vec![StoryDefRow {
+            story: "L1".into(),
+            height_ft: 10.0,
+            elevation_ft: 10.0,
+        }];
+        let mut fc_map = HashMap::new();
+        fc_map.insert(("P1".into(), "L1".into()), 4.0);
+
+        // ETABS: negative P = compression => positive fa_signed.
+        let compression = vec![PierForceRow {
+            story: "L1".into(),
+            pier: "P1".into(),
+            output_case: "Grav1".into(),
+            case_type: "".into(),
+            step_type: "".into(),
+            location: "".into(),
+            axial_p_kip: -120.0,
+            shear_v2_kip: 0.0,
+            shear_v2_abs_kip: 0.0,
+            shear_v3_kip: 0.0,
+            torsion_t_kip_ft: 0.0,
+            moment_m2_kip_ft: 0.0,
+            moment_m3_kip_ft: 0.0,
+        }];
+        let out_c = run(&compression, &sections, &stories, &fc_map, &params).unwrap();
+        assert!((out_c.piers[0].fa_signed.value - 1.2).abs() < 1e-9);
+
+        // ETABS: positive P = tension => negative fa_signed.
+        let tension = vec![PierForceRow {
+            story: "L1".into(),
+            pier: "P1".into(),
+            output_case: "Grav1".into(),
+            case_type: "".into(),
+            step_type: "".into(),
+            location: "".into(),
+            axial_p_kip: 80.0,
+            shear_v2_kip: 0.0,
+            shear_v2_abs_kip: 0.0,
+            shear_v3_kip: 0.0,
+            torsion_t_kip_ft: 0.0,
+            moment_m2_kip_ft: 0.0,
+            moment_m3_kip_ft: 0.0,
+        }];
+        let out_t = run(&tension, &sections, &stories, &fc_map, &params).unwrap();
+        assert!((out_t.piers[0].fa_signed.value + 0.8).abs() < 1e-9);
     }
 }

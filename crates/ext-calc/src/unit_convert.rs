@@ -34,9 +34,21 @@ impl UnitContext {
     }
 
     pub fn from_config(config: &Config) -> Result<Self> {
-        Ok(Self::new(EtabsPreset::from_str(
-            config.project.units_or_default(),
-        )?))
+        let project_units = config.project.units_or_default();
+        let project_preset = EtabsPreset::from_str(project_units)?;
+
+        if let Some(extract_units) = config.extract.units.as_deref() {
+            let extract_preset = EtabsPreset::from_str(extract_units)?;
+            if extract_preset != project_preset {
+                bail!(
+                    "Unit preset mismatch: [extract].units='{}' differs from [project].units='{}'",
+                    extract_units,
+                    project_units
+                );
+            }
+        }
+
+        Ok(Self::new(project_preset))
     }
 
     pub fn force_to_kip(&self, value: f64) -> f64 {
@@ -160,5 +172,15 @@ mod tests {
         assert!((uc.length_to_ft(24.0) - 2.0).abs() < 1e-9);
         assert!((uc.stress_to_ksi(8.0) - 8.0).abs() < 1e-9);
         assert_eq!(uc.moment_label(), "kip·in");
+    }
+
+    #[test]
+    fn from_config_rejects_extract_project_unit_mismatch() {
+        let mut config = ext_db::config::Config::default();
+        config.project.units = Some("kip-ft-F".to_string());
+        config.extract.units = Some("kN-m-C".to_string());
+
+        let err = UnitContext::from_config(&config).unwrap_err();
+        assert!(err.to_string().contains("Unit preset mismatch"));
     }
 }

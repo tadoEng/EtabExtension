@@ -146,8 +146,11 @@ pub fn render_pdf(
     let world = TypstWorld::new(source, data)?;
     let result = typst::compile(&world);
     let compiled = result.output.map_err(|errors| {
+        let debug_path = std::env::temp_dir().join("ext-report-debug.typ");
+        let _ = std::fs::write(&debug_path, world.main.text().to_string());
         anyhow::anyhow!(
-            "typst failed:\n{}",
+            "typst failed (source: {}):\n{}",
+            debug_path.display(),
             errors
                 .iter()
                 .map(|error| format!("{error:?}"))
@@ -216,6 +219,8 @@ mod tests {
             "images/drift_seismic_y.svg",
             "images/displacement_wind_x.svg",
             "images/displacement_wind_y.svg",
+            "images/torsional_x.svg",
+            "images/torsional_y.svg",
             "images/pier_shear_stress_wind.svg",
             "images/pier_shear_stress_seismic.svg",
             "images/pier_axial_gravity.svg",
@@ -259,6 +264,12 @@ mod tests {
             delta_max_steps: vec![],
             delta_avg_steps: vec![],
             ratio,
+            governing_step: 1,
+            governing_drift_a: 0.1,
+            governing_drift_b: 0.1,
+            governing_delta_max: 0.1,
+            governing_delta_avg: 0.1,
+            governing_ratio: ratio,
             ax: 1.2,
             ecc_ft: 0.9,
             rho: 1.0,
@@ -281,9 +292,11 @@ mod tests {
         let has_type_b = rows.iter().any(|row| row.is_type_b);
         TorsionalDirectionOutput {
             rows,
+            no_data: vec![],
             governing_story,
             governing_case,
             governing_joints: vec!["J1".to_string(), "J2".to_string()],
+            governing_step: Some(1),
             max_ratio,
             has_type_a,
             has_type_b,

@@ -191,6 +191,8 @@ pub fn run(
         phi_v,
         limit_individual: 10.0,
         limit_average: 8.0,
+        supported: true,
+        support_note: None,
         story_order,
         per_pier: out_rows,
         x_average: x_avg_rows,
@@ -199,6 +201,23 @@ pub fn run(
         max_average_ratio: max_avg_ratio,
         pass,
     })
+}
+
+pub fn unsupported_output(note: impl Into<String>) -> PierShearStressOutput {
+    PierShearStressOutput {
+        phi_v: 0.75,
+        limit_individual: 10.0,
+        limit_average: 8.0,
+        supported: false,
+        support_note: Some(note.into()),
+        story_order: Vec::new(),
+        per_pier: Vec::new(),
+        x_average: Vec::new(),
+        y_average: Vec::new(),
+        max_individual_ratio: 0.0,
+        max_average_ratio: 0.0,
+        pass: true,
+    }
 }
 
 #[cfg(test)]

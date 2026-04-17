@@ -1,6 +1,8 @@
 use ext_calc::output::{DisplacementOutput, DisplacementWindOutput};
 
-use crate::chart_build::{DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE, story_display_order};
+use crate::chart_build::{
+    DISPLACEMENT_WIND_X_IMAGE, DISPLACEMENT_WIND_Y_IMAGE, story_display_order,
+};
 use crate::chart_types::{
     CartesianSeries, ChartKind, ChartSpec, LinePattern, NamedChartSpec, RenderConfig, SeriesType,
 };
@@ -34,13 +36,9 @@ fn build_inner(
     config: &RenderConfig,
     is_x: bool,
 ) -> NamedChartSpec {
-    let categories = if displacement.story_order.is_empty() {
-        ordered_unique(displacement.rows.iter().map(|row| row.story.clone()))
-    } else {
-        displacement.story_order.clone()
-    };
-    // Shared story-order utility keeps swapped-axis category ordering consistent across all charts.
-    let display_categories = story_display_order(&categories, |_| true);
+    let display_categories = story_display_order(&displacement.story_order, |story| {
+        displacement.rows.iter().any(|row| row.story == story)
+    });
     let groups = ordered_unique(displacement.rows.iter().map(|row| row.group_name.clone()));
 
     let palette = [
@@ -60,7 +58,7 @@ fn build_inner(
                 row.max_disp_y_pos_ft.abs().max(row.max_disp_y_neg_ft.abs())
             };
             let entry = by_story.entry(row.story.as_str()).or_insert(0.0_f64);
-            *entry = entry.max(value);
+            *entry = entry.max(value * 12.0);
         }
 
         series.push(CartesianSeries {
@@ -78,17 +76,23 @@ fn build_inner(
 
     let mut limits_by_story = std::collections::HashMap::new();
     for row in &displacement.story_limits {
-        limits_by_story.insert(row.story.as_str(), row.limit_ft);
+        limits_by_story.insert(row.story.as_str(), row.limit_ft * 12.0);
     }
+    let default_limit_in = match displacement.disp_limit.unit.to_ascii_lowercase().as_str() {
+        "in" => displacement.disp_limit.value,
+        "mm" => displacement.disp_limit.value / 25.4,
+        "ft" => displacement.disp_limit.value * 12.0,
+        _ => displacement.disp_limit.value,
+    };
     series.push(CartesianSeries {
-        name: "Limit (ft)".to_string(),
+        name: "Limit (in)".to_string(),
         data: display_categories
             .iter()
             .map(|story| {
                 limits_by_story
                     .get(story.as_str())
                     .copied()
-                    .unwrap_or(displacement.disp_limit.value)
+                    .unwrap_or(default_limit_in)
             })
             .collect(),
         kind: SeriesType::Line,
@@ -111,6 +115,8 @@ fn build_inner(
             kind: ChartKind::Cartesian {
                 categories: display_categories,
                 swap_axes: true,
+                x_axis_label: Some("Displacement [in]".to_string()),
+                y_axis_label: Some("Story".to_string()),
                 series,
             },
         },
@@ -208,10 +214,10 @@ mod tests {
             "X and Y displacement charts must differ when inputs differ"
         );
 
-        // X chart: L1 leads with 0.050 ft
-        assert!((x_demands.iter().cloned().fold(f64::NEG_INFINITY, f64::max) - 0.050).abs() < 1e-9);
-        // Y chart: L2 leads with 0.050 ft
-        assert!((y_demands.iter().cloned().fold(f64::NEG_INFINITY, f64::max) - 0.050).abs() < 1e-9);
+        // X chart: L1 leads with 0.600 in (0.050 ft)
+        assert!((x_demands.iter().cloned().fold(f64::NEG_INFINITY, f64::max) - 0.600).abs() < 1e-9);
+        // Y chart: L2 leads with 0.600 in (0.050 ft)
+        assert!((y_demands.iter().cloned().fold(f64::NEG_INFINITY, f64::max) - 0.600).abs() < 1e-9);
     }
 
     #[test]

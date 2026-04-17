@@ -58,17 +58,9 @@ fn build_chart(
     config: &RenderConfig,
     is_x: bool,
 ) -> NamedChartSpec {
-    // Build bottom→top display order for the swapped Y-axis.
-    // Fall back to insertion order from rows when story_order is empty.
-    let categories = if drift.story_order.is_empty() {
-        // No story_order: collect unique stories in appearance order then reverse.
-        let raw = ordered_unique(drift.rows.iter().map(|row| row.story.clone()));
-        story_display_order(&raw, |_| true)
-    } else {
-        story_display_order(&drift.story_order, |s| {
-            drift.rows.iter().any(|r| r.story == s)
-        })
-    };
+    let categories = story_display_order(&drift.story_order, |s| {
+        drift.rows.iter().any(|r| r.story == s)
+    });
     let groups = ordered_unique(drift.rows.iter().map(|row| row.group_name.clone()));
 
     let palette = [
@@ -122,6 +114,8 @@ fn build_chart(
             kind: ChartKind::Cartesian {
                 categories,
                 swap_axes: true,
+                x_axis_label: Some("Drift Ratio".to_string()),
+                y_axis_label: Some("Story".to_string()),
                 series,
             },
         },

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Quantity {
     pub value: f64,
@@ -62,8 +62,12 @@ pub struct ModalModeRow {
     pub period: f64,
     pub ux: f64,
     pub uy: f64,
+    #[serde(default)]
+    pub uz: f64,
     pub sum_ux: f64,
     pub sum_uy: f64,
+    #[serde(default)]
+    pub sum_uz: f64,
     pub rz: f64,
     pub sum_rz: f64,
 }
@@ -275,6 +279,18 @@ pub struct TorsionalRow {
     pub delta_max_steps: Vec<f64>,
     pub delta_avg_steps: Vec<f64>,
     pub ratio: f64,
+    #[serde(default)]
+    pub governing_step: i32,
+    #[serde(default)]
+    pub governing_drift_a: f64,
+    #[serde(default)]
+    pub governing_drift_b: f64,
+    #[serde(default)]
+    pub governing_delta_max: f64,
+    #[serde(default)]
+    pub governing_delta_avg: f64,
+    #[serde(default)]
+    pub governing_ratio: f64,
     pub ax: f64,
     pub ecc_ft: f64,
     pub rho: f64,
@@ -284,11 +300,25 @@ pub struct TorsionalRow {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TorsionalNoDataRow {
+    pub story: String,
+    pub case: String,
+    pub joint_a: String,
+    pub joint_b: String,
+    pub step: i32,
+    pub missing: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TorsionalDirectionOutput {
     pub rows: Vec<TorsionalRow>,
+    #[serde(default)]
+    pub no_data: Vec<TorsionalNoDataRow>,
     pub governing_story: String,
     pub governing_case: String,
     pub governing_joints: Vec<String>,
+    pub governing_step: Option<i32>,
     pub max_ratio: f64,
     pub has_type_a: bool,
     pub has_type_b: bool,
@@ -338,6 +368,10 @@ pub struct PierShearStressOutput {
     pub phi_v: f64,
     pub limit_individual: f64,
     pub limit_average: f64,
+    #[serde(default = "default_supported")]
+    pub supported: bool,
+    #[serde(default)]
+    pub support_note: Option<String>,
     #[serde(default)]
     pub story_order: Vec<String>,
     pub per_pier: Vec<PierShearStressRow>,
@@ -346,6 +380,10 @@ pub struct PierShearStressOutput {
     pub max_individual_ratio: f64,
     pub max_average_ratio: f64,
     pub pass: bool,
+}
+
+fn default_supported() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -358,9 +396,13 @@ pub struct PierAxialResult {
     #[serde(default)]
     pub category: String,
     pub pu: Quantity,
+    #[serde(default)]
+    pub pu_signed: Quantity,
     pub ag: Quantity,
     pub phi_po: Quantity,
     pub fa: Quantity,
+    #[serde(default)]
+    pub fa_signed: Quantity,
     pub fa_ratio: f64,
     pub dcr: f64,
     pub pass: bool,

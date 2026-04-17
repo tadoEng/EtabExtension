@@ -379,11 +379,11 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
   text(size: parse-pt(theme.title-size), weight: "bold")[Checker Summary]
   v(4pt)
   table(
-    columns: (1.3fr, 0.6fr, 1fr, 0.9fr, 0.85fr, 0.85fr, 0.8fr, 0.8fr),
+    columns: (1.2fr, 0.55fr, 0.9fr, 0.75fr, 0.75fr, 0.75fr, 0.65fr, 0.65fr, 1.7fr),
     fill: (x, y) => if y == 0 { luma(220) } else { row-fill("", y) },
-    align: (x, y) => if x <= 3 { left } else { right },
+    align: (x, y) => if x <= 3 or x == 8 { left } else { right },
     table.header(
-      ..("Check", "Status", "Case", "Story", "Demand", "Limit", "Util.", "Margin")
+      ..("Check", "Status", "Case", "Story", "Demand", "Limit", "Util.", "Margin", "Reason / Basis")
         .map(h => table.cell(fill: luma(220))[#h])
     ),
     ..data.checker-rows.map(row => (
@@ -395,6 +395,7 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
       row.limit,
       row.utilization,
       row.margin,
+      row.reason,
     )).flatten(),
   )
 }
@@ -418,11 +419,11 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
   text(size: parse-pt(theme.label-size), weight: "bold")[Mass participation threshold = #(data.threshold * 100.0)%]
   v(4pt)
   table(
-    columns: (1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr),
+    columns: (0.8fr, 0.9fr, 0.8fr, 0.8fr, 0.8fr, 0.9fr, 0.9fr, 0.9fr, 1fr),
     fill: (x, y) => if y == 0 { luma(220) } else { row-fill(data.annotations.at(y - 1, default: ""), y) },
     align: (x, y) => if x >= 1 { right } else { left },
     table.header(
-      ..("Mode", "Period", "UX", "UY", "Sum UX", "Sum UY", "Highlight")
+      ..("Mode", "Period", "UX", "UY", "UZ", "Sum UX", "Sum UY", "Sum UZ", "Highlight")
         .map(h => table.cell(fill: luma(220))[#h])
     ),
     ..range(data.rows.len()).map(i => {
@@ -437,8 +438,10 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
         str(calc.round(row.period, digits: 3)),
         str(calc.round(row.ux * 100.0, digits: 1)) + "%",
         str(calc.round(row.uy * 100.0, digits: 1)) + "%",
+        str(calc.round(row.uz * 100.0, digits: 1)) + "%",
         str(calc.round(row.sum-ux * 100.0, digits: 1)) + "%",
         str(calc.round(row.sum-uy * 100.0, digits: 1)) + "%",
+        str(calc.round(row.sum-uz * 100.0, digits: 1)) + "%",
         highlight-label,
       )
     }).flatten(),
@@ -447,19 +450,24 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
 
 #let base-reactions-table(data) = {
   table(
-    columns: (1.45fr, 1.45fr, 1fr, 1fr, 1.45fr),
+    columns: (1.2fr, 0.9fr, 0.8fr, 0.7fr, 0.9fr, 0.9fr, 0.9fr, 0.9fr, 0.9fr, 0.9fr),
     fill: (x, y) => if y == 0 { luma(220) } else { row-fill("", y) },
-    align: (x, y) => if x >= 2 { right } else { left },
+    align: (x, y) => if x >= 3 { right } else { left },
     table.header(
-      ..("Load Case", "Type", "Fx (kip)", "Fy (kip)", "Fz (kip)")
+      ..("Load Case", "Type", "Step", "No.", "Fx (kip)", "Fy (kip)", "Fz (kip)", "Mx (kip-ft)", "My (kip-ft)", "Mz (kip-ft)")
         .map(h => table.cell(fill: luma(220))[#h])
     ),
     ..data.rows.map(row => (
       row.output-case,
       row.case-type,
-      str(calc.round(row.fx-kip, digits: 5)),
-      str(calc.round(row.fy-kip, digits: 5)),
-      str(calc.round(row.fz-kip, digits: 5)),
+      row.step-type,
+      if row.step-number == none { "-" } else { str(calc.round(row.step-number, digits: 3)) },
+      str(calc.round(row.fx-kip, digits: 2)),
+      str(calc.round(row.fy-kip, digits: 2)),
+      str(calc.round(row.fz-kip, digits: 2)),
+      str(calc.round(row.mx-kip-ft, digits: 2)),
+      str(calc.round(row.my-kip-ft, digits: 2)),
+      str(calc.round(row.mz-kip-ft, digits: 2)),
     )).flatten(),
   )
 }
@@ -480,7 +488,7 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
       caption: text(size: parse-pt(theme.caption-size))[Base Reactions (kip)],
     )
     #v(6pt)
-    #align(right)[#text(size: parse-pt(theme.label-size), weight: "bold")[Status: #pass-str (X ratio #calc.round(data.ratio-x, digits: 5), Y ratio #calc.round(data.ratio-y, digits: 5))]]
+    #align(right)[#text(size: parse-pt(theme.label-size), weight: "bold")[Status: #pass-str (X ratio #calc.round(data.ratio-x, digits: 3), Y ratio #calc.round(data.ratio-y, digits: 3))]]
   ]]
   chart-table-layout(table-body, chart-body)
 }
@@ -501,7 +509,7 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
         data-node.levels.at(i, default: "-"),
         ..range(data-node.groups.len()).map(j => {
           let value = row.at(j, default: none)
-          if value == none { "-" } else { str(calc.round(value, digits: 5)) }
+          if value == none { "-" } else { str(calc.round(value, digits: 3)) }
         }),
       )
     }).flatten(),
@@ -531,9 +539,9 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
     align(right)[
       #stack(
         spacing: 2pt,
-        text(size: parse-pt(theme.label-size))[Demand ratio: #calc.round(data-node.governing-demand-ratio, digits: 5)],
-        text(size: parse-pt(theme.label-size))[Allowable ratio: #calc.round(data-node.allowable-ratio, digits: 5)],
-        text(size: parse-pt(theme.label-size))[Utilization: #calc.round(data-node.governing-utilization * 100.0, digits: 2)% | Margin: #calc.round(data-node.governing-margin-ratio, digits: 5)],
+        text(size: parse-pt(theme.label-size))[Demand ratio: #calc.round(data-node.governing-demand-ratio, digits: 3)],
+        text(size: parse-pt(theme.label-size))[Allowable ratio: #calc.round(data-node.allowable-ratio, digits: 3)],
+        text(size: parse-pt(theme.label-size))[Utilization: #calc.round(data-node.governing-utilization * 100.0, digits: 2)% | Margin: #calc.round(data-node.governing-margin-ratio, digits: 3)],
         text(size: parse-pt(theme.label-size))[Basis: max drift ratio demand per group/story against allowable ratio.],
         text(size: parse-pt(theme.label-size), weight: "bold")[Status: #pass-str],
       )
@@ -552,11 +560,11 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
       let row = data-node.matrix-in.at(i, default: ())
       (
         data-node.levels.at(i, default: "-"),
-        str(calc.round(data-node.level-elevations-ft.at(i, default: 0.0), digits: 3)),
-        str(calc.round(data-node.level-limits-in.at(i, default: 0.0), digits: 4)),
+        str(calc.round(data-node.level-elevations-ft.at(i, default: 0.0), digits: 2)),
+        str(calc.round(data-node.level-limits-in.at(i, default: 0.0), digits: 3)),
         ..range(data-node.groups.len()).map(j => {
           let value = row.at(j, default: none)
-          if value == none { "-" } else { str(calc.round(value, digits: 4)) }
+          if value == none { "-" } else { str(calc.round(value, digits: 3)) }
         }),
         str(calc.round(data-node.level-utilization.at(i, default: 0.0) * 100.0, digits: 2)) + "%",
       )
@@ -587,8 +595,8 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
     align(right)[
       #stack(
         spacing: 2pt,
-        text(size: parse-pt(theme.label-size))[Demand (in): #calc.round(data-node.governing-utilization * data-node.governing-limit-in, digits: 4)],
-        text(size: parse-pt(theme.label-size))[Limit (in): #calc.round(data-node.governing-limit-in, digits: 4) | Utilization: #calc.round(data-node.governing-utilization * 100.0, digits: 2)% | Margin: #calc.round(data-node.governing-margin * 100.0, digits: 2)%],
+        text(size: parse-pt(theme.label-size))[Demand (in): #calc.round(data-node.governing-utilization * data-node.governing-limit-in, digits: 3)],
+        text(size: parse-pt(theme.label-size))[Limit (in): #calc.round(data-node.governing-limit-in, digits: 3) | Utilization: #calc.round(data-node.governing-utilization * 100.0, digits: 2)% | Margin: #calc.round(data-node.governing-margin * 100.0, digits: 2)%],
         text(size: parse-pt(theme.label-size))[Basis: per-level limit = level elevation / configured ratio divisor.],
         text(size: parse-pt(theme.label-size), weight: "bold")[Status: #pass-str],
       )
@@ -597,22 +605,25 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
   chart-table-layout(table-body, chart-body, emphasized: true)
 }
 
-#let torsional-dir-page(title, data-node) = {
+#let torsional-dir-page(title, data-node, chart-file) = {
   text(size: parse-pt(theme.title-size), weight: "bold")[#title]
   v(parse-pt(theme.section-gap))
   let pass-str = if data-node.has-type-b { "FAIL" } else { "PASS" }
   if data-node.has-rows {
     text(size: parse-pt(theme.label-size), weight: "bold")[
-      Governing story: #data-node.governing-story | Case: #data-node.governing-case | Pair: #data-node.governing-joint-a / #data-node.governing-joint-b
+      Governing story: #data-node.governing-story | Case: #data-node.governing-case | Pair: #data-node.governing-joint-a / #data-node.governing-joint-b | Step: #data-node.governing-step
     ]
     text(size: parse-pt(theme.label-size))[
-      DeltaMax: #calc.round(data-node.governing-delta-max, digits: 4) | DeltaAvg: #calc.round(data-node.governing-delta-avg, digits: 4) | Ratio: #calc.round(data-node.max-ratio, digits: 4)
+      Drift A: #calc.round(data-node.governing-drift-a, digits: 3) | Drift B: #calc.round(data-node.governing-drift-b, digits: 3)
+    ]
+    text(size: parse-pt(theme.label-size))[
+      DeltaMax: #calc.round(data-node.governing-delta-max, digits: 3) | DeltaAvg: #calc.round(data-node.governing-delta-avg, digits: 3) | Ratio: #calc.round(data-node.governing-ratio, digits: 3)
     ]
     text(size: parse-pt(theme.label-size))[
       Thresholds: Type A > #calc.round(data-node.type-a-threshold, digits: 2), Type B > #calc.round(data-node.type-b-threshold, digits: 2) | Classification: #data-node.classification
     ]
   } else {
-    text(size: parse-pt(theme.label-size), weight: "bold")[No qualifying rows for configured pairs and cases.]
+    text(size: parse-pt(theme.label-size), weight: "bold")[#data-node.no-data-note]
     text(size: parse-pt(theme.label-size))[Thresholds: Type A > #calc.round(data-node.type-a-threshold, digits: 2), Type B > #calc.round(data-node.type-b-threshold, digits: 2) | Classification: #data-node.classification]
   }
   v(4pt)
@@ -622,30 +633,36 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
       row.case,
       row.joint-a,
       row.joint-b,
-      str(calc.round(row.delta-max, digits: 4)),
-      str(calc.round(row.delta-avg, digits: 4)),
-      str(calc.round(row.ratio, digits: 4)),
-      if row.is-type-a { "Type A" } else { "-" },
-      if row.is-type-b { "Type B" } else { "-" },
-      str(calc.round(row.ax, digits: 2)),
-      str(calc.round(row.ecc-ft, digits: 2)),
+      str(row.governing-step),
+      str(calc.round(row.drift-a, digits: 3)),
+      str(calc.round(row.drift-b, digits: 3)),
+      str(calc.round(row.delta-max, digits: 3)),
+      str(calc.round(row.delta-avg, digits: 3)),
+      str(calc.round(row.ratio, digits: 3)),
     )).flatten()
   } else {
     (
-      data-node.no-data-note, "", "", "", "", "", "", "", "", "", "",
+      data-node.no-data-note, "", "", "", "", "", "", "", "", "",
     )
   }
   table(
-    columns: (1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr),
+    columns: (1fr, 1fr, 1fr, 1fr, 0.65fr, 0.8fr, 0.8fr, 0.9fr, 0.9fr, 0.8fr),
     fill: (x, y) => if y == 0 { luma(220) } else { row-fill(data-node.annotations.at(y - 1, default: ""), y) },
     align: (x, y) => if x >= 4 { right } else { left },
     table.header(
-      ..("Story", "Case", "Joint A", "Joint B", "DeltaMax", "DeltaAvg", "Ratio", "Type A", "Type B", "Ax", "Ecc (ft)")
+      ..("Story", "Case", "Joint A", "Joint B", "Step", "Drift A", "Drift B", "DeltaMax", "DeltaAvg", "Ratio")
         .map(h => table.cell(fill: luma(220))[#h])
     ),
     ..torsion-rows,
   )
   v(6pt)
+  align(center)[
+    #figure(
+      image(chart-file, height: parse-in(theme.chart-with-table-chart-h)),
+      caption: text(size: parse-pt(theme.caption-size))[Story governing torsional ratio with 1.2/1.4 thresholds],
+    )
+  ]
+  v(4pt)
   align(right)[#text(size: parse-pt(theme.label-size), weight: "bold")[Status: #pass-str]]
 }
 "#,
@@ -660,7 +677,7 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
     align: (x, y) => if x == 0 { left } else { right },
     table.header([Level], ..data.piers.map(p => [#p])),
     ..range(data.levels.len()).map(i => {
-      let row = data.matrix-psi.at(i, default: ())
+      let row = data.matrix-ratio.at(i, default: ())
       (
         data.levels.at(i, default: "-"),
         ..range(data.piers.len()).map(j => {
@@ -672,35 +689,59 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
   )
 }
 
+#let pier-shear-avg-table(data) = {
+  table(
+    columns: (1fr, 1fr, 1fr, 1fr),
+    fill: (x, y) => if y == 0 { luma(220) } else { row-fill("", y) },
+    align: (x, y) => if x == 0 { left } else { right },
+    table.header([Story], [Limit Avg], [X Avg Ratio], [Y Avg Ratio]),
+    ..data.average-rows.map(row => (
+      row.story,
+      str(calc.round(row.limit-average, digits: 3)),
+      if row.x-average-stress-ratio == none { "-" } else { str(calc.round(row.x-average-stress-ratio, digits: 3)) },
+      if row.y-average-stress-ratio == none { "-" } else { str(calc.round(row.y-average-stress-ratio, digits: 3)) },
+    )).flatten(),
+  )
+}
+
 #let pier-shear-page(title, data-file, chart-file) = {
   let data = json(data-file)
-  let pass-str = if data.pass { "PASS" } else { "FAIL" }
-  text(size: parse-pt(theme.title-size), weight: "bold")[#title]
-  v(parse-pt(theme.section-gap))
-  let table-body = [#align(top)[
-    #text(size: parse-pt(theme.label-size), weight: "bold")[Levels: #data.levels.len() | Piers: #data.piers.len() | Unit: #data.stress-unit]
-    #v(4pt)
-    #pier-shear-table(data)
-  ]]
-  let chart-body = [#stack(
-    spacing: 0pt,
-    align(center)[
-      #figure(
-        image(chart-file, height: parse-in(theme.chart-with-table-normal-h)),
-        caption: text(size: parse-pt(theme.caption-size))[Pier shear stress trend by level],
-      )
-    ],
-    v(1fr),
-    align(right)[
-      #stack(
-        spacing: 2pt,
-        text(size: parse-pt(theme.label-size))[Limit basis: individual ratio <= #calc.round(data.limit-individual-ratio, digits: 3) (10*sqrt(fc)), average ratio <= #calc.round(data.limit-average-ratio, digits: 3) (8*sqrt(fc))],
-        text(size: parse-pt(theme.label-size))[Observed: max individual #calc.round(data.max-individual-ratio, digits: 3), max average #calc.round(data.max-average-ratio, digits: 3)],
-        text(size: parse-pt(theme.label-size), weight: "bold")[Status: #pass-str],
-      )
-    ],
-  )]
-  chart-table-layout(table-body, chart-body)
+  if data.supported == false {
+    text(size: parse-pt(theme.title-size), weight: "bold")[#title]
+    v(parse-pt(theme.section-gap))
+    text(size: parse-pt(theme.body-size), weight: "bold")[This check is currently unavailable for the configured code.]
+    text(size: parse-pt(theme.body-size))[#data.support-note]
+  } else {
+    let pass-str = if data.pass { "PASS" } else { "FAIL" }
+    text(size: parse-pt(theme.title-size), weight: "bold")[#title]
+    v(parse-pt(theme.section-gap))
+    let table-body = [#align(top)[
+      #text(size: parse-pt(theme.label-size), weight: "bold")[Levels: #data.levels.len() | Piers: #data.piers.len() | Quantity: stress ratio]
+      #v(4pt)
+      #pier-shear-table(data)
+      #v(6pt)
+      #pier-shear-avg-table(data)
+    ]]
+    let chart-body = [#stack(
+      spacing: 0pt,
+      align(center)[
+        #figure(
+          image(chart-file, height: parse-in(theme.chart-with-table-normal-h)),
+          caption: text(size: parse-pt(theme.caption-size))[Pier shear stress ratio trend by level],
+        )
+      ],
+      v(1fr),
+      align(right)[
+        #stack(
+          spacing: 2pt,
+          text(size: parse-pt(theme.label-size))[Limit basis: individual ratio <= #calc.round(data.limit-individual-ratio, digits: 3), average ratio <= #calc.round(data.limit-average-ratio, digits: 3)],
+          text(size: parse-pt(theme.label-size))[Observed: max individual #calc.round(data.max-individual-ratio, digits: 3), max average #calc.round(data.max-average-ratio, digits: 3)],
+          text(size: parse-pt(theme.label-size), weight: "bold")[Status: #pass-str],
+        )
+      ],
+    )]
+    chart-table-layout(table-body, chart-body)
+  }
 }
 
 #let pier-axial-assumptions(data-file) = {
@@ -765,12 +806,8 @@ pub fn build_typst_document(calc: &CalcOutput) -> String {
 
     if calc.torsional.is_some() {
         doc.push_str("#let tor = json(\"torsional.json\")\n");
-        doc.push_str(
-            "#pagebreak()\n#torsional-dir-page([Torsional Irregularity - X Direction], tor.x)\n\n",
-        );
-        doc.push_str(
-            "#pagebreak()\n#torsional-dir-page([Torsional Irregularity - Y Direction], tor.y)\n\n",
-        );
+        doc.push_str("#pagebreak()\n#torsional-dir-page([Torsional Irregularity - X Direction], tor.x, \"images/torsional_x.svg\")\n\n");
+        doc.push_str("#pagebreak()\n#torsional-dir-page([Torsional Irregularity - Y Direction], tor.y, \"images/torsional_y.svg\")\n\n");
     }
 
     if calc.pier_shear_stress_wind.is_some() {

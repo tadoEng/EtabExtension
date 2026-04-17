@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::code_params::{TorsionalJointPair, TorsionalParams};
-use crate::output::{TorsionalDirectionOutput, TorsionalOutput, TorsionalRow};
+use crate::output::{TorsionalDirectionOutput, TorsionalNoDataRow, TorsionalOutput, TorsionalRow};
 use crate::tables::joint_drift::JointDriftRow;
 use crate::tables::story_def::StoryDefRow;
 
@@ -59,9 +59,11 @@ fn process_direction(
     if cases.is_empty() || pairs.is_empty() {
         return Ok(TorsionalDirectionOutput {
             rows: vec![],
+            no_data: vec![],
             governing_story: String::new(),
             governing_case: String::new(),
             governing_joints: vec![],
+            governing_step: None,
             max_ratio: 0.0,
             has_type_a: false,
             has_type_b: false,
@@ -69,6 +71,7 @@ fn process_direction(
     }
 
     let mut out_rows = Vec::new();
+    let mut no_data_rows = Vec::new();
     let selected_cases: HashSet<&str> = cases.iter().map(|s| s.as_str()).collect();
     let mut available_steps_by_case: HashMap<&str, BTreeSet<i32>> = HashMap::new();
 
@@ -159,17 +162,39 @@ fn process_direction(
                         delta_max_steps.push(d_a.max(d_b));
                         delta_avg_steps.push((d_a + d_b) / 2.0);
                     } else {
+                        let mut missing = Vec::new();
+                        if a_top.is_none() {
+                            missing.push(format!("{}@{}(top)", token_a, story_top.story));
+                        }
+                        if a_bot.is_none() {
+                            missing.push(format!("{}@{}(bottom)", token_a, story_bot.story));
+                        }
+                        if b_top.is_none() {
+                            missing.push(format!("{}@{}(top)", token_b, story_top.story));
+                        }
+                        if b_bot.is_none() {
+                            missing.push(format!("{}@{}(bottom)", token_b, story_bot.story));
+                        }
+                        no_data_rows.push(TorsionalNoDataRow {
+                            story: story_top.story.clone(),
+                            case: case.clone(),
+                            joint_a: token_a.to_string(),
+                            joint_b: token_b.to_string(),
+                            step: *step,
+                            missing,
+                        });
                         has_data = false;
                         break;
                     }
                 }
 
                 if !has_data {
-                    continue; // Skip if this story doesn't have all 3 steps for both joints
+                    continue; // Keep explicit no-data context instead of silently dropping the reason.
                 }
 
                 let mut max_ratio = 0.0;
                 let mut max_ax_base = 0.0;
+                let mut governing_idx = 0_usize;
 
                 for idx in 0..delta_avg_steps.len() {
                     let avg = delta_avg_steps[idx];
@@ -178,6 +203,7 @@ fn process_direction(
                         let ratio = max / avg;
                         if ratio > max_ratio {
                             max_ratio = ratio;
+                            governing_idx = idx;
                         }
 
                         let ax_val = (max / (1.2 * avg)).powi(2);
@@ -188,6 +214,7 @@ fn process_direction(
                         // If avg is 0, ratio is essentially 1.0 (no torsion)
                         if 1.0 > max_ratio {
                             max_ratio = 1.0;
+                            governing_idx = idx;
                         }
                     }
                 }
@@ -199,6 +226,11 @@ fn process_direction(
                 let is_type_a = max_ratio > 1.2;
                 let is_type_b = max_ratio > 1.4;
                 let rho = if is_type_b { 1.3 } else { 1.0 };
+                let governing_drift_a = drift_a_steps[governing_idx];
+                let governing_drift_b = drift_b_steps[governing_idx];
+                let governing_delta_max = delta_max_steps[governing_idx];
+                let governing_delta_avg = delta_avg_steps[governing_idx];
+                let governing_step = steps[governing_idx];
 
                 out_rows.push(TorsionalRow {
                     story: story_top.story.clone(),
@@ -211,6 +243,12 @@ fn process_direction(
                     delta_max_steps,
                     delta_avg_steps,
                     ratio: max_ratio,
+                    governing_step,
+                    governing_drift_a,
+                    governing_drift_b,
+                    governing_delta_max,
+                    governing_delta_avg,
+                    governing_ratio: max_ratio,
                     ax,
                     ecc_ft,
                     rho,
@@ -224,9 +262,11 @@ fn process_direction(
     if out_rows.is_empty() {
         return Ok(TorsionalDirectionOutput {
             rows: vec![],
+            no_data: no_data_rows,
             governing_story: String::new(),
             governing_case: String::new(),
             governing_joints: vec![],
+            governing_step: None,
             max_ratio: 0.0,
             has_type_a: false,
             has_type_b: false,
@@ -258,9 +298,11 @@ fn process_direction(
         governing_story: gov.story.clone(),
         governing_case: gov.case.clone(),
         governing_joints: vec![gov.joint_a.clone(), gov.joint_b.clone()],
+        governing_step: Some(gov.governing_step),
         max_ratio: gov.ratio,
         has_type_a,
         has_type_b,
+        no_data: no_data_rows,
         rows: out_rows,
     })
 }
@@ -783,5 +825,58 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("matched multiple unique joints"));
         assert!(msg.contains("TrackingA"));
+    }
+
+    #[test]
+    fn torsional_reports_explicit_no_data_context_for_missing_story_step() {
+        use crate::code_params::{TorsionalJointPair, TorsionalParams};
+        use crate::tables::joint_drift::JointDriftRow;
+        use crate::tables::story_def::StoryDefRow;
+
+        let stories = vec![
+            StoryDefRow {
+                story: "L1".into(),
+                height_ft: 10.0,
+                elevation_ft: 10.0,
+            },
+            StoryDefRow {
+                story: "L2".into(),
+                height_ft: 10.0,
+                elevation_ft: 20.0,
+            },
+        ];
+
+        let rows = vec![JointDriftRow {
+            story: "L2".into(),
+            unique_name: "J1".into(),
+            output_case: "ELF_X".into(),
+            case_type: "LinStatic".into(),
+            step_type: String::new(),
+            step_number: Some(1.0),
+            disp_x_ft: 0.20,
+            disp_y_ft: 0.0,
+            drift_x: 0.0,
+            drift_y: 0.0,
+            label: 1,
+        }];
+
+        let params = TorsionalParams {
+            x_cases: vec!["ELF_X".into()],
+            y_cases: vec![],
+            x_pairs: vec![TorsionalJointPair {
+                joint_a: "J1".into(),
+                joint_b: "J2".into(),
+            }],
+            y_pairs: vec![],
+            ecc_ratio: 0.05,
+            building_dim_x_ft: 100.0,
+            building_dim_y_ft: 50.0,
+        };
+
+        let output = run(&rows, &stories, &HashMap::new(), &params).unwrap();
+        assert!(output.x.rows.is_empty());
+        assert!(!output.x.no_data.is_empty());
+        assert_eq!(output.x.no_data[0].story, "L2");
+        assert_eq!(output.x.no_data[0].case, "ELF_X");
     }
 }

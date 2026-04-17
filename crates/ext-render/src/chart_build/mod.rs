@@ -5,6 +5,7 @@ mod modal;
 mod pier_axial;
 mod pier_shear;
 mod story_forces;
+mod torsional;
 
 use charming::{
     Chart,
@@ -39,6 +40,8 @@ pub const DRIFT_SEISMIC_Y_IMAGE: &str = "images/drift_seismic_y.svg";
 // Displacement — directional pairs
 pub const DISPLACEMENT_WIND_X_IMAGE: &str = "images/displacement_wind_x.svg";
 pub const DISPLACEMENT_WIND_Y_IMAGE: &str = "images/displacement_wind_y.svg";
+pub const TORSIONAL_X_IMAGE: &str = "images/torsional_x.svg";
+pub const TORSIONAL_Y_IMAGE: &str = "images/torsional_y.svg";
 
 // Pier shear
 pub const PIER_SHEAR_STRESS_WIND_IMAGE: &str = "images/pier_shear_stress_wind.svg";
@@ -78,6 +81,10 @@ pub fn build_report_charts(calc: &CalcOutput, config: &RenderConfig) -> Vec<Name
         charts.extend(displacement::build(displacement_output, config));
     }
 
+    if let Some(torsional_output) = calc.torsional.as_ref() {
+        charts.extend(torsional::build(torsional_output, config));
+    }
+
     if let Some(pier_output) = calc.pier_shear_stress_wind.as_ref() {
         charts.push(pier_shear::build_wind(pier_output, config));
     }
@@ -101,7 +108,16 @@ pub fn build_chart(spec: &ChartSpec) -> Chart {
             categories,
             series,
             swap_axes,
-        } => build_cartesian(spec, categories, series, *swap_axes),
+            x_axis_label,
+            y_axis_label,
+        } => build_cartesian(
+            spec,
+            categories,
+            series,
+            *swap_axes,
+            x_axis_label.as_deref(),
+            y_axis_label.as_deref(),
+        ),
         ChartKind::Pie { data } => build_pie(spec, data),
     }
 }
@@ -111,27 +127,48 @@ fn build_cartesian(
     categories: &[String],
     series: &[crate::chart_types::CartesianSeries],
     swap_axes: bool,
+    x_axis_label: Option<&str>,
+    y_axis_label: Option<&str>,
 ) -> Chart {
+    let x_axis = if swap_axes {
+        let mut axis = Axis::new().type_(AxisType::Value);
+        if let Some(label) = x_axis_label {
+            axis = axis.name(label);
+        }
+        axis
+    } else {
+        let mut axis = Axis::new()
+            .type_(AxisType::Category)
+            .axis_label(AxisLabel::new().rotate(24))
+            .data(categories.iter().map(String::as_str).collect::<Vec<_>>());
+        if let Some(label) = x_axis_label {
+            axis = axis.name(label);
+        }
+        axis
+    };
+    let y_axis = if swap_axes {
+        let mut axis = Axis::new()
+            .type_(AxisType::Category)
+            .data(categories.iter().map(String::as_str).collect::<Vec<_>>());
+        if let Some(label) = y_axis_label {
+            axis = axis.name(label);
+        }
+        axis
+    } else {
+        let mut axis = Axis::new().type_(AxisType::Value);
+        if let Some(label) = y_axis_label {
+            axis = axis.name(label);
+        }
+        axis
+    };
+
     let mut chart = Chart::new()
         .title(Title::new().text(spec.title.as_str()).left("center"))
         .grid(Grid::new().left("10%").right("6%").top("16%").bottom("16%"))
         .tooltip(Tooltip::new().trigger(Trigger::Axis))
         .legend(Legend::new().top("6%"))
-        .x_axis(if swap_axes {
-            Axis::new().type_(AxisType::Value)
-        } else {
-            Axis::new()
-                .type_(AxisType::Category)
-                .axis_label(AxisLabel::new().rotate(24))
-                .data(categories.iter().map(String::as_str).collect::<Vec<_>>())
-        })
-        .y_axis(if swap_axes {
-            Axis::new()
-                .type_(AxisType::Category)
-                .data(categories.iter().map(String::as_str).collect::<Vec<_>>())
-        } else {
-            Axis::new().type_(AxisType::Value)
-        });
+        .x_axis(x_axis)
+        .y_axis(y_axis);
 
     for entry in series {
         chart = match entry.kind {
@@ -234,10 +271,7 @@ fn build_swapped_axis_points(categories: &[String], values: &[f64]) -> Vec<DataP
 /// let cats = story_display_order(&order, |_| true);
 /// assert_eq!(cats, ["L1", "L2", "L3"]); // L1 at bottom, L3 at top
 /// ```
-pub fn story_display_order(
-    story_order: &[String],
-    has_data: impl Fn(&str) -> bool,
-) -> Vec<String> {
+pub fn story_display_order(story_order: &[String], has_data: impl Fn(&str) -> bool) -> Vec<String> {
     story_order
         .iter()
         .filter(|s| has_data(s.as_str()))

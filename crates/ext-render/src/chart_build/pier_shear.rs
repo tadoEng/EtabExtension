@@ -11,8 +11,8 @@ use crate::chart_types::{
 pub fn build_wind(output: &PierShearStressOutput, config: &RenderConfig) -> NamedChartSpec {
     build_chart(
         PIER_SHEAR_STRESS_WIND_IMAGE,
-        "Pier Shear Wind — Stress by Pier (psi)",
-        "Pier shear stress trends by level. Report page defines individual (10*sqrt(fc)) and average (8*sqrt(fc)) ratio limits.",
+        "Pier Shear Wind — Stress Ratio by Pier",
+        "Pier shear stress-ratio trends by level with individual limit line (10.0).",
         output,
         config,
     )
@@ -21,8 +21,8 @@ pub fn build_wind(output: &PierShearStressOutput, config: &RenderConfig) -> Name
 pub fn build_seismic(output: &PierShearStressOutput, config: &RenderConfig) -> NamedChartSpec {
     build_chart(
         PIER_SHEAR_STRESS_SEISMIC_IMAGE,
-        "Pier Shear Seismic — Stress by Pier (psi)",
-        "Pier shear stress trends by level. Report page defines individual (10*sqrt(fc)) and average (8*sqrt(fc)) ratio limits.",
+        "Pier Shear Seismic — Stress Ratio by Pier",
+        "Pier shear stress-ratio trends by level with individual limit line (10.0).",
         output,
         config,
     )
@@ -35,13 +35,9 @@ fn build_chart(
     output: &PierShearStressOutput,
     config: &RenderConfig,
 ) -> NamedChartSpec {
-    let categories = if output.story_order.is_empty() {
-        ordered_unique(output.per_pier.iter().map(|row| row.story.clone()))
-    } else {
-        output.story_order.clone()
-    };
-    // Shared story-order utility keeps swapped-axis category ordering consistent across all charts.
-    let display_categories = story_display_order(&categories, |_| true);
+    let display_categories = story_display_order(&output.story_order, |story| {
+        output.per_pier.iter().any(|row| row.story == story)
+    });
 
     let mut pier_names = output
         .per_pier
@@ -60,7 +56,7 @@ fn build_chart(
         let mut by_story = std::collections::HashMap::new();
         for row in output.per_pier.iter().filter(|row| row.pier == *pier) {
             let entry = by_story.entry(row.story.as_str()).or_insert(0.0_f64);
-            *entry = entry.max(row.stress_psi);
+            *entry = entry.max(row.stress_ratio);
         }
         series.push(CartesianSeries {
             name: pier.clone(),
@@ -74,6 +70,14 @@ fn build_chart(
             smooth: false,
         });
     }
+    series.push(CartesianSeries {
+        name: "Individual Limit (10.0)".to_string(),
+        data: vec![output.limit_individual; display_categories.len()],
+        kind: SeriesType::Line,
+        color: Some("#cc0000".to_string()),
+        line_style: Some(LinePattern::Dashed),
+        smooth: false,
+    });
 
     NamedChartSpec {
         logical_name: logical_name.to_string(),
@@ -86,6 +90,8 @@ fn build_chart(
             kind: ChartKind::Cartesian {
                 categories: display_categories,
                 swap_axes: true,
+                x_axis_label: Some("Stress Ratio".to_string()),
+                y_axis_label: Some("Story".to_string()),
                 series,
             },
         },
@@ -131,6 +137,8 @@ mod tests {
             phi_v: 0.75,
             limit_individual: 10.0,
             limit_average: 8.0,
+            supported: true,
+            support_note: None,
             story_order: vec!["L2".into(), "L1".into()],
             per_pier: vec![
                 make_row("L2", "PX2", 12.0),
@@ -155,7 +163,10 @@ mod tests {
             .iter()
             .map(|item| item.name.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(names, vec!["PX1", "PX2", "PY1", "PY2"]);
+        assert_eq!(
+            names,
+            vec!["PX1", "PX2", "PY1", "PY2", "Individual Limit (10.0)"]
+        );
     }
 
     #[test]
@@ -164,6 +175,8 @@ mod tests {
             phi_v: 0.75,
             limit_individual: 10.0,
             limit_average: 8.0,
+            supported: true,
+            support_note: None,
             story_order: vec!["L2".into(), "L1".into()],
             per_pier: vec![make_row("L2", "PX1", 10.0), make_row("L1", "PX1", 9.0)],
             x_average: vec![],
