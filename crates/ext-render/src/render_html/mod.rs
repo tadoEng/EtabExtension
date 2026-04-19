@@ -26,3 +26,46 @@ pub fn render_all_html(
 
     Ok(html_map)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::render_html;
+    use crate::chart_types::{CartesianSeries, ChartKind, ChartSpec, LinePattern, SeriesType};
+
+    #[test]
+    fn rendered_line_charts_disable_point_symbols() {
+        let spec = ChartSpec {
+            title: "line".to_string(),
+            width: 800,
+            height: 400,
+            kind: ChartKind::Cartesian {
+                categories: vec!["L1".to_string(), "L2".to_string()],
+                swap_axes: true,
+                x_axis_label: Some("Ratio".to_string()),
+                y_axis_label: Some("Story".to_string()),
+                series: vec![
+                    CartesianSeries {
+                        name: "Series A".to_string(),
+                        data: vec![0.2, 0.4],
+                        kind: SeriesType::Line,
+                        color: Some("#1f77b4".to_string()),
+                        line_style: Some(LinePattern::Solid),
+                        smooth: false,
+                    },
+                    CartesianSeries {
+                        name: "Limit".to_string(),
+                        data: vec![1.0, 1.0],
+                        kind: SeriesType::Line,
+                        color: Some("#cc0000".to_string()),
+                        line_style: Some(LinePattern::Dashed),
+                        smooth: false,
+                    },
+                ],
+            },
+        };
+
+        let html = render_html(&spec, "symbol_test").expect("line chart should render");
+        assert!(html.contains("showSymbol"));
+        assert!(html.contains("false"));
+    }
+}

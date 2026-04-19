@@ -357,6 +357,8 @@ pub struct PierShearStressAverageRow {
     pub sum_ve_kip: f64,
     pub sum_acw_in2: f64,
     pub sqrt_fc: f64,
+    #[serde(default)]
+    pub avg_stress_psi: f64,
     pub avg_stress_ratio: f64,
     pub limit_average: f64,
     pub pass: bool,

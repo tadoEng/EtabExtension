@@ -34,8 +34,8 @@ pub struct PageTheme {
     pub caption_size: &'static str, // "8pt"
 
     // ── Chart heights per layout type ─────────────────────────────────────────
-    pub chart_single_h: &'static str,            // "8.5in"
-    pub chart_two_col_h: &'static str,           // "7.5in"
+    pub chart_single_h: &'static str,            // "7.8in"
+    pub chart_two_col_h: &'static str,           // "6.8in"
     pub chart_with_table_chart_h: &'static str,  // "6in"
     pub chart_with_table_normal_h: &'static str, // "7in"
 
@@ -107,13 +107,13 @@ pub const TABLOID_LANDSCAPE: PageTheme = PageTheme {
     content_height: "9.75in",
     // tb-h = 11 - 0.25 - 0.25 - 9.75 = 0.75in ✓
     body_font: "Linux Libertine",
-    body_size: "10pt",
+    body_size: "12pt",
     title_size: "14pt",
-    label_size: "8pt",
-    caption_size: "9pt",
+    label_size: "10pt",
+    caption_size: "10pt",
 
-    chart_single_h: "8.5in",
-    chart_two_col_h: "7.5in",
+    chart_single_h: "7.8in",
+    chart_two_col_h: "6.8in",
     chart_with_table_chart_h: "6.2in",
     chart_with_table_normal_h: "6.2in",
 
@@ -142,10 +142,10 @@ pub const A4_PORTRAIT: PageTheme = PageTheme {
     content_height: "9.29in",
 
     body_font: "Linux Libertine",
-    body_size: "10pt",
+    body_size: "12pt",
     title_size: "16pt",
-    label_size: "8pt",
-    caption_size: "8pt",
+    label_size: "10pt",
+    caption_size: "10pt",
 
     chart_single_h: "6in",
     chart_two_col_h: "3.2in",
@@ -209,6 +209,8 @@ mod tests {
     #[test]
     fn tabloid_landscape_satisfies_invariant() {
         assert_theme_invariant(&TABLOID_LANDSCAPE, "TABLOID_LANDSCAPE");
+        assert_eq!(TABLOID_LANDSCAPE.chart_single_h, "7.8in");
+        assert_eq!(TABLOID_LANDSCAPE.chart_two_col_h, "6.8in");
     }
 
     #[test]

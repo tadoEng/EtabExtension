@@ -44,8 +44,12 @@ pub const TORSIONAL_X_IMAGE: &str = "images/torsional_x.svg";
 pub const TORSIONAL_Y_IMAGE: &str = "images/torsional_y.svg";
 
 // Pier shear
-pub const PIER_SHEAR_STRESS_WIND_IMAGE: &str = "images/pier_shear_stress_wind.svg";
-pub const PIER_SHEAR_STRESS_SEISMIC_IMAGE: &str = "images/pier_shear_stress_seismic.svg";
+pub const PIER_SHEAR_STRESS_WIND_X_IMAGE: &str = "images/pier_shear_stress_wind_x.svg";
+pub const PIER_SHEAR_STRESS_WIND_Y_IMAGE: &str = "images/pier_shear_stress_wind_y.svg";
+pub const PIER_SHEAR_STRESS_SEISMIC_X_IMAGE: &str = "images/pier_shear_stress_seismic_x.svg";
+pub const PIER_SHEAR_STRESS_SEISMIC_Y_IMAGE: &str = "images/pier_shear_stress_seismic_y.svg";
+pub const PIER_SHEAR_STRESS_WIND_AVG_IMAGE: &str = "images/pier_shear_stress_wind_avg.svg";
+pub const PIER_SHEAR_STRESS_SEISMIC_AVG_IMAGE: &str = "images/pier_shear_stress_seismic_avg.svg";
 
 // Pier axial — 3 category assets (replaces the old single PIER_AXIAL_STRESS_IMAGE)
 pub const PIER_AXIAL_GRAVITY_IMAGE: &str = "images/pier_axial_gravity.svg";
@@ -86,11 +90,13 @@ pub fn build_report_charts(calc: &CalcOutput, config: &RenderConfig) -> Vec<Name
     }
 
     if let Some(pier_output) = calc.pier_shear_stress_wind.as_ref() {
-        charts.push(pier_shear::build_wind(pier_output, config));
+        charts.extend(pier_shear::build_wind(pier_output, config));
+        charts.push(pier_shear::build_wind_average(pier_output, config));
     }
 
     if let Some(pier_output) = calc.pier_shear_stress_seismic.as_ref() {
-        charts.push(pier_shear::build_seismic(pier_output, config));
+        charts.extend(pier_shear::build_seismic(pier_output, config));
+        charts.push(pier_shear::build_seismic_average(pier_output, config));
     }
 
     if let Some(axial_output) = calc.pier_axial_stress.as_ref() {
@@ -194,7 +200,7 @@ fn build_cartesian(
                 let mut series_builder = Line::new()
                     .name(entry.name.as_str())
                     .smooth(entry.smooth)
-                    .show_symbol(!matches!(entry.line_style, Some(LinePattern::Dashed)))
+                    .show_symbol(false)
                     .data(data);
                 if let Some(color) = entry.color.as_deref() {
                     series_builder = series_builder

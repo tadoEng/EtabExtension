@@ -91,21 +91,34 @@ impl ReportData {
                 })?,
             );
         }
-        if let Some(v) = &calc.torsional {
-            files.insert(pb("torsional.json"), to_json(&build_torsional(v))?);
-        }
+        let torsional_data = calc
+            .torsional
+            .as_ref()
+            .map(build_torsional)
+            .unwrap_or_else(default_torsional_report_data);
+        files.insert(pb("torsional.json"), to_json(&torsional_data)?);
         if let Some(v) = &calc.pier_axial_stress {
             files.insert(pb("pier_axial_stress.json"), to_json(&build_pier_axial(v))?);
         }
-        if let Some(v) = &calc.pier_shear_stress_wind {
-            files.insert(pb("pier_shear_wind.json"), to_json(&build_pier_shear(v))?);
-        }
-        if let Some(v) = &calc.pier_shear_stress_seismic {
-            files.insert(
-                pb("pier_shear_seismic.json"),
-                to_json(&build_pier_shear(v))?,
-            );
-        }
+        let pier_shear_wind_data = calc
+            .pier_shear_stress_wind
+            .as_ref()
+            .map(build_pier_shear)
+            .unwrap_or_else(|| {
+                build_unsupported_pier_shear_report_data("No wind pier shear data available.")
+            });
+        files.insert(pb("pier_shear_wind.json"), to_json(&pier_shear_wind_data)?);
+        let pier_shear_seismic_data = calc
+            .pier_shear_stress_seismic
+            .as_ref()
+            .map(build_pier_shear)
+            .unwrap_or_else(|| {
+                build_unsupported_pier_shear_report_data("No seismic pier shear data available.")
+            });
+        files.insert(
+            pb("pier_shear_seismic.json"),
+            to_json(&pier_shear_seismic_data)?,
+        );
 
         // SVG charts from ext-render
         for (name, svg) in svg_map {
@@ -164,6 +177,8 @@ struct SummaryCheckerRow {
     utilization: String,
     margin: String,
     reason: String,
+    ratio_color_value: Option<f64>,
+    ratio_color_scale_kind: Option<String>,
 }
 
 fn build_summary(calc: &CalcOutput) -> SummaryReportData {
@@ -259,6 +274,8 @@ fn build_drift_checker_row(
             "Direction {direction}, drift ratio demand/allowable check ({:.5} / {:.5})",
             governing.drift_ratio, limit
         ),
+        ratio_color_value: Some(utilization),
+        ratio_color_scale_kind: Some("ratio_0_1".to_string()),
     }
 }
 
@@ -293,6 +310,8 @@ fn build_displacement_checker_row(
         reason: format!(
             "Direction {direction}, per-level displacement limit from elevation/limit ratio"
         ),
+        ratio_color_value: Some(utilization),
+        ratio_color_scale_kind: Some("ratio_0_1".to_string()),
     }
 }
 
@@ -330,6 +349,8 @@ fn build_torsional_checker_row(check: &str, torsional: &TorsionalOutput) -> Summ
         reason: format!(
             "Direction {direction}, ratio basis dmax/davg, classification {classification}"
         ),
+        ratio_color_value: Some(governing.max_ratio),
+        ratio_color_scale_kind: Some("torsion_thresholds_1_2_1_4".to_string()),
     }
 }
 
@@ -354,6 +375,8 @@ fn build_base_reactions_checker_row(check: &str, base: &BaseReactionsOutput) -> 
             "RSA/ELF ratio check, X={:.5}, Y={:.5}",
             base.direction_x.ratio, base.direction_y.ratio
         ),
+        ratio_color_value: None,
+        ratio_color_scale_kind: None,
     }
 }
 
@@ -375,6 +398,8 @@ fn build_pier_shear_checker_row(
                 .support_note
                 .clone()
                 .unwrap_or_else(|| "Check is not available for configured code".to_string()),
+            ratio_color_value: None,
+            ratio_color_scale_kind: None,
         };
     }
 
@@ -406,6 +431,8 @@ fn build_pier_shear_checker_row(
         utilization: fmt_percent(utilization),
         margin: fmt_percent(margin),
         reason: "Stress-ratio checks against individual and average limits".to_string(),
+        ratio_color_value: Some(utilization),
+        ratio_color_scale_kind: Some("ratio_0_1".to_string()),
     }
 }
 
@@ -424,6 +451,8 @@ fn build_pier_axial_checker_row(check: &str, value: &PierAxialStressOutput) -> S
         utilization: fmt_percent(value.governing.dcr),
         margin: fmt_percent(1.0 - value.governing.dcr),
         reason: "Preliminary axial screening check".to_string(),
+        ratio_color_value: Some(value.governing.dcr),
+        ratio_color_scale_kind: Some("ratio_0_1".to_string()),
     }
 }
 
@@ -603,10 +632,6 @@ fn wrap_load_case_label(value: &str) -> String {
         }
     }
     out
-}
-
-fn round5(value: f64) -> f64 {
-    (value * 100_000.0).round() / 100_000.0
 }
 
 fn should_exclude_base_case_type(case_type: &str) -> bool {
@@ -831,6 +856,8 @@ struct TorsionalDirReport {
     governing_delta_max: f64,
     governing_delta_avg: f64,
     governing_ratio: f64,
+    governing_ratio_color_value: Option<f64>,
+    governing_ratio_color_scale_kind: Option<String>,
     type_a_threshold: f64,
     type_b_threshold: f64,
     classification: String,
@@ -854,6 +881,8 @@ struct TorsionalReportRow {
     delta_max: f64,
     delta_avg: f64,
     ratio: f64,
+    ratio_color_value: Option<f64>,
+    ratio_color_scale_kind: Option<String>,
     is_type_a: bool,
     is_type_b: bool,
     ax: f64,
@@ -865,6 +894,41 @@ fn build_torsional(torsional: &TorsionalOutput) -> TorsionalReportData {
         x: build_torsional_dir(&torsional.x),
         y: build_torsional_dir(&torsional.y),
         pass: torsional.pass,
+    }
+}
+
+fn default_torsional_report_data() -> TorsionalReportData {
+    TorsionalReportData {
+        x: default_torsional_dir_report(),
+        y: default_torsional_dir_report(),
+        pass: true,
+    }
+}
+
+fn default_torsional_dir_report() -> TorsionalDirReport {
+    TorsionalDirReport {
+        rows: Vec::new(),
+        annotations: Vec::new(),
+        governing_story: String::new(),
+        governing_case: String::new(),
+        governing_joint_a: String::new(),
+        governing_joint_b: String::new(),
+        governing_step: None,
+        governing_drift_a: 0.0,
+        governing_drift_b: 0.0,
+        governing_delta_max: 0.0,
+        governing_delta_avg: 0.0,
+        governing_ratio: 0.0,
+        governing_ratio_color_value: Some(0.0),
+        governing_ratio_color_scale_kind: Some("torsion_thresholds_1_2_1_4".to_string()),
+        type_a_threshold: 1.2,
+        type_b_threshold: 1.4,
+        classification: "No data".to_string(),
+        has_type_a: false,
+        has_type_b: false,
+        has_rows: false,
+        no_data_note: "No torsional data available.".to_string(),
+        no_data_contexts: Vec::new(),
     }
 }
 
@@ -894,6 +958,8 @@ fn build_torsional_dir(dir: &TorsionalDirectionOutput) -> TorsionalDirReport {
             delta_max: row.governing_delta_max,
             delta_avg: row.governing_delta_avg,
             ratio: row.governing_ratio,
+            ratio_color_value: Some(row.governing_ratio),
+            ratio_color_scale_kind: Some("torsion_thresholds_1_2_1_4".to_string()),
             is_type_a: row.is_type_a,
             is_type_b: row.is_type_b,
             ax: row.ax,
@@ -953,6 +1019,8 @@ fn build_torsional_dir(dir: &TorsionalDirectionOutput) -> TorsionalDirReport {
             .map(|row| row.delta_avg)
             .unwrap_or_default(),
         governing_ratio: dir.max_ratio,
+        governing_ratio_color_value: Some(dir.max_ratio),
+        governing_ratio_color_scale_kind: Some("torsion_thresholds_1_2_1_4".to_string()),
         type_a_threshold,
         type_b_threshold,
         classification,
@@ -1005,102 +1073,219 @@ fn build_pier_axial(axial: &PierAxialStressOutput) -> PierAxialReportData {
 struct PierShearReportData {
     supported: bool,
     support_note: String,
-    levels: Vec<String>,
-    piers: Vec<String>,
-    matrix_ratio: Vec<Vec<Option<f64>>>,
+    phi_v: f64,
     limit_individual_ratio: f64,
-    average_rows: Vec<PierShearAverageReportRow>,
     limit_average_ratio: f64,
     max_individual_ratio: f64,
     max_average_ratio: f64,
     pass: bool,
+    x_rows: Vec<PierShearDirectionalReportRow>,
+    y_rows: Vec<PierShearDirectionalReportRow>,
+    x_matrix: PierShearMatrixReportData,
+    y_matrix: PierShearMatrixReportData,
+    x_average_rows: Vec<PierShearAverageDetailReportRow>,
+    y_average_rows: Vec<PierShearAverageDetailReportRow>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct PierShearAverageReportRow {
+struct PierShearMatrixReportData {
+    levels: Vec<String>,
+    piers: Vec<String>,
+    matrix_ratio: Vec<Vec<Option<f64>>>,
+    individual_ratio_scale_kind: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct PierShearDirectionalReportRow {
     story: String,
-    limit_average: f64,
-    x_average_stress_ratio: Option<f64>,
-    y_average_stress_ratio: Option<f64>,
+    pier: String,
+    combo: String,
+    limit: f64,
+    stress_ratio: f64,
+    stress_psi: f64,
+    ve_kip: f64,
+    acw_in2: f64,
+    fc_psi: f64,
+    ratio_color_value: Option<f64>,
+    ratio_color_scale_kind: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct PierShearAverageDetailReportRow {
+    story: String,
+    limit: f64,
+    avg_stress_psi: f64,
+    sum_area_in2: f64,
+    sum_shear_kip: f64,
+    avg_ratio: f64,
+    ratio_color_value: Option<f64>,
+    ratio_color_scale_kind: Option<String>,
 }
 
 fn build_pier_shear(pier: &ext_calc::output::PierShearStressOutput) -> PierShearReportData {
     if !pier.supported {
-        return PierShearReportData {
-            supported: false,
-            support_note: pier.support_note.clone().unwrap_or_default(),
-            levels: Vec::new(),
-            piers: Vec::new(),
-            matrix_ratio: Vec::new(),
-            limit_individual_ratio: pier.limit_individual,
-            average_rows: Vec::new(),
-            limit_average_ratio: pier.limit_average,
-            max_individual_ratio: pier.max_individual_ratio,
-            max_average_ratio: pier.max_average_ratio,
-            pass: pier.pass,
-        };
+        return build_unsupported_pier_shear_report_data(
+            pier.support_note
+                .clone()
+                .unwrap_or_else(|| "Pier shear check is unavailable.".to_string()),
+        );
     }
 
-    let levels = pier.story_order.clone();
-    let mut piers = pier
+    let story_rank = pier
+        .story_order
+        .iter()
+        .enumerate()
+        .map(|(idx, story)| (story.clone(), idx))
+        .collect::<HashMap<_, _>>();
+
+    let mut filtered = pier
         .per_pier
         .iter()
-        .map(|row| row.pier.clone())
-        .filter(|label| !is_default_pier_label(label))
+        .filter(|row| !is_default_pier_label(&row.pier))
+        .cloned()
         .collect::<Vec<_>>();
-    piers = ordered_unique(piers.into_iter());
-    piers = normalized_pier_labels(piers);
 
-    let mut values: HashMap<(String, String), f64> = HashMap::new();
-    for row in &pier.per_pier {
-        if is_default_pier_label(&row.pier) {
-            continue;
+    filtered.sort_by(|a, b| {
+        let a_rank = story_rank.get(&a.story).copied().unwrap_or(usize::MAX);
+        let b_rank = story_rank.get(&b.story).copied().unwrap_or(usize::MAX);
+        a_rank
+            .cmp(&b_rank)
+            .then_with(|| compare_pier_labels(a.pier.as_str(), b.pier.as_str()))
+            .then_with(|| a.combo.cmp(&b.combo))
+    });
+
+    let map_direction_rows = |direction: &str| {
+        filtered
+            .iter()
+            .filter(|row| row.wall_direction.eq_ignore_ascii_case(direction))
+            .map(|row| PierShearDirectionalReportRow {
+                story: row.story.clone(),
+                pier: row.pier.clone(),
+                combo: wrap_load_case_label(&row.combo),
+                limit: row.limit_individual,
+                stress_ratio: row.stress_ratio,
+                stress_psi: row.stress_psi,
+                ve_kip: row.ve_kip,
+                acw_in2: row.acw_in2,
+                fc_psi: row.fc_psi,
+                ratio_color_value: Some(row.stress_ratio),
+                ratio_color_scale_kind: Some("shear_individual_0_10".to_string()),
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let map_direction_matrix = |direction: &str| {
+        let direction_rows = filtered
+            .iter()
+            .filter(|row| row.wall_direction.eq_ignore_ascii_case(direction))
+            .collect::<Vec<_>>();
+
+        let levels = pier
+            .story_order
+            .iter()
+            .filter(|story| direction_rows.iter().any(|row| row.story == **story))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let mut piers = ordered_unique(direction_rows.iter().map(|row| row.pier.clone()));
+        piers.sort_by(|a, b| compare_pier_labels(a, b));
+
+        let mut values: HashMap<(String, String), f64> = HashMap::new();
+        for row in &direction_rows {
+            let key = (row.story.clone(), row.pier.clone());
+            let entry = values.entry(key).or_insert(0.0);
+            *entry = entry.max(row.stress_ratio);
         }
-        let key = (row.story.clone(), row.pier.clone());
-        let entry = values.entry(key).or_insert(0.0);
-        *entry = entry.max(row.stress_ratio);
-    }
 
-    let mut matrix_ratio = Vec::with_capacity(levels.len());
-    for level in &levels {
-        let mut row_values = Vec::with_capacity(piers.len());
-        for pier_name in &piers {
-            row_values.push(values.get(&(level.clone(), pier_name.clone())).copied());
+        let mut matrix_ratio = Vec::with_capacity(levels.len());
+        for level in &levels {
+            let mut row_values = Vec::with_capacity(piers.len());
+            for pier_name in &piers {
+                row_values.push(values.get(&(level.clone(), pier_name.clone())).copied());
+            }
+            matrix_ratio.push(row_values);
         }
-        matrix_ratio.push(row_values);
-    }
 
-    let mut x_avg = HashMap::new();
-    let mut y_avg = HashMap::new();
-    for row in &pier.x_average {
-        x_avg.insert(row.story.clone(), row.avg_stress_ratio);
-    }
-    for row in &pier.y_average {
-        y_avg.insert(row.story.clone(), row.avg_stress_ratio);
-    }
-    let average_rows = levels
-        .iter()
-        .map(|story| PierShearAverageReportRow {
-            story: story.clone(),
-            limit_average: pier.limit_average,
-            x_average_stress_ratio: x_avg.get(story).copied(),
-            y_average_stress_ratio: y_avg.get(story).copied(),
-        })
-        .collect::<Vec<_>>();
+        PierShearMatrixReportData {
+            levels,
+            piers,
+            matrix_ratio,
+            individual_ratio_scale_kind: "shear_individual_0_10".to_string(),
+        }
+    };
+
+    let map_average_rows = |rows: &[ext_calc::output::PierShearStressAverageRow]| {
+        let mut out = rows
+            .iter()
+            .map(|row| {
+                let avg_stress_psi = if row.avg_stress_psi > 0.0 {
+                    row.avg_stress_psi
+                } else {
+                    row.avg_stress_ratio * row.sqrt_fc
+                };
+                PierShearAverageDetailReportRow {
+                    story: row.story.clone(),
+                    limit: row.limit_average,
+                    avg_stress_psi,
+                    sum_area_in2: row.sum_acw_in2,
+                    sum_shear_kip: row.sum_ve_kip,
+                    avg_ratio: row.avg_stress_ratio,
+                    ratio_color_value: Some(row.avg_stress_ratio),
+                    ratio_color_scale_kind: Some("shear_average_0_8".to_string()),
+                }
+            })
+            .collect::<Vec<_>>();
+        out.sort_by_key(|row| story_rank.get(&row.story).copied().unwrap_or(usize::MAX));
+        out
+    };
 
     PierShearReportData {
         supported: true,
         support_note: String::new(),
-        levels,
-        piers,
-        matrix_ratio,
+        phi_v: pier.phi_v,
         limit_individual_ratio: pier.limit_individual,
-        average_rows,
         limit_average_ratio: pier.limit_average,
         max_individual_ratio: pier.max_individual_ratio,
         max_average_ratio: pier.max_average_ratio,
         pass: pier.pass,
+        x_rows: map_direction_rows("X"),
+        y_rows: map_direction_rows("Y"),
+        x_matrix: map_direction_matrix("X"),
+        y_matrix: map_direction_matrix("Y"),
+        x_average_rows: map_average_rows(&pier.x_average),
+        y_average_rows: map_average_rows(&pier.y_average),
+    }
+}
+
+fn build_unsupported_pier_shear_report_data(note: impl Into<String>) -> PierShearReportData {
+    PierShearReportData {
+        supported: false,
+        support_note: note.into(),
+        phi_v: 0.75,
+        limit_individual_ratio: 10.0,
+        limit_average_ratio: 8.0,
+        max_individual_ratio: 0.0,
+        max_average_ratio: 0.0,
+        pass: true,
+        x_rows: Vec::new(),
+        y_rows: Vec::new(),
+        x_matrix: PierShearMatrixReportData {
+            levels: Vec::new(),
+            piers: Vec::new(),
+            matrix_ratio: Vec::new(),
+            individual_ratio_scale_kind: "shear_individual_0_10".to_string(),
+        },
+        y_matrix: PierShearMatrixReportData {
+            levels: Vec::new(),
+            piers: Vec::new(),
+            matrix_ratio: Vec::new(),
+            individual_ratio_scale_kind: "shear_individual_0_10".to_string(),
+        },
+        x_average_rows: Vec::new(),
+        y_average_rows: Vec::new(),
     }
 }
 
@@ -1117,12 +1302,6 @@ fn ordered_unique(iter: impl Iterator<Item = String>) -> Vec<String> {
 fn is_default_pier_label(label: &str) -> bool {
     let trimmed = label.trim();
     trimmed.is_empty() || trimmed == "0"
-}
-
-fn normalized_pier_labels(labels: Vec<String>) -> Vec<String> {
-    let mut out = labels;
-    out.sort_by(|left, right| compare_pier_labels(left, right));
-    out
 }
 
 fn compare_pier_labels(left: &str, right: &str) -> std::cmp::Ordering {
@@ -1304,5 +1483,113 @@ mod tests {
                 .to_ascii_lowercase();
             case_type != "combination" && case_type != "linmodritz" && case_type != "eigen"
         }));
+    }
+
+    #[test]
+    fn pier_shear_wind_json_includes_directional_matrix_payloads() {
+        let calc = fixture_calc_output();
+        let wind = calc
+            .pier_shear_stress_wind
+            .as_ref()
+            .expect("fixture should include wind pier shear");
+        let report_data =
+            ReportData::from_calc(&calc, &sample_project(), &TABLOID_LANDSCAPE, HashMap::new())
+                .unwrap();
+        let bytes = report_data
+            .files
+            .get(&PathBuf::from("pier_shear_wind.json"))
+            .expect("pier_shear_wind.json must exist");
+        let value: serde_json::Value = serde_json::from_slice(bytes.as_slice()).unwrap();
+
+        let assert_direction_matrix = |matrix_key: &str, direction: &str| {
+            let matrix_node = value
+                .get(matrix_key)
+                .unwrap_or_else(|| panic!("{matrix_key} should exist"));
+
+            let json_levels = matrix_node
+                .get("levels")
+                .and_then(|node| node.as_array())
+                .expect("levels should be array")
+                .iter()
+                .map(|node| node.as_str().unwrap_or_default().to_string())
+                .collect::<Vec<_>>();
+            let json_piers = matrix_node
+                .get("piers")
+                .and_then(|node| node.as_array())
+                .expect("piers should be array")
+                .iter()
+                .map(|node| node.as_str().unwrap_or_default().to_string())
+                .collect::<Vec<_>>();
+
+            let filtered = wind
+                .per_pier
+                .iter()
+                .filter(|row| {
+                    !is_default_pier_label(&row.pier)
+                        && row.wall_direction.eq_ignore_ascii_case(direction)
+                })
+                .collect::<Vec<_>>();
+
+            let expected_levels = wind
+                .story_order
+                .iter()
+                .filter(|story| filtered.iter().any(|row| row.story == **story))
+                .cloned()
+                .collect::<Vec<_>>();
+            assert_eq!(json_levels, expected_levels);
+
+            let mut expected_piers = ordered_unique(filtered.iter().map(|row| row.pier.clone()));
+            expected_piers.sort_by(|a, b| compare_pier_labels(a, b));
+            assert_eq!(json_piers, expected_piers);
+
+            let mut expected_values: HashMap<(String, String), f64> = HashMap::new();
+            for row in filtered {
+                let key = (row.story.clone(), row.pier.clone());
+                let entry = expected_values.entry(key).or_insert(0.0);
+                *entry = entry.max(row.stress_ratio);
+            }
+
+            let json_matrix = matrix_node
+                .get("matrix-ratio")
+                .and_then(|node| node.as_array())
+                .expect("matrix-ratio should be array");
+            assert_eq!(json_matrix.len(), expected_levels.len());
+
+            for (row_idx, level) in expected_levels.iter().enumerate() {
+                let json_row = json_matrix[row_idx]
+                    .as_array()
+                    .expect("matrix row should be an array");
+                assert_eq!(json_row.len(), expected_piers.len());
+                for (col_idx, pier) in expected_piers.iter().enumerate() {
+                    let expected = expected_values.get(&(level.clone(), pier.clone())).copied();
+                    let actual = if json_row[col_idx].is_null() {
+                        None
+                    } else {
+                        Some(
+                            json_row[col_idx]
+                                .as_f64()
+                                .expect("matrix ratio should be number or null"),
+                        )
+                    };
+                    match (expected, actual) {
+                        (None, None) => {}
+                        (Some(exp), Some(act)) => {
+                            assert!(
+                                (exp - act).abs() <= 1.0e-9,
+                                "matrix mismatch for direction={direction}, story={level}, pier={pier}: expected={exp}, actual={act}"
+                            );
+                        }
+                        _ => {
+                            panic!(
+                                "presence mismatch for direction={direction}, story={level}, pier={pier}"
+                            );
+                        }
+                    }
+                }
+            }
+        };
+
+        assert_direction_matrix("x-matrix", "X");
+        assert_direction_matrix("y-matrix", "Y");
     }
 }
