@@ -240,10 +240,3 @@ pub fn append_definitions(doc: &mut String) {
 "#,
     );
 }
-
-pub fn append_sequence(doc: &mut String) {
-    if !INCLUDE_CALC_PROCEDURE_PAGE {
-        return;
-    }
-    doc.push_str("#pagebreak()\n#calc-procedure-page()\n\n");
-}

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use typst::diag::FileResult;
@@ -11,7 +11,7 @@ use typst::{Library, LibraryExt, World};
 use typst_pdf::PdfOptions;
 
 use crate::data::{ReportData, ReportProjectMeta};
-use crate::pdf::template::build_typst_document;
+use crate::pdf::template::{build_typst_document, write_typst_partials_to_dir};
 use crate::theme::PageTheme;
 
 struct TypstWorld {
@@ -140,8 +140,35 @@ pub fn render_pdf(
     svg_map: HashMap<String, String>,
     theme: &PageTheme,
 ) -> Result<Vec<u8>> {
+    render_pdf_with_options(
+        calc,
+        project,
+        svg_map,
+        theme,
+        RenderPdfOptions {
+            debug_typst_dir: None,
+        },
+    )
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RenderPdfOptions {
+    pub debug_typst_dir: Option<PathBuf>,
+}
+
+pub fn render_pdf_with_options(
+    calc: &ext_calc::output::CalcOutput,
+    project: &ReportProjectMeta,
+    svg_map: HashMap<String, String>,
+    theme: &PageTheme,
+    options: RenderPdfOptions,
+) -> Result<Vec<u8>> {
     let source = build_typst_document(calc);
     let data = ReportData::from_calc(calc, project, theme, svg_map)?;
+
+    if let Some(debug_dir) = options.debug_typst_dir.as_deref() {
+        write_debug_typst_dir(debug_dir, &source, &data)?;
+    }
 
     let world = TypstWorld::new(source, data)?;
     let result = typst::compile(&world);
@@ -161,6 +188,45 @@ pub fn render_pdf(
 
     typst_pdf::pdf(&compiled, &PdfOptions::default())
         .map_err(|error| anyhow::anyhow!("PDF failed: {error:?}"))
+}
+
+fn write_debug_typst_dir(debug_dir: &Path, source: &str, data: &ReportData) -> Result<()> {
+    std::fs::create_dir_all(debug_dir).with_context(|| {
+        format!(
+            "Failed to create Typst debug directory {}",
+            debug_dir.display()
+        )
+    })?;
+    std::fs::write(debug_dir.join("main.typ"), source)
+        .with_context(|| format!("Failed to write {}", debug_dir.join("main.typ").display()))?;
+    write_typst_partials_to_dir(debug_dir)?;
+
+    for (virtual_path, bytes) in &data.files {
+        let path = safe_debug_file_path(debug_dir, virtual_path)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create {}", parent.display()))?;
+        }
+        std::fs::write(&path, bytes.as_slice())
+            .with_context(|| format!("Failed to write {}", path.display()))?;
+    }
+
+    Ok(())
+}
+
+fn safe_debug_file_path(debug_dir: &Path, virtual_path: &Path) -> Result<PathBuf> {
+    let mut path = debug_dir.to_path_buf();
+    for component in virtual_path.components() {
+        match component {
+            Component::Normal(part) => path.push(part),
+            Component::CurDir => {}
+            _ => bail!(
+                "Refusing to write unsafe Typst virtual path {}",
+                virtual_path.display()
+            ),
+        }
+    }
+    Ok(path)
 }
 
 pub fn write_pdf(path: &Path, pdf_bytes: &[u8]) -> Result<()> {
@@ -406,5 +472,39 @@ mod tests {
         // Since the Typst template eagerly loads images using image("...") within the figure macros,
         // missing SVGs result in a typst compilation error (mapped through anyhow).
         assert!(err.to_string().contains("typst failed"));
+    }
+
+    #[test]
+    fn render_pdf_with_options_writes_debug_typst_directory() {
+        let calc = fixture_calc_output();
+        let project = ReportProjectMeta::default();
+        let debug_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "../../.codex-target/ext-report-debug-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+
+        let pdf = render_pdf_with_options(
+            &calc,
+            &project,
+            dummy_svg_map(),
+            &TABLOID_LANDSCAPE,
+            RenderPdfOptions {
+                debug_typst_dir: Some(debug_dir.clone()),
+            },
+        )
+        .unwrap();
+
+        assert!(pdf.starts_with(b"%PDF"));
+        assert!(debug_dir.join("main.typ").exists());
+        assert!(debug_dir.join("styles.typ").exists());
+        assert!(debug_dir.join("page_setup.typ").exists());
+        assert!(debug_dir.join("layouts.typ").exists());
+        assert!(debug_dir.join("components.typ").exists());
+        assert!(debug_dir.join("theme.json").exists());
+        assert!(debug_dir.join("project.json").exists());
+        assert!(debug_dir.join("images/modal.svg").exists());
     }
 }
