@@ -19,7 +19,7 @@ pub fn append_definitions(doc: &mut String) {
       stroke: (x, y) => if y < pairs.len() - 1 {
         (bottom: 0.3pt + luma(210))
       } else { none },
-      inset: (x: 8pt, y: 4pt),
+      inset: (x: 7pt, y: 2pt),
       fill: (x, y) => if x == 0 { luma(242) } else { white },
       ..pairs.map(pair => (
         section-label[#pair.at(0)],
@@ -30,18 +30,18 @@ pub fn append_definitions(doc: &mut String) {
 }
 
 #let calc-step(n, formula, substitution, result) = {
-  v(4pt)
+  v(3pt)
   grid(
     columns: (2em, 1fr),
     gutter: 0pt,
     align(top)[#section-label[#n.]],
     stack(
-      spacing: 3pt,
+      spacing: 1pt,
       ref-note[#formula],
-      pad(left: 8pt)[#body-note[= #substitution]],
-      pad(left: 8pt)[
+      pad(left: 6pt)[#body-note[= #substitution]],
+      pad(left: 6pt)[
         #box(
-          inset: (x: 8pt, y: 4pt),
+          inset: (x: 7pt, y: 2pt),
           radius: 2pt,
           fill: luma(225),
           stroke: 0.5pt + luma(180),
@@ -54,13 +54,13 @@ pub fn append_definitions(doc: &mut String) {
 }
 
 #let calc-result(label, value, pass) = {
-  v(6pt)
+  v(2pt)
   let bg = if pass { rgb(212, 237, 218) } else { rgb(248, 215, 218) }
   let border = if pass { rgb(25, 135, 84) } else { rgb(220, 53, 69) }
   block(
     fill: bg,
     stroke: (left: 3pt + border),
-    inset: (left: 12pt, right: 10pt, top: 7pt, bottom: 7pt),
+    inset: (left: 10pt, right: 8pt, top: 4pt, bottom: 4pt),
     radius: (right: 3pt),
     width: 100%,
   )[
@@ -87,23 +87,23 @@ pub fn append_definitions(doc: &mut String) {
   let tor = json("torsional.json")
   let ex = if tor.x.has-rows { tor.x } else if tor.y.has-rows { tor.y } else { none }
 
-  page-title[Torsional Irregularity — Worked Example]
-  v(6pt)
+  section-label[Torsional Irregularity — Worked Example]
+  v(2pt)
   ref-note[
     Reference: ASCE 7 Table 12.3-1 — Torsional Irregularity Type 1a / 1b.\
     Criterion: δ_max / δ_avg > 1.2 (Type A), > 1.4 (Type B).
   ]
-  v(8pt)
+  v(2pt)
 
   if ex == none {
     body-note[No torsional governing row available.]
   } else {
     stack(
-      spacing: 3pt,
+      spacing: 1pt,
       line(length: 100%, stroke: 0.4pt + luma(200)),
       section-label[Given],
     )
-    v(4pt)
+    v(1pt)
     given-table((
       ("Story",     ex.governing-story),
       ("Load case", ex.governing-case),
@@ -113,14 +113,14 @@ pub fn append_definitions(doc: &mut String) {
       ("Δ_A (in)",  str(calc.round(ex.governing-drift-a, digits: 4))),
       ("Δ_B (in)",  str(calc.round(ex.governing-drift-b, digits: 4))),
     ))
-    v(8pt)
+    v(2pt)
 
     stack(
-      spacing: 3pt,
+      spacing: 1pt,
       line(length: 100%, stroke: 0.4pt + luma(200)),
       section-label[Procedure],
     )
-    v(4pt)
+    v(1pt)
     calc-step(
       1,
       [δ_max = max(|Δ_A|, |Δ_B|)],
@@ -158,13 +158,13 @@ pub fn append_definitions(doc: &mut String) {
         else if seismic.supported and seismic.y-rows.len() > 0 { (seismic, seismic.y-rows.at(0)) }
         else { none }
 
-  page-title[Pier Shear Stress — Worked Example]
-  v(6pt)
+  section-label[Pier Shear Stress — Worked Example]
+  v(2pt)
   ref-note[
     Reference: ACI 318-14 §18.10.4.\
     Formula: v_u = V_e / (φ_v × A_cw), stress ratio = v_u / √f'c.
   ]
-  v(8pt)
+  v(2pt)
 
   if data == none {
     body-note[No pier shear row available.]
@@ -174,11 +174,11 @@ pub fn append_definitions(doc: &mut String) {
     let sqrt-fc = calc.sqrt(row.fc-psi)
 
     stack(
-      spacing: 3pt,
+      spacing: 1pt,
       line(length: 100%, stroke: 0.4pt + luma(200)),
       section-label[Given],
     )
-    v(4pt)
+    v(1pt)
     given-table((
       ("Story",      row.story),
       ("Pier",       row.pier),
@@ -189,14 +189,14 @@ pub fn append_definitions(doc: &mut String) {
       ("√f'c",       [#calc.round(sqrt-fc,     digits: 3)]),
       ("φ_v",        [#calc.round(src.phi-v,   digits: 2)]),
     ))
-    v(8pt)
+    v(2pt)
 
     stack(
-      spacing: 3pt,
+      spacing: 1pt,
       line(length: 100%, stroke: 0.4pt + luma(200)),
       section-label[Procedure],
     )
-    v(4pt)
+    v(1pt)
     calc-step(
       1,
       [v_u = V_e × 1000 / (φ_v × A_cw)],
@@ -219,23 +219,24 @@ pub fn append_definitions(doc: &mut String) {
 }
 
 #let calc-procedure-page() = {
-  page-title[Calculation Trace — Governing Case Examples]
-  v(parse-pt(theme.section-gap))
-  body-note[
-    The following hand-calculation traces reproduce the governing results directly from the model data.
-    Values match the report tables to ±0.001 rounding.
+  block(breakable: false)[
+    #page-title[Verification Examples]
+    #v(2pt)
+    #body-note[
+      Worked examples reproduce governing values from the report tables to ±0.001 rounding.
+    ]
+    #v(4pt)
+    #if is-executive [
+      #torsion-worked-example()
+      #v(6pt)
+      #pier-shear-worked-example()
+    ] else [
+      #with-divider(
+        [#torsion-worked-example()],
+        [#pier-shear-worked-example()],
+      )
+    ]
   ]
-  v(10pt)
-  if is-executive {
-    torsion-worked-example()
-    v(16pt)
-    pier-shear-worked-example()
-  } else {
-    with-divider(
-      [#torsion-worked-example()],
-      [#pier-shear-worked-example()],
-    )
-  }
 }
 "#,
     );

@@ -12,22 +12,23 @@ pub(super) enum PageId {
     StoryForcesX,
     StoryForcesY,
     DriftWindReview,
+    DriftWindTables,
     DriftSeismicReview,
+    DriftSeismicTables,
     DisplacementWindReview,
+    DisplacementWindTables,
     TorsionalReview,
-    TorsionalVerification,
+    TorsionalTables,
     PierShearWindReview,
-    PierShearWindVerification,
+    PierShearWindTables,
     PierShearWindAverageReview,
-    PierShearWindAverageVerification,
     PierShearSeismicReview,
-    PierShearSeismicVerification,
+    PierShearSeismicTables,
     PierShearSeismicAverageReview,
-    PierShearSeismicAverageVerification,
     PierAxialGravity,
     PierAxialWind,
     PierAxialSeismic,
-    CalculationTrace,
+    VerificationExamples,
 }
 
 impl PageId {
@@ -41,22 +42,23 @@ impl PageId {
             Self::StoryForcesX => "story-forces-x",
             Self::StoryForcesY => "story-forces-y",
             Self::DriftWindReview => "drift-wind-review",
+            Self::DriftWindTables => "drift-wind-tables",
             Self::DriftSeismicReview => "drift-seismic-review",
+            Self::DriftSeismicTables => "drift-seismic-tables",
             Self::DisplacementWindReview => "displacement-wind-review",
+            Self::DisplacementWindTables => "displacement-wind-tables",
             Self::TorsionalReview => "torsional-review",
-            Self::TorsionalVerification => "torsional-verification",
+            Self::TorsionalTables => "torsional-tables",
             Self::PierShearWindReview => "pier-shear-wind-review",
-            Self::PierShearWindVerification => "pier-shear-wind-verification",
+            Self::PierShearWindTables => "pier-shear-wind-tables",
             Self::PierShearWindAverageReview => "pier-shear-wind-average-review",
-            Self::PierShearWindAverageVerification => "pier-shear-wind-average-verification",
             Self::PierShearSeismicReview => "pier-shear-seismic-review",
-            Self::PierShearSeismicVerification => "pier-shear-seismic-verification",
+            Self::PierShearSeismicTables => "pier-shear-seismic-tables",
             Self::PierShearSeismicAverageReview => "pier-shear-seismic-average-review",
-            Self::PierShearSeismicAverageVerification => "pier-shear-seismic-average-verification",
             Self::PierAxialGravity => "pier-axial-gravity",
             Self::PierAxialWind => "pier-axial-wind",
             Self::PierAxialSeismic => "pier-axial-seismic",
-            Self::CalculationTrace => "calculation-trace",
+            Self::VerificationExamples => "verification-examples",
         }
     }
 }
@@ -239,6 +241,15 @@ pub(super) fn build_report_pages(calc: &CalcOutput) -> Vec<ReportPage> {
             &["images/drift_wind_x.svg", "images/drift_wind_y.svg"],
             "#let dw = json(\"drift_wind.json\")\n#drift-review-pair-page([Wind Drift Review], dw, \"images/drift_wind_x.svg\", [Wind Drift Ratio — X Direction], \"images/drift_wind_y.svg\", [Wind Drift Ratio — Y Direction])",
         ));
+        pages.push(ReportPage::new(
+            PageId::DriftWindTables,
+            "Wind Drift Tables",
+            PageLayout::TwoTables,
+            PageAvailability::WhenCalcDataPresent("drift_wind"),
+            &["drift_wind.json"],
+            &[],
+            "#let dw = json(\"drift_wind.json\")\n#drift-tables-pair-page([Wind Drift Tables], dw)",
+        ));
     }
 
     if calc.drift_seismic.is_some() {
@@ -251,6 +262,15 @@ pub(super) fn build_report_pages(calc: &CalcOutput) -> Vec<ReportPage> {
             &["images/drift_seismic_x.svg", "images/drift_seismic_y.svg"],
             "#let ds = json(\"drift_seismic.json\")\n#drift-review-pair-page([Seismic Drift Review], ds, \"images/drift_seismic_x.svg\", [Seismic Drift Ratio — X Direction], \"images/drift_seismic_y.svg\", [Seismic Drift Ratio — Y Direction])",
         ));
+        pages.push(ReportPage::new(
+            PageId::DriftSeismicTables,
+            "Seismic Drift Tables",
+            PageLayout::TwoTables,
+            PageAvailability::WhenCalcDataPresent("drift_seismic"),
+            &["drift_seismic.json"],
+            &[],
+            "#let ds = json(\"drift_seismic.json\")\n#drift-tables-pair-page([Seismic Drift Tables], ds)",
+        ));
     }
 
     if calc.displacement_wind.is_some() {
@@ -262,6 +282,15 @@ pub(super) fn build_report_pages(calc: &CalcOutput) -> Vec<ReportPage> {
             &["displacement_wind.json"],
             &["images/displacement_wind_x.svg", "images/displacement_wind_y.svg"],
             "#let dpw = json(\"displacement_wind.json\")\n#displacement-review-pair-page([Wind Displacement Review], dpw, \"images/displacement_wind_x.svg\", [Wind Displacement — X Direction (in)], \"images/displacement_wind_y.svg\", [Wind Displacement — Y Direction (in)])",
+        ));
+        pages.push(ReportPage::new(
+            PageId::DisplacementWindTables,
+            "Wind Displacement Tables",
+            PageLayout::TwoTables,
+            PageAvailability::WhenCalcDataPresent("displacement_wind"),
+            &["displacement_wind.json"],
+            &[],
+            "#let dpw = json(\"displacement_wind.json\")\n#displacement-tables-pair-page([Wind Displacement Tables], dpw)",
         ));
     }
 
@@ -276,13 +305,13 @@ pub(super) fn build_report_pages(calc: &CalcOutput) -> Vec<ReportPage> {
             "#let tor = json(\"torsional.json\")\n#torsion-review-pair-page([Torsional Irregularity Review], tor, \"images/torsional_x.svg\", \"images/torsional_y.svg\")",
         ));
         pages.push(ReportPage::new(
-            PageId::TorsionalVerification,
-            "Torsional Irregularity Verification",
+            PageId::TorsionalTables,
+            "Torsional Irregularity Tables",
             PageLayout::TwoTables,
             PageAvailability::WhenCalcDataPresent("torsional"),
             &["torsional.json"],
             &[],
-            "#let tor = json(\"torsional.json\")\n#torsion-verify-pair-page([Torsional Irregularity Verification], tor)",
+            "#let tor = json(\"torsional.json\")\n#torsion-tables-pair-page([Torsional Irregularity Tables], tor)",
         ));
     }
 
@@ -300,13 +329,13 @@ pub(super) fn build_report_pages(calc: &CalcOutput) -> Vec<ReportPage> {
             "#let psw = json(\"pier_shear_wind.json\")\n#pier-shear-review-pair-page([Pier Shear Wind Review], psw, \"images/pier_shear_stress_wind_x.svg\", [Pier Shear Stress Ratio Wind — X Walls], \"images/pier_shear_stress_wind_y.svg\", [Pier Shear Stress Ratio Wind — Y Walls])",
         ));
         pages.push(ReportPage::new(
-            PageId::PierShearWindVerification,
-            "Pier Shear Wind Verification",
+            PageId::PierShearWindTables,
+            "Pier Shear Wind Tables",
             PageLayout::TwoTables,
             PageAvailability::WhenCalcDataPresent("pier_shear_stress_wind"),
             &["pier_shear_wind.json"],
             &[],
-            "#let psw = json(\"pier_shear_wind.json\")\n#pier-shear-verify-pair-page([Pier Shear Wind Verification], psw)",
+            "#let psw = json(\"pier_shear_wind.json\")\n#pier-shear-tables-pair-page([Pier Shear Wind Tables], psw)",
         ));
         pages.push(ReportPage::new(
             PageId::PierShearWindAverageReview,
@@ -316,15 +345,6 @@ pub(super) fn build_report_pages(calc: &CalcOutput) -> Vec<ReportPage> {
             &["pier_shear_wind.json"],
             &["images/pier_shear_stress_wind_avg.svg"],
             "#pier-shear-average-review-page([Pier Shear Wind Average Review], \"pier_shear_wind.json\", \"images/pier_shear_stress_wind_avg.svg\")",
-        ));
-        pages.push(ReportPage::new(
-            PageId::PierShearWindAverageVerification,
-            "Pier Shear Wind Average Verification",
-            PageLayout::TwoTables,
-            PageAvailability::WhenCalcDataPresent("pier_shear_stress_wind"),
-            &["pier_shear_wind.json"],
-            &[],
-            "#pier-shear-average-verify-page([Pier Shear Wind Average Verification], \"pier_shear_wind.json\")",
         ));
     }
 
@@ -342,13 +362,13 @@ pub(super) fn build_report_pages(calc: &CalcOutput) -> Vec<ReportPage> {
             "#let pss = json(\"pier_shear_seismic.json\")\n#pier-shear-review-pair-page([Pier Shear Seismic Review], pss, \"images/pier_shear_stress_seismic_x.svg\", [Pier Shear Stress Ratio Seismic — X Walls], \"images/pier_shear_stress_seismic_y.svg\", [Pier Shear Stress Ratio Seismic — Y Walls])",
         ));
         pages.push(ReportPage::new(
-            PageId::PierShearSeismicVerification,
-            "Pier Shear Seismic Verification",
+            PageId::PierShearSeismicTables,
+            "Pier Shear Seismic Tables",
             PageLayout::TwoTables,
             PageAvailability::WhenCalcDataPresent("pier_shear_stress_seismic"),
             &["pier_shear_seismic.json"],
             &[],
-            "#let pss = json(\"pier_shear_seismic.json\")\n#pier-shear-verify-pair-page([Pier Shear Seismic Verification], pss)",
+            "#let pss = json(\"pier_shear_seismic.json\")\n#pier-shear-tables-pair-page([Pier Shear Seismic Tables], pss)",
         ));
         pages.push(ReportPage::new(
             PageId::PierShearSeismicAverageReview,
@@ -358,15 +378,6 @@ pub(super) fn build_report_pages(calc: &CalcOutput) -> Vec<ReportPage> {
             &["pier_shear_seismic.json"],
             &["images/pier_shear_stress_seismic_avg.svg"],
             "#pier-shear-average-review-page([Pier Shear Seismic Average Review], \"pier_shear_seismic.json\", \"images/pier_shear_stress_seismic_avg.svg\")",
-        ));
-        pages.push(ReportPage::new(
-            PageId::PierShearSeismicAverageVerification,
-            "Pier Shear Seismic Average Verification",
-            PageLayout::TwoTables,
-            PageAvailability::WhenCalcDataPresent("pier_shear_stress_seismic"),
-            &["pier_shear_seismic.json"],
-            &[],
-            "#pier-shear-average-verify-page([Pier Shear Seismic Average Verification], \"pier_shear_seismic.json\")",
         ));
     }
 
@@ -402,8 +413,8 @@ pub(super) fn build_report_pages(calc: &CalcOutput) -> Vec<ReportPage> {
 
     if procedures::INCLUDE_CALC_PROCEDURE_PAGE {
         pages.push(ReportPage::new(
-            PageId::CalculationTrace,
-            "Calculation Trace - Governing Case Examples",
+            PageId::VerificationExamples,
+            "Verification Examples",
             PageLayout::Procedure,
             PageAvailability::WhenProcedurePageEnabled,
             &["torsional.json", "pier_shear_wind.json"],

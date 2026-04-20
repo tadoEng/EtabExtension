@@ -135,7 +135,7 @@ mod tests {
         assert_eq!(ids.get(2), Some(&PageId::ScopeLimitations));
         assert!(ids.contains(&PageId::Modal));
         assert!(ids.contains(&PageId::PierAxialSeismic));
-        assert_eq!(ids.last(), Some(&PageId::CalculationTrace));
+        assert_eq!(ids.last(), Some(&PageId::VerificationExamples));
 
         let unique = ids.iter().copied().collect::<HashSet<_>>();
         assert_eq!(unique.len(), ids.len(), "page ids should be unique");
@@ -153,7 +153,7 @@ mod tests {
                 PageId::Cover,
                 PageId::Summary,
                 PageId::ScopeLimitations,
-                PageId::CalculationTrace,
+                PageId::VerificationExamples,
             ]
         );
         assert!(
@@ -186,43 +186,124 @@ mod tests {
     }
 
     #[test]
-    fn directional_sections_render_review_page_before_verification_page() {
+    fn directional_sections_render_review_page_before_tables_page() {
         let calc = fixture_calc_output();
         let typst = build_typst_document(&calc);
 
-        for (review, verify) in [
+        for (review, tables) in [
+            (
+                "#drift-review-pair-page([Wind Drift Review]",
+                "#drift-tables-pair-page([Wind Drift Tables]",
+            ),
+            (
+                "#drift-review-pair-page([Seismic Drift Review]",
+                "#drift-tables-pair-page([Seismic Drift Tables]",
+            ),
+            (
+                "#displacement-review-pair-page([Wind Displacement Review]",
+                "#displacement-tables-pair-page([Wind Displacement Tables]",
+            ),
             (
                 "#torsion-review-pair-page([Torsional Irregularity Review]",
-                "#torsion-verify-pair-page([Torsional Irregularity Verification]",
+                "#torsion-tables-pair-page([Torsional Irregularity Tables]",
             ),
             (
                 "#pier-shear-review-pair-page([Pier Shear Wind Review]",
-                "#pier-shear-verify-pair-page([Pier Shear Wind Verification]",
+                "#pier-shear-tables-pair-page([Pier Shear Wind Tables]",
             ),
             (
                 "#pier-shear-review-pair-page([Pier Shear Seismic Review]",
-                "#pier-shear-verify-pair-page([Pier Shear Seismic Verification]",
-            ),
-            (
-                "#pier-shear-average-review-page([Pier Shear Wind Average Review]",
-                "#pier-shear-average-verify-page([Pier Shear Wind Average Verification]",
-            ),
-            (
-                "#pier-shear-average-review-page([Pier Shear Seismic Average Review]",
-                "#pier-shear-average-verify-page([Pier Shear Seismic Average Verification]",
+                "#pier-shear-tables-pair-page([Pier Shear Seismic Tables]",
             ),
         ] {
             let review_idx = typst
                 .find(review)
                 .unwrap_or_else(|| panic!("missing review marker: {review}"));
-            let verify_idx = typst
-                .find(verify)
-                .unwrap_or_else(|| panic!("missing verification marker: {verify}"));
+            let tables_idx = typst
+                .find(tables)
+                .unwrap_or_else(|| panic!("missing tables marker: {tables}"));
             assert!(
-                review_idx < verify_idx,
-                "review marker should appear before verification marker for '{review}'"
+                review_idx < tables_idx,
+                "review marker should appear before tables marker for '{review}'"
             );
         }
+
+        for removed in [
+            "Wind Drift Verification",
+            "Seismic Drift Verification",
+            "Wind Displacement Verification",
+            "Torsional Irregularity Verification",
+            "Pier Shear Wind Verification",
+            "Pier Shear Seismic Verification",
+            "Pier Shear Wind Average Verification",
+            "Pier Shear Seismic Average Verification",
+            "#pier-shear-average-verify-page(",
+        ] {
+            assert!(
+                !typst.contains(removed),
+                "ordinary table pages should not use removed verification marker: {removed}"
+            );
+        }
+    }
+
+    #[test]
+    fn page_registry_uses_tables_terminology_and_keeps_average_reviews_one_chart() {
+        let calc = fixture_calc_output();
+        let pages = build_report_pages(&calc);
+
+        let positions = pages
+            .iter()
+            .enumerate()
+            .map(|(idx, page)| (page.heading, idx))
+            .collect::<HashMap<_, _>>();
+
+        for (review, tables) in [
+            ("Wind Drift Review", "Wind Drift Tables"),
+            ("Seismic Drift Review", "Seismic Drift Tables"),
+            ("Wind Displacement Review", "Wind Displacement Tables"),
+            (
+                "Torsional Irregularity Review",
+                "Torsional Irregularity Tables",
+            ),
+            ("Pier Shear Wind Review", "Pier Shear Wind Tables"),
+            ("Pier Shear Seismic Review", "Pier Shear Seismic Tables"),
+        ] {
+            let review_idx = positions
+                .get(review)
+                .unwrap_or_else(|| panic!("missing review page {review}"));
+            let tables_idx = positions
+                .get(tables)
+                .unwrap_or_else(|| panic!("missing tables page {tables}"));
+            assert_eq!(
+                *review_idx + 1,
+                *tables_idx,
+                "{tables} should immediately follow {review}"
+            );
+        }
+
+        for page in &pages {
+            assert!(
+                !page.heading.contains("Verification") || page.heading == "Verification Examples",
+                "ordinary pages should not use Verification terminology: {}",
+                page.heading
+            );
+        }
+
+        for heading in [
+            "Pier Shear Wind Average Review",
+            "Pier Shear Seismic Average Review",
+        ] {
+            let page = pages
+                .iter()
+                .find(|page| page.heading == heading)
+                .unwrap_or_else(|| panic!("missing average review page {heading}"));
+            assert_eq!(page.layout, PageLayout::OneChart);
+        }
+
+        assert_eq!(
+            pages.last().map(|page| (page.id, page.heading)),
+            Some((PageId::VerificationExamples, "Verification Examples"))
+        );
     }
 
     #[test]
@@ -282,7 +363,7 @@ mod tests {
             typst
                 .matches("text(size: parse-pt(theme.label-size)")
                 .count()
-                == 6,
+                == 5,
             "label-size text calls should be limited to helper definitions and worked-example result helpers"
         );
         assert!(
@@ -299,17 +380,45 @@ mod tests {
                 "expected direct typography helper usage: {helper_usage}"
             );
         }
-        assert!(
-            typst.contains("block(breakable: false)[#stack(spacing: 4pt, section-label[X Direction], drift-table(data.x))]"),
-            "drift verification columns should be unbreakable and use typography helpers"
+        for helper in [
+            "#let two-table-page(title, left-title, left-body, right-title, right-body)",
+            "#let drift-tables-pair-page(title, data)",
+            "#let displacement-tables-pair-page(title, data)",
+            "#let torsion-tables-pair-page(title, data)",
+            "#let pier-shear-tables-pair-page(title, data)",
+        ] {
+            assert!(typst.contains(helper), "missing table helper {helper}");
+        }
+        for call in [
+            "two-table-page(title, [X Direction], drift-table(data.x), [Y Direction], drift-table(data.y))",
+            "two-table-page(title, [X Direction], displacement-table(data.x), [Y Direction], displacement-table(data.y))",
+            "two-table-page(title, [X Direction], torsion-dir-table(data.x), [Y Direction], torsion-dir-table(data.y))",
+            "two-table-page(title, [X Wall Direction], pier-shear-table(data.x-matrix), [Y Wall Direction], pier-shear-table(data.y-matrix))",
+        ] {
+            assert!(
+                typst.contains(call),
+                "table pair helper should route through shared shell: {call}"
+            );
+        }
+        let two_table_helper = typst_block(
+            &typst,
+            "#let two-table-page(title, left-title, left-body, right-title, right-body)",
+            "#let two-charts-page",
         );
         assert!(
-            typst.contains("block(breakable: false)[#stack(spacing: 4pt, section-label[X Direction], displacement-table(data.x))]"),
-            "displacement verification columns should be unbreakable and use typography helpers"
+            two_table_helper.contains("page-title[#title]")
+                && two_table_helper.contains("section-label[#left-title]")
+                && two_table_helper.find("page-title[#title]")
+                    < two_table_helper.find("section-label[#left-title]"),
+            "two-table page titles should live in the first table column flow before the left table heading"
         );
         assert!(
-            typst.matches("with-divider(").count() >= 5,
-            "with-divider helper should be used in verification tables and worked examples"
+            !two_table_helper.contains("block(breakable: false)"),
+            "two-table helper must not wrap long tables in an unbreakable block"
+        );
+        assert!(
+            typst.matches("with-divider(").count() >= 2,
+            "with-divider helper should remain available and used by worked examples"
         );
         for (start, end) in [
             (
@@ -320,18 +429,18 @@ mod tests {
                 "#let story-force-review-page(title, chart1, cap1, chart2, cap2)",
                 "#let drift-review-pair-page",
             ),
-            ("#let drift-review-pair-page", "#let drift-verify-pair-page"),
+            ("#let drift-review-pair-page", "#let drift-tables-pair-page"),
             (
                 "#let displacement-review-pair-page",
-                "#let displacement-verify-pair-page",
+                "#let displacement-tables-pair-page",
             ),
             (
                 "#let torsion-review-pair-page",
-                "#let torsion-verify-pair-page",
+                "#let torsion-tables-pair-page",
             ),
             (
                 "#let pier-shear-review-pair-page",
-                "#let pier-shear-verify-pair-page",
+                "#let pier-shear-tables-pair-page",
             ),
         ] {
             assert!(
@@ -339,14 +448,46 @@ mod tests {
                 "chart review helper should not use with-divider: {start}"
             );
         }
+        for restored_title in [
+            "Wind Drift Tables",
+            "Seismic Drift Tables",
+            "Wind Displacement Tables",
+            "Torsional Irregularity Tables",
+            "Pier Shear Wind Tables",
+            "Pier Shear Seismic Tables",
+            "Verification Examples",
+        ] {
+            assert!(
+                typst.contains(restored_title),
+                "missing restored report title {restored_title}"
+            );
+        }
+        for removed_helper in [
+            "#drift-verify-pair-page(",
+            "#displacement-verify-pair-page(",
+            "#torsion-verify-pair-page(",
+            "#pier-shear-verify-pair-page(",
+            "#pier-shear-average-verify-page(",
+        ] {
+            assert!(
+                !typst.contains(removed_helper),
+                "removed verification helper should not appear: {removed_helper}"
+            );
+        }
         assert!(
-            !typst.contains("#drift-verify-pair-page([Wind Drift Verification]")
-                && !typst.contains("#drift-verify-pair-page([Seismic Drift Verification]")
-                && !typst
-                    .contains("#displacement-verify-pair-page([Wind Displacement Verification]")
-                && !typst.contains("#drift-verify-pair-page(")
-                && !typst.contains("#displacement-verify-pair-page("),
-            "duplicative drift/displacement verification page calls should be removed"
+            !typst.contains("(continued)"),
+            "fake continuation text should not be injected into table headers"
+        );
+        assert!(
+            typst.contains("table.header(repeat: true, [Story], [Limit (ratio)]")
+                && typst.contains("data-node.groups.map(g => [#g (ratio)])"),
+            "drift tables should include limit and ratio units in headers"
+        );
+        assert!(
+            typst.contains(
+                "table.header(repeat: true, [Story], [Elevation (ft)], [Limit (in)], ..data-node.groups.map(g => [#g (in)]))"
+            ),
+            "displacement tables should include elevation, limit, and inch units in headers"
         );
         let table_header_count = typst.matches("table.header(").count();
         let inline_repeat_header_count = typst.matches("table.header(repeat: true,").count();
@@ -365,10 +506,19 @@ mod tests {
             "repeating-header should be defined and used for modal, torsion, and pier-shear directional tables"
         );
         assert!(
-            typst.contains(
-                "block(breakable: false)[\n      #align(center)[\n        #ext-figure(chart-file"
-            ),
-            "pier-shear-average-review-page chart and summary should be wrapped in a non-breakable block"
+            typst.contains("single-chart-page(title, chart-file, [Average Shear Ratio (X/Y)])"),
+            "pier-shear average review should use the same single-chart page helper as pier axial"
+        );
+        let average_review_helper = typst_block(
+            &typst,
+            "#let pier-shear-average-review-page(title, data-file, chart-file)",
+            "#let given-table(pairs)",
+        );
+        assert!(
+            !average_review_helper.contains("two-chart-row(")
+                && !average_review_helper.contains("two-charts-page(")
+                && !average_review_helper.contains("with-divider("),
+            "pier-shear average review should remain a single-chart page, not a split chart/table layout"
         );
         assert!(
             typst.contains("parse-pt(theme.label-size) + 2pt"),

@@ -26,24 +26,8 @@ pub(super) fn append(doc: &mut String) {
   )
 }
 
-#let drift-verify-pair-page(title, data) = {
-  let side-by-side = data.x.groups.len() <= 4 and data.y.groups.len() <= 4
-  page-title[#title]
-  v(parse-pt(theme.section-gap))
-  if side-by-side {
-    with-divider(
-      block(breakable: false)[#stack(spacing: 4pt, section-label[X Direction], drift-table(data.x))],
-      block(breakable: false)[#stack(spacing: 4pt, section-label[Y Direction], drift-table(data.y))],
-    )
-  } else {
-    stack(
-      spacing: 8pt,
-      section-label[X Direction],
-      drift-table(data.x),
-      section-label[Y Direction],
-      drift-table(data.y),
-    )
-  }
+#let drift-tables-pair-page(title, data) = {
+  two-table-page(title, [X Direction], drift-table(data.x), [Y Direction], drift-table(data.y))
 }
 
 #let displacement-review-pair-page(title, data, chart-x, cap-x, chart-y, cap-y) = {
@@ -65,15 +49,8 @@ pub(super) fn append(doc: &mut String) {
   )
 }
 
-#let displacement-verify-pair-page(title, data) = {
-  page-title[#title]
-  v(parse-pt(theme.section-gap))
-  grid(
-    columns: eval(theme.two-col-ratio, mode: "code"),
-    gutter: parse-pt(theme.grid-gutter),
-    [#block(breakable: false)[#stack(spacing: 4pt, section-label[X Direction], displacement-table(data.x))]],
-    [#block(breakable: false)[#stack(spacing: 4pt, section-label[Y Direction], displacement-table(data.y))]],
-  )
+#let displacement-tables-pair-page(title, data) = {
+  two-table-page(title, [X Direction], displacement-table(data.x), [Y Direction], displacement-table(data.y))
 }
 
 #let torsion-dir-table(data-node) = {
@@ -121,13 +98,8 @@ pub(super) fn append(doc: &mut String) {
   )
 }
 
-#let torsion-verify-pair-page(title, data) = {
-  page-title[#title]
-  v(parse-pt(theme.section-gap))
-  with-divider(
-    [#stack(spacing: 4pt, section-label[X Direction], torsion-dir-table(data.x))],
-    [#stack(spacing: 4pt, section-label[Y Direction], torsion-dir-table(data.y))],
-  )
+#let torsion-tables-pair-page(title, data) = {
+  two-table-page(title, [X Direction], torsion-dir-table(data.x), [Y Direction], torsion-dir-table(data.y))
 }
 
 #let pier-shear-dir-table(rows) = {
@@ -208,19 +180,14 @@ pub(super) fn append(doc: &mut String) {
   }
 }
 
-#let pier-shear-verify-pair-page(title, data) = {
+#let pier-shear-tables-pair-page(title, data) = {
   if data.supported == false {
     page-title[#title]
     v(parse-pt(theme.section-gap))
     section-label[This check is currently unavailable for the configured code.]
     body-note[#data.support-note]
   } else {
-    page-title[#title]
-    v(parse-pt(theme.section-gap))
-    with-divider(
-      [#stack(spacing: 4pt, section-label[X Wall Direction], pier-shear-table(data.x-matrix))],
-      [#stack(spacing: 4pt, section-label[Y Wall Direction], pier-shear-table(data.y-matrix))],
-    )
+    two-table-page(title, [X Wall Direction], pier-shear-table(data.x-matrix), [Y Wall Direction], pier-shear-table(data.y-matrix))
   }
 }
 
@@ -233,36 +200,14 @@ pub(super) fn append(doc: &mut String) {
     body-note[#data.support-note]
   } else {
     let pass-str = if data.pass { "PASS" } else { "FAIL" }
-    page-title[#title]
-    v(parse-pt(theme.section-gap))
-    block(breakable: false)[
-      #align(center)[
-        #ext-figure(chart-file, [Average Shear Ratio (X/Y)], parse-in(theme.chart-single-h))
-      ]
-      #v(6pt)
-      #body-note[Average limit line: #calc.round(data.limit-average-ratio, digits: 3) | Observed max average ratio: #calc.round(data.max-average-ratio, digits: 3)]
-      #v(2pt)
-      #section-label[Status: #status-text(pass-str)]
-    ]
+    single-chart-page(title, chart-file, [Average Shear Ratio (X/Y)])
+    v(6pt)
+    body-note[Average limit line: #calc.round(data.limit-average-ratio, digits: 3) | Observed max average ratio: #calc.round(data.max-average-ratio, digits: 3)]
+    v(2pt)
+    section-label[Status: #status-text(pass-str)]
   }
 }
 
-#let pier-shear-average-verify-page(title, data-file) = {
-  let data = json(data-file)
-  if data.supported == false {
-    page-title[#title]
-    v(parse-pt(theme.section-gap))
-    section-label[This check is currently unavailable for the configured code.]
-    body-note[#data.support-note]
-  } else {
-    page-title[#title]
-    v(parse-pt(theme.section-gap))
-    with-divider(
-      [#stack(spacing: 4pt, section-label[X Average], pier-shear-average-dir-table(data.x-average-rows))],
-      [#stack(spacing: 4pt, section-label[Y Average], pier-shear-average-dir-table(data.y-average-rows))],
-    )
-  }
-}
 "#,
     );
 }

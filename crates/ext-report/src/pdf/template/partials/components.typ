@@ -24,12 +24,6 @@
   table.header(
     repeat: true,
     ..header-cells,
-    table.cell(
-      colspan: col-count,
-      fill: luma(235),
-      align: right,
-      inset: (x: 6pt, y: 2pt),
-    )[#text(size: parse-pt(theme.label-size), fill: luma(130), style: "italic")[(continued)]],
   )
 }
 
