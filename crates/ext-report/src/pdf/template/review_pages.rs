@@ -75,7 +75,6 @@ pub(super) fn append(doc: &mut String) {
     fill: (x, y) => if y == 0 { luma(220) } else { row-fill("", y) },
     align: (x, y) => if x >= 4 { right } else { left },
     repeating-header(
-      10,
       ..("Story", "Case", "Joint A", "Joint B", "Step", "Drift A", "Drift B", "DeltaMax", "DeltaAvg", "Ratio")
         .map(h => table.cell(fill: luma(220))[#h])
     ),
@@ -200,11 +199,17 @@ pub(super) fn append(doc: &mut String) {
     body-note[#data.support-note]
   } else {
     let pass-str = if data.pass { "PASS" } else { "FAIL" }
-    single-chart-page(title, chart-file, [Average Shear Ratio (X/Y)])
-    v(6pt)
-    body-note[Average limit line: #calc.round(data.limit-average-ratio, digits: 3) | Observed max average ratio: #calc.round(data.max-average-ratio, digits: 3)]
-    v(2pt)
-    section-label[Status: #status-text(pass-str)]
+    page-title[#title]
+    v(parse-pt(theme.section-gap))
+    block(breakable: false)[
+      #align(center)[
+        #ext-figure(chart-file, [Average Shear Ratio (X/Y)], parse-in(theme.chart-single-h))
+      ]
+      #v(6pt)
+      #body-note[Average limit line: #calc.round(data.limit-average-ratio, digits: 3) | Observed max average ratio: #calc.round(data.max-average-ratio, digits: 3)]
+      #v(2pt)
+      #section-label[Status: #status-text(pass-str)]
+    ]
   }
 }
 

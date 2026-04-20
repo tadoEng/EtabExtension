@@ -1,10 +1,14 @@
 pub(super) fn append(doc: &mut String) {
     doc.push_str(
         r#"
+#let cover-label(content) = {
+  text(size: 8pt, fill: luma(100), weight: "bold")[#content]
+}
+
 #let cover-info-row(label, value) = {
   stack(
     spacing: 2pt,
-    section-label[#upper(label)],
+    cover-label[#upper(label)],
     body-note[#value],
     line(length: 100%, stroke: 0.4pt + luma(220)),
   )
@@ -188,7 +192,6 @@ pub(super) fn append(doc: &mut String) {
     fill: (x, y) => if y == 0 { luma(220) } else { row-fill(data.annotations.at(y - 1, default: ""), y) },
     align: (x, y) => if x >= 1 { right } else { left },
     repeating-header(
-      9,
       ..("Mode", "Period", "UX", "UY", "UZ", "Sum UX", "Sum UY", "Sum UZ", "Highlight")
         .map(h => table.cell(fill: luma(220))[#h])
     ),
@@ -313,10 +316,10 @@ pub(super) fn append(doc: &mut String) {
 
 #let displacement-table(data-node) = {
   table(
-    columns: data-node.groups.len() + 3,
+    columns: data-node.groups.len() + 4,
     fill: (x, y) => if y == 0 { luma(220) } else { row-fill("", y) },
     align: (x, y) => if x <= 1 { left } else { right },
-    table.header(repeat: true, [Story], [Elevation (ft)], [Limit (in)], ..data-node.groups.map(g => [#g (in)])),
+    table.header(repeat: true, [Story], [Elevation (ft)], [Limit (in)], ..data-node.groups.map(g => [#g (in)]), [Util.]),
     ..range(data-node.levels.len()).map(i => {
       let row = data-node.matrix-in.at(i, default: ())
       (
@@ -327,6 +330,7 @@ pub(super) fn append(doc: &mut String) {
           let value = row.at(j, default: none)
           if value == none { "-" } else { str(calc.round(value, digits: 3)) }
         }),
+        str(calc.round(data-node.level-utilization.at(i, default: 0.0) * 100.0, digits: 2)) + "%",
       )
     }).flatten(),
   )

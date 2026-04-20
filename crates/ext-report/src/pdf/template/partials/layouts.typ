@@ -42,29 +42,11 @@
 }
 
 #let two-table-page(title, left-title, left-body, right-title, right-body) = {
-  grid(
-    columns: (1fr, 1pt, 1fr),
-    column-gutter: parse-pt(theme.grid-gutter) / 2,
-    [
-      #stack(
-        spacing: 4pt,
-        page-title[#title],
-        v(parse-pt(theme.section-gap)),
-        section-label[#left-title],
-        left-body,
-      )
-    ],
-    pad(top: parse-pt(theme.title-size) + parse-pt(theme.section-gap) + 8pt, bottom: 8pt)[
-      #line(angle: 90deg, length: 100%, stroke: 0.35pt + luma(200))
-    ],
-    [
-      #stack(
-        spacing: 4pt,
-        v(parse-pt(theme.title-size) + parse-pt(theme.section-gap) + 8pt),
-        section-label[#right-title],
-        right-body,
-      )
-    ],
+  page-title[#title]
+  v(parse-pt(theme.section-gap))
+  with-divider(
+    [#stack(spacing: 4pt, section-label[#left-title], left-body)],
+    [#stack(spacing: 4pt, section-label[#right-title], right-body)],
   )
 }
 

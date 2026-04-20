@@ -219,23 +219,21 @@ pub fn append_definitions(doc: &mut String) {
 }
 
 #let calc-procedure-page() = {
-  block(breakable: false)[
-    #page-title[Verification Examples]
-    #v(2pt)
-    #body-note[
-      Worked examples reproduce governing values from the report tables to ±0.001 rounding.
-    ]
-    #v(4pt)
-    #if is-executive [
-      #torsion-worked-example()
-      #v(6pt)
-      #pier-shear-worked-example()
-    ] else [
-      #with-divider(
-        [#torsion-worked-example()],
-        [#pier-shear-worked-example()],
-      )
-    ]
+  page-title[Verification Examples]
+  v(2pt)
+  body-note[
+    Worked examples reproduce governing values from the report tables to ±0.001 rounding.
+  ]
+  v(4pt)
+  if is-executive [
+    #torsion-worked-example()
+    #v(6pt)
+    #pier-shear-worked-example()
+  ] else [
+    #with-divider(
+      [#torsion-worked-example()],
+      [#pier-shear-worked-example()],
+    )
   ]
 }
 "#,

@@ -20,7 +20,7 @@
   else { none }
 }
 
-#let repeating-header(col-count, ..header-cells) = {
+#let repeating-header(..header-cells) = {
   table.header(
     repeat: true,
     ..header-cells,

@@ -485,9 +485,9 @@ mod tests {
         );
         assert!(
             typst.contains(
-                "table.header(repeat: true, [Story], [Elevation (ft)], [Limit (in)], ..data-node.groups.map(g => [#g (in)]))"
+                "table.header(repeat: true, [Story], [Elevation (ft)], [Limit (in)], ..data-node.groups.map(g => [#g (in)]), [Util.])"
             ),
-            "displacement tables should include elevation, limit, and inch units in headers"
+            "displacement tables should include elevation, limit, inch units, and utilization in headers"
         );
         let table_header_count = typst.matches("table.header(").count();
         let inline_repeat_header_count = typst.matches("table.header(repeat: true,").count();
@@ -506,8 +506,8 @@ mod tests {
             "repeating-header should be defined and used for modal, torsion, and pier-shear directional tables"
         );
         assert!(
-            typst.contains("single-chart-page(title, chart-file, [Average Shear Ratio (X/Y)])"),
-            "pier-shear average review should use the same single-chart page helper as pier axial"
+            typst.contains("block(breakable: false)"),
+            "pier-shear average review chart and summary should be wrapped in a breakable: false block"
         );
         let average_review_helper = typst_block(
             &typst,
@@ -519,6 +519,10 @@ mod tests {
                 && !average_review_helper.contains("two-charts-page(")
                 && !average_review_helper.contains("with-divider("),
             "pier-shear average review should remain a single-chart page, not a split chart/table layout"
+        );
+        assert!(
+            average_review_helper.contains("block(breakable: false)"),
+            "pier-shear average review must keep chart and summary text in one unbreakable block"
         );
         assert!(
             typst.contains("parse-pt(theme.label-size) + 2pt"),
